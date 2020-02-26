@@ -1,5 +1,5 @@
 #pragma once
-#include "../DenseEcsCore/MemoryModel.h"
+#include "../MemoryModel/MemoryModel.h"
 #include <gsl/span>
 #include <boost/hana.hpp>
 #include <map>

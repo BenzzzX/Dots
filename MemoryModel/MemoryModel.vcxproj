@@ -138,6 +138,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="MemoryModel.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="MemoryModel.h" />
+    <ClInclude Include="Profiler.h" />
+    <ClInclude Include="Set.h" />
+    <ClInclude Include="Type.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
