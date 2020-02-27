@@ -174,7 +174,7 @@ namespace ecs
 	{
 		class context* cont;
 	public:
-		accessor(constext* c) :cont(c) {}
+		accessor(context* c) :cont(c) {}
 		decltype(auto) operator[](entity);
 	};
 
@@ -182,7 +182,7 @@ namespace ecs
 	struct typeset_builder
 	{
 		uint16_t arr[sizeof...(Cs)];
-		typeset() : arr{ typeof<Cs>... }
+		typeset_builder() : arr{ typeof<Cs>... }
 		{
 			std::sort(arr, arr + sizeof...(Cs));
 		}
@@ -193,7 +193,7 @@ namespace ecs
 	{
 		constval size = sizeof...(Cs);
 		uint16_t metaarr[size];
-		metaset(Cs&& ...ms) : metaarr{ meta::find(ms)... }
+		metaset_builder(Cs&& ...ms) : metaarr{ meta::find(ms)... }
 		{
 			uint16_t arr[] = { typeof<Cs>... };
 			forloop(i, 0, size)
@@ -230,50 +230,50 @@ namespace ecs
 		uint16_t nchanged;
 		bool includeDisabled;
 		size_t prevVersion;
-	public:
 
+		template<class ...Cs, class... MCs>
+		void match_(type& t, MCs&& ... mcs)
+		{
+			static typeset_builder<Cs..., MCs...> ts;
+			t.c = ts.arr;
+			if constexpr (sizeof...(MCs) > 0)
+				t.mc = new metaset_builder<MCs...>{ std::forward<MCs>(mcs)... }->metaarr;
+			else
+				t.mc = nullptr;
+			t.nc = sizeof...(Cs);
+			t.nmc = sizeof...(MCs);
+		}
+
+		bool find_disabled(const type& t) const
+		{
+			forloop(i, 0, t.nc)
+				if (t.c[i] == memory_model::disable_id)
+					return true;
+		}
+
+		void update_disabled()
+		{
+			includeDisabled = find_disabled(all) || find_disabled(any);
+		}
+	public:
 		template<class ...Cs, class... MCs>
 		void match_all(MCs&& ... mcs)
 		{
-			static typeset_builder<Cs..., MCs...> ts;
-			all.c = ts.arr;
-			if constexpr (sizeof...(MCs) > 0)
-				all.mc = new metaset_builder<MCs...>{ std::forward<MCs>(mcs)... }->metaarr;
-			else
-				all.mc = nullptr;
-			all.nc = sizeof...(Cs);
-			all.nmc = sizeof...(MCs);
-		}
-
-		void match_disabled(bool b)
-		{
-			includeDisabled = b;
+			match_<Cs...>(all, std::forward<MCs>(mcs)...);
+			update_disabled();
 		}
 
 		template<class ...Cs, class... MCs>
 		void match_any(MCs&& ... mcs)
 		{
-			static typeset_builder<Cs..., MCs...> ts;
-			any.c = ts.arr;
-			if constexpr (sizeof...(MCs) > 0)
-				any.mc = new metaset_builder<MCs...>{ std::forward<MCs>(mcs)... }->metaarr;
-			else
-				any.mc = nullptr;
-			any.nc = sizeof...(Cs);
-			any.nmc = sizeof...(MCs);
+			match_<Cs...>(any, std::forward<MCs>(mcs)...);
+			update_disabled();
 		}
 
 		template<class ...Cs, class... MCs>
 		void match_none(MCs&& ... mcs)
 		{
-			static typeset_builder<Cs..., MCs...> ts;
-			none.c = ts.arr;
-			if constexpr (sizeof...(MCs) > 0)
-				none.mc = new metaset_builder<MCs...>{ std::forward<MCs>(mcs)... }->metaarr;
-			else
-				none.mc = nullptr;
-			none.nc = sizeof...(Cs);
-			none.nmc = sizeof...(MCs);
+			match_<Cs...>(none, std::forward<MCs>(mcs)...);
 		}
 
 		template<class ...Cs>
@@ -353,7 +353,7 @@ namespace ecs
 		template<class ...Cs>
 		void shrink(gsl::span<entity> es)
 		{
-			static typeset<Cs...> ts;
+			static typeset_builder<Cs...> ts;
 			auto iter = cont.batch(parm_slice(es));
 			foriter(s, iter)
 				cont.shrink(*s, ts);

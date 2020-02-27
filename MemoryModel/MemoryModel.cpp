@@ -35,52 +35,52 @@ struct info
 
 };
 
-static metatype_release_callback_t release_metatype;
-static std::vector<info> infos;
-static std::vector<intptr_t> entityRefs;
-static std::unordered_map<size_t, uint16_t> hash2type;
-static std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
-static uint16_t disable_id;
-static uint16_t cleanup_id;
+uint16_t ecs::memory_model::disable_id = 0;
+uint16_t ecs::memory_model::cleanup_id = 1;
 
+struct global_data
+{
+	metatype_release_callback_t release_metatype = nullptr;
+	std::vector<info> infos;
+	std::vector<intptr_t> entityRefs;
+	std::unordered_map<size_t, uint16_t> hash2type;
+	std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
+	
+	global_data()
+	{
+		component_desc desc{};
+		desc.size = 0;
+		desc.hash = 0;
+		disable_id = register_type(desc);
+		desc.size = 0;
+		desc.hash = 1;
+		cleanup_id = register_type(desc);
+	}
+};
+
+static global_data gd;
 
 uint16_t ecs::memory_model::register_type(component_desc desc)
 {
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
 	{
-		rid = entityRefs.size();
+		rid = gd.entityRefs.size();
 		forloop(i, 0, desc.entityRefCount)
-			entityRefs.push_back(desc.entityRefs[i]);
+			gd.entityRefs.push_back(desc.entityRefs[i]);
 	}
 	
-	uint16_t id = (uint16_t)infos.size();
+	uint16_t id = (uint16_t)gd.infos.size();
 	info i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount};
-	infos.push_back(i);
+	gd.infos.push_back(i);
 	id = tagged_index{ id, desc.isInsternal, desc.isElement, i.size == 0, desc.isMeta };
-	hash2type.insert({ desc.hash, id });
+	gd.hash2type.insert({ desc.hash, id });
 	return id;
-}
-
-uint16_t ecs::memory_model::register_disable()
-{
-	component_desc desc{};
-	desc.size = 0;
-	desc.hash = 0;
-	return register_type(desc);
-}
-
-uint16_t ecs::memory_model::register_cleanup()
-{
-	component_desc desc{};
-	desc.size = 0;
-	desc.hash = 1;
-	return register_type(desc);
 }
 
 void ecs::memory_model::register_metatype_release_callback(metatype_release_callback_t callback)
 {
-	release_metatype = callback;
+	gd.release_metatype = callback;
 }
 
 inline bool chunk_slice::full() { return start == 0 && count == c->get_count(); }
@@ -223,21 +223,21 @@ void chunk::patch(chunk_slice s, uint32_t start, const entity* target, uint32_t 
 	tagged_index* types = (tagged_index*)g->types();
 	forloop(i, 0, g->firstBuffer)
 	{
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + sizes[i]*s.start;
 		forloop(j, 0, s.count)
 		{
 			char* data = arr + sizes[i] * j;
 			forloop(k, 0, t.entityRefCount)
 			{
-				entity& e = *(entity*)(data + entityRefs[t.entityRefs + k]);
+				entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
 				patch_entity(e, start, target, count);
 			}
 		}
 	}
 	forloop(i, g->firstBuffer, g->firstTag)
 	{
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
@@ -248,7 +248,7 @@ void chunk::patch(chunk_slice s, uint32_t start, const entity* target, uint32_t 
 				char* data = b->data() + t.elementSize * l;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + entityRefs[t.entityRefs + k]);
+					entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
 					patch_entity(e, start, target, count);
 				}
 			}
@@ -265,21 +265,21 @@ void chunk::depatch(chunk_slice s, const entity* src, const entity* target, uint
 	tagged_index* types = (tagged_index*)g->types();
 	forloop(i, 0, g->firstBuffer)
 	{
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
 			char* data = arr + sizes[i] * j;
 			forloop(k, 0, t.entityRefCount)
 			{
-				entity& e = *(entity*)(data + entityRefs[t.entityRefs + k]);
+				entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
 				depatch_entity(e, src, target, count);
 			}
 		}
 	}
 	forloop(i, g->firstBuffer, g->firstTag)
 	{
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
@@ -290,7 +290,7 @@ void chunk::depatch(chunk_slice s, const entity* src, const entity* target, uint
 				char* data = b->data() + t.elementSize * l;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + entityRefs[t.entityRefs + k]);
+					entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
 					depatch_entity(e, src, target, count);
 				}
 			}
@@ -316,7 +316,7 @@ void chunk::serialize(chunk_slice s, serializer_i *stream)
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		stream->write(arr, sizes[i] * s.count);
 	}
 
@@ -344,7 +344,7 @@ void chunk::deserialize(chunk_slice s, deserializer_i* stream)
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		const auto& t = infos[types[i].index()];
+		const auto& t = gd.infos[types[i].index()];
 		stream->read(arr, sizes[i] * s.count);
 	}
 
@@ -528,7 +528,7 @@ context::group* context::get_group(const entity_type& key)
 	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(uint16_t));
 	forloop(i, g->firstMeta, g->componentCount)
 	{
-		auto& info = metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
+		auto& info = gd.metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
 		info.refCount++;
 	}
 
@@ -549,7 +549,7 @@ context::group* context::get_group(const entity_type& key)
 			g->cleaning = true;
 		else if (type.is_internal())
 			g->needsClean = true;
-		auto info = infos[type.index()];
+		auto info = gd.infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.hash;
 		stableOrder[i] = i;
@@ -732,11 +732,11 @@ void context::release_reference(group* g)
 	forloop(i, g->firstMeta, g->componentCount)
 	{
 		auto key = metakey{ types[i], metatypes[i - g->firstMeta] };
-		auto iter = metainfos.find(key);
+		auto iter = gd.metainfos.find(key);
 		if (--iter->second.refCount == 0)
 		{
-			release_metatype(key);
-			metainfos.erase(iter);
+			gd.release_metatype(key);
+			gd.metainfos.erase(iter);
 		}
 	}
 }
@@ -747,7 +747,7 @@ void context::serialize_type(group* g, serializer_i* s)
 	uint16_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->write(&tlength, sizeof(uint16_t));
 	forloop(i, 0, tlength)
-		s->write(&infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
+		s->write(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
 	s->write(&mlength, sizeof(uint16_t));
 	forloop(i, 0, mlength)
 		s->writemeta({ type.types.data[tlength - mlength + i], type.metatypes.data[i] });
@@ -761,7 +761,7 @@ context::group* context::deserialize_group(deserializer_i* s, uint16_t tlength)
 		size_t hash;
 		s->read(&hash, sizeof(size_t));
 		//TODO: check validation
-		types[i] = hash2type[hash];
+		types[i] = gd.hash2type[hash];
 	}
 	uint16_t mlength;
 	s->read(&mlength, sizeof(uint16_t));

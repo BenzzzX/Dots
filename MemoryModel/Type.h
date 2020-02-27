@@ -81,8 +81,9 @@ namespace ecs
 
 		using metatype_release_callback_t = void(*)(metakey);
 		uint16_t register_type(component_desc desc);
-		uint16_t register_disable();
-		uint16_t register_cleanup();
+
+		extern uint16_t disable_id;
+		extern uint16_t cleanup_id;
 		void register_metatype_release_callback(metatype_release_callback_t callback);
 
 		struct buffer
@@ -125,7 +126,7 @@ namespace ecs
 
 			void grow()
 			{
-				size_t newCap = capacity * 2;
+				uint16_t newCap = capacity * 2;
 				char* newBuffer = new char[newCap];
 				memcpy(newBuffer, data(), size);
 				if (d != nullptr)
@@ -218,10 +219,9 @@ namespace ecs
 					hash = hash_array(key.allMeta.data, key.allMeta.length, hash);
 					hash = hash_array(key.anyMeta.data, key.anyMeta.length, hash);
 					hash = hash_array(key.noneMeta.data, key.noneMeta.length, hash);
-					hash = hash_array(key.noneMeta.data, key.noneMeta.length, hash);
 					hash = hash_array(key.changed.data, key.changed.length, hash);
 					hash = hash_array(&key.prevVersion, 1, hash);
-					hash |= key.includeDisabled;
+					hash ^= key.includeDisabled;
 					return hash;
 				}
 			};
@@ -257,14 +257,14 @@ namespace ecs
 
 				if (!t.types.all(all))
 					return false;
-				if (!t.types.any(any))
+				if (any.length > 0 && !t.types.any(any))
 					return false;
 				if (t.types.any(none))
 					return false;
 
 				if (!t.metatypes.all(allMeta))
 					return false;
-				if (!t.metatypes.any(anyMeta))
+				if (anyMeta.length > 0 && !t.metatypes.any(anyMeta))
 					return false;
 				if (t.metatypes.any(noneMeta))
 					return false;

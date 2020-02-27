@@ -43,8 +43,6 @@ struct initialzie
 {
 	initialzie()
 	{
-		disable_id = register_disable();
-		cleanup_id = register_cleanup();
 		test_id = register_type({ false, false, false, 2, sizeof(test) });
 		test_internal_id = register_type({ true, false, false, 3, sizeof(test_internal) });
 		test_element_id = register_type({ false, true, false, 4, 128, sizeof(test_element) });
