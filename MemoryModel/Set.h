@@ -39,7 +39,7 @@ namespace ecs
 		struct typeset
 		{
 			const uint16_t* data;
-			const uint16_t length;
+			uint16_t length;
 
 			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
 
@@ -127,6 +127,21 @@ namespace ecs
 		struct metaset : typeset
 		{
 			const uint16_t* metaData;
+
+			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
+
+			bool operator==(const metaset& other) const
+			{
+				return length == other.length ? std::equal(data, data + length, other.data) : false;
+			}
+
+			struct hash
+			{
+				size_t operator()(const metaset& set) const
+				{
+					return hash_array(set.data, set.length);
+				}
+			};
 
 			static metaset merge(const metaset& lhs, const metaset& rhs, const uint16_t* dst, uint16_t* metaDst)
 			{

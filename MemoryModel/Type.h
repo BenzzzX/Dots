@@ -162,6 +162,19 @@ namespace ecs
 				}
 			};
 
+			bool valid_for_filter() const
+			{
+				typeset mt = { metatypes.metaData,metatypes.length };
+				return types.all(mt);
+			}
+
+			bool valid_for_entity() const
+			{
+				if (types.length == 0)
+					return false;
+				return memcmp(metatypes.metaData, types.data + types.length - metatypes.length, metatypes.length) == 0;
+			}
+
 			static const uint16_t* get_meta(typeset ts)
 			{
 				return std::find_if(ts.data, ts.data + ts.length, [](uint16_t v) { return ((tagged_index)v).is_meta(); });
@@ -198,12 +211,9 @@ namespace ecs
 
 		struct entity_filter
 		{
-			typeset all;
-			typeset any;
-			typeset none;
-			metaset allMeta;
-			metaset anyMeta;
-			metaset noneMeta;
+			entity_type all;
+			entity_type any;
+			entity_type none;
 
 			typeset changed;
 			size_t prevVersion;
@@ -213,12 +223,12 @@ namespace ecs
 			{
 				size_t operator()(const entity_filter& key) const
 				{
-					size_t hash = hash_array(key.all.data, key.all.length);
-					hash = hash_array(key.any.data, key.any.length, hash);
-					hash = hash_array(key.none.data, key.none.length, hash);
-					hash = hash_array(key.allMeta.data, key.allMeta.length, hash);
-					hash = hash_array(key.anyMeta.data, key.anyMeta.length, hash);
-					hash = hash_array(key.noneMeta.data, key.noneMeta.length, hash);
+					size_t hash = hash_array(key.all.types.data, key.all.types.length);
+					hash = hash_array(key.any.types.data, key.any.types.length, hash);
+					hash = hash_array(key.none.types.data, key.none.types.length, hash);
+					hash = hash_array(key.all.metatypes.data, key.all.metatypes.length, hash);
+					hash = hash_array(key.any.metatypes.data, key.any.metatypes.length, hash);
+					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
 					hash = hash_array(key.changed.data, key.changed.length, hash);
 					hash = hash_array(&key.prevVersion, 1, hash);
 					hash ^= key.includeDisabled;
@@ -229,8 +239,8 @@ namespace ecs
 			bool operator==(const entity_filter& other) const
 			{
 				return all == other.all && any == other.any && 
-					none == other.any && allMeta == other.allMeta &&
-					anyMeta == other.anyMeta && noneMeta == other.noneMeta &&
+					none == other.any && all.metatypes == other.all.metatypes &&
+					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes &&
 					changed == other.changed && prevVersion == prevVersion &&
 					includeDisabled == other.includeDisabled;
 			}
@@ -255,18 +265,18 @@ namespace ecs
 				if (disabled > includeDisabled)
 					return false;
 
-				if (!t.types.all(all))
+				if (!t.types.all(all.types))
 					return false;
-				if (any.length > 0 && !t.types.any(any))
+				if (any.types.length > 0 && !t.types.any(any.types))
 					return false;
-				if (t.types.any(none))
+				if (t.types.any(none.types))
 					return false;
 
-				if (!t.metatypes.all(allMeta))
+				if (!t.metatypes.all(all.metatypes))
 					return false;
-				if (anyMeta.length > 0 && !t.metatypes.any(anyMeta))
+				if (any.metatypes.length > 0 && !t.metatypes.any(any.metatypes))
 					return false;
-				if (t.metatypes.any(noneMeta))
+				if (t.metatypes.any(none.metatypes))
 					return false;
 
 				return true;

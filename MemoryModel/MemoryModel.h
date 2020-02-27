@@ -8,7 +8,6 @@
 #include "Type.h"
 namespace ecs
 {
-
 	namespace memory_model
 	{
 		class context;

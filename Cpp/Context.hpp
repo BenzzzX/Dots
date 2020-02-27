@@ -7,11 +7,13 @@
 #define constval static constexpr auto
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 #define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
+#define x_v(name) template<class T> constexpr auto name##_v = name<T>::value;
+#define x_t(name) template<class T> using name##_t = typename name<T>::type;
 
 namespace ecs
 {
 	template<class T>
-	inline uint16_t typeof;
+	inline uint16_t typeof = 0;
 
 	template<class T>
 	struct tid {};
@@ -67,10 +69,6 @@ namespace ecs
 		constval return_type = hana::type_c<Ret>;
 		constval parameter_list = hana::tuple_t<Args...>;
 	};
-
-	template<class T>
-	inline static std::unordered_map<T, uint16_t> ids;
-	inline static std::vector<void*> values;
 
 	namespace meta
 	{
@@ -175,27 +173,77 @@ namespace ecs
 		class context* cont;
 	public:
 		accessor(context* c) :cont(c) {}
-		decltype(auto) operator[](entity);
+		T& operator[](entity);
 	};
 
-	template<class ...Cs>
-	struct typeset_builder
+	template<class T>
+	class buffer_accessor
 	{
-		uint16_t arr[sizeof...(Cs)];
-		typeset_builder() : arr{ typeof<Cs>... }
+		class context* cont;
+	public:
+		buffer_accessor(context* c) :cont(c) {}
+		buffer<T> operator[](entity);
+	};
+
+	template<class T>
+	struct is_buffer : std::false_type {};
+	template<class T>
+	struct is_buffer<buffer<T>> : std::true_type {};
+
+	template<class T>
+	struct is_accessor : std::false_type {};
+	template<class T>
+	struct is_accessor<accessor<T>> : std::true_type {};
+
+	template<class T>
+	struct is_buffer_accessor : std::false_type {};
+	template<class T>
+	struct is_buffer_accessor<buffer_accessor<T>> : std::true_type {};
+
+	x_v(is_buffer);
+	x_v(is_accessor);
+	x_v(is_buffer_accessor);
+
+	template<class T>
+	struct element_type;
+	template<class T>
+	struct element_type<buffer<T>> { using type = std::remove_const_t<T>; };
+	template<class T>
+	struct element_type<accessor<T>> { using type = std::remove_const_t<T>; };
+	template<class T>
+	struct element_type<buffer_accessor<T>> { using type = std::remove_const_t<T>; };
+
+	x_t(element_type);
+
+	template<class ...Cs>
+	struct typeset
+	{
+		consteval size = sizeof...(Cs);
+		uint16_t arr[size];
+		memory_model::typeset to_raw()
+		{
+			return { arr, size };
+		}
+		typeset() : arr{ typeof<Cs>... }
 		{
 			std::sort(arr, arr + sizeof...(Cs));
 		}
 	};
 
-	template<class ...Cs>
-	struct metaset_builder
+	template<class ...Ms>
+	struct metaset
 	{
-		constval size = sizeof...(Cs);
+		constval size = sizeof...(Ms);
+		uint16_t arr[size];
 		uint16_t metaarr[size];
-		metaset_builder(Cs&& ...ms) : metaarr{ meta::find(ms)... }
+
+		memory_model::metaset to_raw()
 		{
-			uint16_t arr[] = { typeof<Cs>... };
+			return { arr, metaarr, size };
+		}
+
+		metaset(Ms&& ...ms) : arr{ typeof<Ms>... }, metaarr { meta::find(ms)... }
+		{
 			forloop(i, 0, size)
 			{
 				uint16_t* min = std::min_element(arr + i, arr + size);
@@ -204,6 +252,11 @@ namespace ecs
 			}
 		}
 	};
+	template<class ...Ms>
+	metaset(Ms&& ...ms)->metaset<Ms...>;
+
+	template<class ...Cs>
+	inline static typeset<Cs...> typeset_v;
 
 	template<class T>
 	class buffer_array
@@ -214,101 +267,8 @@ namespace ecs
 		buffer<T> operator[](size_t i) { return { (memory_model::buffer*)(data + i * stride) }; }
 	};
 
-	class filter
-	{
-		struct type
-		{
-			uint16_t* c;
-			std::unique_ptr<uint16_t> mc;
-			uint16_t nc, nmc;
-		};
-		type all;
-		type any;
-		type none;
-
-		uint16_t* changed;
-		uint16_t nchanged;
-		bool includeDisabled;
-		size_t prevVersion;
-
-		template<class ...Cs, class... MCs>
-		void match_(type& t, MCs&& ... mcs)
-		{
-			static typeset_builder<Cs..., MCs...> ts;
-			t.c = ts.arr;
-			if constexpr (sizeof...(MCs) > 0)
-				t.mc = new metaset_builder<MCs...>{ std::forward<MCs>(mcs)... }->metaarr;
-			else
-				t.mc = nullptr;
-			t.nc = sizeof...(Cs);
-			t.nmc = sizeof...(MCs);
-		}
-
-		bool find_disabled(const type& t) const
-		{
-			forloop(i, 0, t.nc)
-				if (t.c[i] == memory_model::disable_id)
-					return true;
-		}
-
-		void update_disabled()
-		{
-			includeDisabled = find_disabled(all) || find_disabled(any);
-		}
-	public:
-		template<class ...Cs, class... MCs>
-		void match_all(MCs&& ... mcs)
-		{
-			match_<Cs...>(all, std::forward<MCs>(mcs)...);
-			update_disabled();
-		}
-
-		template<class ...Cs, class... MCs>
-		void match_any(MCs&& ... mcs)
-		{
-			match_<Cs...>(any, std::forward<MCs>(mcs)...);
-			update_disabled();
-		}
-
-		template<class ...Cs, class... MCs>
-		void match_none(MCs&& ... mcs)
-		{
-			match_<Cs...>(none, std::forward<MCs>(mcs)...);
-		}
-
-		template<class ...Cs>
-		void match_changed(size_t version)
-		{
-			static typeset_builder<Cs...> ts;
-			changed = ts.arr;
-			nchanged = sizeof...(Cs);
-			prevVersion = version;
-		}
-
-		const memory_model::entity_filter to_raw() const
-		{
-			using namespace memory_model;
-			typeset allt{ all.c,all.nc };
-			typeset anyt{ any.c,any.nc };
-			typeset nonet{ none.c,none.nc };
-			metaset allMetat{ all.mc.get() ,all.nmc, all.c + all.nc };
-			metaset anyMetat{ any.mc.get(), any.nmc, any.c + any.nc };
-			metaset noneMetat{ none.mc.get(), none.nmc, none.c + none.nc };
-			typeset changedt{ changed,nchanged };
-			return
-			{
-				allt,
-				anyt,
-				nonet,
-				allMetat,
-				anyMetat,
-				noneMetat,
-				changedt,
-				prevVersion,
-				includeDisabled
-			};
-		}
-	};
+	using entity_type = memory_model::entity_type;
+	using entity_filter = memory_model::entity_filter;
 
 	class context
 	{
@@ -318,8 +278,8 @@ namespace ecs
 		void create(gsl::span<entity> es, MCs&& ... mcs)
 		{
 #define deftype \
-			static typeset_builder<Cs..., MCs...> ts; \
-			metaset_builder<MCs...> ms{ std::forward<MCs>(mcs)... }; \
+			static typeset<Cs..., MCs...> ts; \
+			metaset<MCs...> ms{ std::forward<MCs>(mcs)... }; \
 			memory_model::entity_type type{ {ts.arr, sizeof...(Cs)}, {ms.metaarr, sizeof...(MCs), ts.arr + sizeof...(Cs)} }
 
 #define parm_slice(es) es.data(), (uint32_t)es.size()
@@ -353,33 +313,33 @@ namespace ecs
 		template<class ...Cs>
 		void shrink(gsl::span<entity> es)
 		{
-			static typeset_builder<Cs...> ts;
+			static typeset<Cs...> ts;
 			auto iter = cont.batch(parm_slice(es));
 			foriter(s, iter)
 				cont.shrink(*s, ts);
 		}
 
-		void destroy(const filter& g)
+		void destroy(const entity_filter& g)
 		{
-			auto iter = cont.query(g.to_raw());
+			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.destroy(*s);
 		}
 
 		template<class ...Cs, class... MCs>
-		void extend(const filter& g, MCs&& ... mcs)
+		void extend(const entity_filter& g, MCs&& ... mcs)
 		{
 			deftype;
-			auto iter = cont.query(g.to_raw());
+			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.extend(*s, type);
 		}
 
 		template<class ...Cs>
-		void shrink(const filter& g)
+		void shrink(const entity_filter& g)
 		{
-			static typeset_builder<Cs...> ts;
-			auto iter = cont.query(g.to_raw());
+			static typeset<Cs...> ts;
+			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.shrink(*s, ts);
 		}
@@ -431,6 +391,12 @@ namespace ecs
 		const T& get_array_param(memory_model::chunk* c, tid<const T&>)
 		{
 			return meta::get<T>(cont.get_metatype(c, typeof<T>));
+		}
+
+		template<class T>
+		int get_array_param(memory_model::chunk* c, tid<int>)
+		{
+			return c->get_count();
 		}
 
 		template<class T>
@@ -490,20 +456,87 @@ namespace ecs
 		const T get_param_type(tid<accessor<const T>>);
 
 		template<class F, class ...Ts>
-		void for_filter(filter& f, F&& action, Ts&... args)
+		void for_filter(entity_filter& f, F&& action)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
-			auto iter = cont.query(f.to_raw());
+			bool valid = true;
+			auto check_parameter = [&](auto arg)
+			{
+				using raw_parameter = typename decltype(arg)::type;
+				using raw_type = std::decay_t<raw_parameter>;
+				using tagged_index = memory_model::tagged_index;
+				if constexpr (is_buffer_v<raw_parameter>)
+				{
+					using element = std::decay_t<element_type_t<raw_parameter>>;
+					auto type = (tagged_index)typeof<element>;
+					if (!type.is_buffer())
+						valid = false;
+				}
+				else if constexpr (is_accessor_v<raw_parameter>)
+				{
+					using element = std::decay_t<element_type_t<raw_parameter>>;
+					auto type = (tagged_index)typeof<element>;
+					if (type.is_meta())
+						valid = false;
+				}
+				else if constexpr (is_buffer_accessor_v<raw_parameter>)
+				{
+					using element = std::decay_t<element_type_t<raw_parameter>>;
+					auto type = (tagged_index)typeof<element>;
+					if (!type.is_buffer())
+						valid = false;
+				}
+				else if constexpr (std::is_same<raw_parameter, int>)
+				{
+				}
+				else if constexpr (std::is_pointer_v<raw_parameter>)
+				{
+					auto type = (tagged_index)typeof<raw_type>;
+					if (type == 0)
+						valid = false;
+				}
+				else
+				{
+					auto type = (tagged_index)typeof<raw_type>;
+					if (type == 0)
+						valid = false;
+					if (!type.is_meta())
+						valid = false;
+				}
+			};
+			auto get_array = [&](auto arg)
+			{
+				using raw_parameter = typename decltype(arg)::type;
+				return get_array_param(c, tid<raw_parameter>{});
+			};
+			hana::for_each(parameter_list, check_parameter);
+			if (!valid)
+				return;
+			auto iter = cont.query(f);
 			foriter(s, iter)
 			{
 				memory_model::chunk* c = *s;
-				auto arrays = hana::transform(parameter_list, [&](auto arg)
-					{
-						using raw_parameter = typename decltype(arg)::type;
-						return get_array_param(c, tid<raw_parameter>{});
-					});
-				hana::unpack(hana::make_tuple(args...) | std::move(arrays), std::forward<F>(action));
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(action))
 			}
 		}
 	};
+
+	template<class T>
+	T& accessor<T>::operator[](entity e)
+	{
+		if constexpr (std::is_const_v<T>)
+			return cont->read_component<T>(e);
+		else
+			return cont->write_component<T>(e);
+	}
+
+	template<class T>
+	buffer<T> buffer_accessor<T>::operator[](entity e)
+	{
+		if constexpr (std::is_const_v<T>)
+			return cont->read_buffer<T>(e);
+		else
+			return cont->write_buffer<T>(e);
+	}
 }
