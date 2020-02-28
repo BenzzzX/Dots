@@ -207,11 +207,25 @@ namespace ecs
 	constexpr bool is_template_instance_v = is_template_instance<Tmp, T>::value;
 
 	template<class T>
-	struct first_param;
-	template<template<class...> class Tmp, class T, class... Ts>
-	struct first_param<Tmp<T, Ts...>> { using type = T; };
+	struct is_empty_instance : std::false_type {};
+	template<template<class...> class Tmp>
+	struct is_empty_instance<Tmp<>> : std::true_type {};
 	template<class T>
-	using first_param_t = typename first_param<T>::type;
+	constexpr bool is_empty_instance_v = is_empty_instance<T>::value;
+
+	template<class T>
+	struct car;
+	template<template<class...> class Tmp, class T, class... Ts>
+	struct car<Tmp<T, Ts...>> { using type = T; };
+	template<class T>
+	using car_t = typename car<T>::type;
+
+	template<class T>
+	struct cdr;
+	template<template<class...> class Tmp, class T, class... Ts>
+	struct cdr<Tmp<T, Ts...>> { using type = Tmp<Ts...>; };
+	template<class T>
+	using cdr_t = typename cdr<T>::type;
 
 	template<class T>
 	concept Component = requires
@@ -228,10 +242,31 @@ namespace ecs
 	namespace KernelConcepts
 	{
 		template<class T>
-		concept BufferParameter = is_template_instance_v<buffer, T> && BufferComponent<first_param_t<T>>;
+		using remove_pc = std::remove_const_t<std::remove_pointer_t<T>>;
 
 		template<class T>
-		concept AccessorParameter = is_template_instance_v<accessor, T> && Component<T> && !component<T>::is_meta;
+		using remove_rc = std::remove_const_t<std::remove_reference_t<T>>;
+
+		template<class T>
+		using rcc = std::remove_const_t<car_t<T>>;
+
+		template<class T>
+		concept ComponentParameter = std::is_pointer_v<T> && Component<remove_pc<T>> && !component<remove_pc<T>>::is_meta;
+
+		template<class T>
+		concept MetaParameter = std::is_const_v<T> && std::is_reference_v<T> && MetaComponent<remove_rc<T>>;
+
+		template<class T>
+		concept BufferParameter = is_template_instance_v<buffer, T> && BufferComponent<rcc<T>>;
+
+		template<class T>
+		concept AccessorParameter = is_template_instance_v<accessor, T> && Component<rcc<T>> && !component<rcc<T>>::is_meta;
+
+		template<class T>
+		concept Parameter = ComponentParameter<T> || MetaParameter<T> || BufferParameter<T> || AccessorParameter<T> || std::same_as<int, T>;
+
+		template<class T>
+		concept ParameterList = is_empty_instance_v<T> || (Parameter<car_t<T>> && ParameterList<cdr_t<T>>)
 	}
 
 
