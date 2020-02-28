@@ -39,8 +39,8 @@ namespace ecs
 
 		struct typeset
 		{
-			const index_t* data;
-			uint16_t length;
+			const index_t* data = nullptr;
+			uint16_t length = 0;
 
 			const index_t& operator[](uint32_t i) const noexcept { return data[i]; }
 
@@ -127,7 +127,7 @@ namespace ecs
 
 		struct metaset : typeset
 		{
-			const index_t* metaData;
+			const index_t* metaData = nullptr;
 
 			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
 

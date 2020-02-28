@@ -43,6 +43,7 @@ namespace ecs
 				uint16_t componentCount;
 				uint16_t firstTag;
 				uint16_t firstMeta;
+				uint16_t firstManaged;
 				uint16_t firstBuffer;
 				uint16_t chunkCapacity;
 				bool disabled;

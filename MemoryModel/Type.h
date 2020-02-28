@@ -83,10 +83,10 @@ namespace ecs
 
 		struct managed_rtti
 		{
-			void(*copy_constructor)(char*) = nullptr;
-			void(*destructor)(char*) = nullptr;
-			void(*serialize)(serializer_i* stream) = nullptr;
-			void(*deserialize)(deserializer_i* stream) = nullptr;
+			void(*copy)(char* dst, const char* src) = nullptr;
+			void(*destructor)(char* data) = nullptr;
+			void(*serialize)(char* data, serializer_i* stream) = nullptr;
+			void(*deserialize)(char* data, deserializer_i* stream) = nullptr;
 		};
 
 		struct component_desc

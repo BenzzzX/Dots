@@ -25,14 +25,14 @@ guard(F&&)->guard<std::remove_reference_t<F>>;
 using namespace ecs;
 using namespace memory_model;
 
-struct info
+struct type_data
 {
 	size_t hash;
 	uint16_t size;
 	uint16_t elementSize;
 	uint32_t entityRefs;
 	uint16_t entityRefCount;
-
+	managed_rtti rtti;
 };
 
 index_t ecs::memory_model::disable_id = 0;
@@ -41,7 +41,7 @@ index_t ecs::memory_model::cleanup_id = 1;
 struct global_data
 {
 	metatype_release_callback_t release_metatype = nullptr;
-	std::vector<info> infos;
+	std::vector<type_data> infos;
 	std::vector<intptr_t> entityRefs;
 	std::unordered_map<size_t, uint16_t> hash2type;
 	std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
@@ -71,7 +71,7 @@ index_t ecs::memory_model::register_type(component_desc desc)
 	}
 	
 	uint16_t id = (uint16_t)gd.infos.size();
-	info i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount};
+	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.rtti };
 	gd.infos.push_back(i);
 	id = tagged_index{ id, desc.isInsternal, desc.isManaged, desc.isElement, i.size == 0, desc.isMeta };
 	gd.hash2type.insert({ desc.hash, id });
@@ -151,11 +151,22 @@ void chunk::destruct(chunk_slice s) noexcept
 	context::group* type = s.c->type;
 	uint16_t* offsets = type->offsets();
 	uint16_t* sizes = type->sizes();
+	index_t* types = type->types();
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
 			((buffer*)(j * sizes[i] + src))->~buffer();
+	}
+	forloop(i, type->firstManaged, type->firstBuffer)
+	{
+		char* src = srcData;
+		tagged_index type = types[i];
+		const auto& info = gd.infos[type.index()];
+		auto f = info.rtti.destructor;
+		if (f == nullptr) continue;
+		forloop(j, 0, s.count)
+			f(j * sizes[i] + src);
 	}
 }
 
@@ -182,7 +193,8 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noex
 	uint16_t* offsets = type->offsets();
 	uint16_t* dstOffsets = dstType->offsets();
 	uint16_t* sizes = type->sizes();
-	forloop(i, 0, type->firstBuffer)
+	index_t* types = type->types();
+	forloop(i, 0, type->firstManaged)
 	{
 		if (type->types()[i] != dstType->types()[dstI])
 			continue;
@@ -196,6 +208,23 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noex
 		char* d = dstData;
 		forloop(j, 0, dst.count)
 			new(d + sizes[i]*j) buffer{ *(buffer*)s };
+	}
+	forloop(i, type->firstManaged, type->firstBuffer)
+	{
+		const char* s = srcData;
+		char* d = dstData;
+		tagged_index type = types[i];
+		const auto& info = gd.infos[type.index()];
+		auto f = info.rtti.copy;
+		if (f == nullptr)
+		{
+			memdup(dstData, srcData, sizes[i], dst.count);
+		}
+		else
+		{
+			forloop(j, 0, dst.count)
+				f(j * sizes[i] + d, s);
+		}
 	}
 }
 
@@ -321,16 +350,26 @@ void chunk::serialize(chunk_slice s, serializer_i *stream)
 
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
-			uint16_t offset = offsets[i] + sizes[i] * s.start + j * sizes[i];
-			stream->write(&offset, sizeof(uint16_t));
-			buffer* b = (buffer*)(s.c->data() + offset);
+			buffer* b = (buffer*)(arr + j * sizes[i]);
 			stream->write(b->data(), b->size);
 		}
 	}
-	stream->write(0, sizeof(uint16_t));
-	
+
+	forloop(i, type->firstManaged, type->firstBuffer)
+	{
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		tagged_index type = types[i];
+		const auto& info = gd.infos[type.index()];
+		auto f = info.rtti.serialize; 
+		if (f == nullptr)
+			continue;
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		forloop(j, 0, s.count)
+			f(arr + j * sizes[i], stream);
+	}
 }
 
 void chunk::deserialize(chunk_slice s, deserializer_i* stream)
@@ -346,16 +385,27 @@ void chunk::deserialize(chunk_slice s, deserializer_i* stream)
 		stream->read(arr, sizes[i] * s.count);
 	}
 
-	uint16_t offset;
-	stream->read(&offset, sizeof(uint16_t));
-	while (offset != 0)
+	forloop(i, type->firstBuffer, type->firstTag)
 	{
-		buffer* b = (buffer*)(s.c->data() + offset);
-		//b->d = (char*)malloc(b->size);
-		//b->capacity = b->size;
-		b->d = (char*)malloc(b->capacity);
-		stream->read(b->d, b->size);
-		stream->read(&offset, sizeof(uint16_t));
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		forloop(j, 0, s.count)
+		{
+			buffer* b = (buffer*)(arr + j * sizes[i]);
+			stream->read(b->data(), b->size);
+		}
+	}
+
+	forloop(i, type->firstManaged, type->firstBuffer)
+	{
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		tagged_index type = types[i];
+		const auto& info = gd.infos[type.index()];
+		auto f = info.rtti.deserialize;
+		if (f == nullptr)
+			continue;
+		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		forloop(j, 0, s.count)
+			f(arr + j * sizes[i], stream);
 	}
 }
 
@@ -377,7 +427,22 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		auto dt = dstTypes[dstI];
 		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
 		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
-		if (st < dt) srcI++; //destruct 
+		if (st < dt)
+		{
+			if (st > srcType->firstManaged)
+			{
+				char* s = src->data() + srcOffsets[srcI];
+				tagged_index type = st;
+				const auto& info = gd.infos[type.index()];
+				auto f = info.rtti.destructor;
+				if (f != nullptr)
+				{
+					forloop(j, 0, src->count)
+						f(j * srcSizes[srcI] + s);
+				}
+			}
+			srcI++; //destruct 
+		}
 		else if (st > dt) //construct
 #ifndef NOINITIALIZE
 			memset(d, 0, dstSizes[dstI++] * count);
@@ -489,31 +554,37 @@ context::group* context::get_group(const entity_type& key)
 	auto iter = groups.find(key);
 	if (iter != groups.end())
 		return iter->second;
-	
+
+	const uint16_t count = key.types.length;
 	uint16_t firstTag = 0;
 	uint16_t firstBuffer = 0;
+	uint16_t firstManaged = 0;
+	uint16_t firstMeta = count - key.metatypes.length;
 	uint16_t c = 0;
-	const uint16_t count = key.types.length;
-	for (; c < count; c++)
-	{
-		auto type = (tagged_index)key.types[c];
-		if (type.is_buffer()) break;
-	}
-	firstBuffer = c;
-	for (c = 0; c < count; c++)
+	for (c = 0; c < firstMeta; c++)
 	{
 		auto type = (tagged_index)key.types[c];
 		if (type.is_tag()) break;
 	}
 	firstTag = c;
-	if(firstBuffer == count)
-		firstBuffer = firstTag;
-	uint16_t firstMeta = count - key.metatypes.length;
+	for (c = 0; c < firstTag; c++)
+	{
+		auto type = (tagged_index)key.types[c];
+		if (type.is_buffer()) break;
+	}
+	firstBuffer = c;
+	for (c = 0; c < firstBuffer; c++)
+	{
+		auto type = (tagged_index)key.types[c];
+		if (type.is_managed()) break;
+	}
+	firstManaged = c;
 	void* data = malloc(group::calculate_size(count, firstTag, firstMeta));
 	group* g = (group*)data;
 	g->componentCount = count;
 	g->firstMeta = firstMeta;
 	g->firstBuffer = firstBuffer;
+	g->firstManaged = firstManaged;
 	g->firstTag = firstTag;
 	g->cleaning = false;
 	g->disabled = false;
@@ -1272,7 +1343,10 @@ index_t context::get_metatype(entity e, index_t t)
 {
 	const auto& data = ents.datas[e.id];
 	group* type = data.c->type;
-	return type->metatypes()[type->index(t) - type->firstMeta];
+	uint16_t id = type->index(t);
+	if (id == -1) 
+		return -1;
+	return type->metatypes()[id - type->firstMeta];
 }
 
 bool context::has_component(entity e, index_t t) const
@@ -1289,7 +1363,10 @@ bool context::exist(entity e) const
 index_t ecs::memory_model::context::get_metatype(chunk* c, index_t t)
 {;
 	group* type = c->type;
-	return type->metatypes()[type->index(t) - type->firstMeta];
+	uint16_t id = type->index(t);
+	if (id == -1)
+		return -1;
+	return type->metatypes()[id - type->firstMeta];
 }
 
 std::optional<chunk_slice> context::batch_iterator::next()

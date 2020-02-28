@@ -4,6 +4,7 @@
 #include <boost/hana.hpp>
 #include <map>
 #include <concepts>
+#include <assert.h>
 
 #define constval static constexpr auto
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
@@ -27,7 +28,7 @@ namespace ecs
 	//};
 
 	template<class T>
-	inline uint16_t typeof = 0;
+	inline memory_model::index_t typeof = 0;
 
 	template<class T>
 	struct tid {};
@@ -40,48 +41,155 @@ namespace ecs
 		using impl = lambda_trait<decltype(&F::operator())>;
 		constval return_type = impl::return_type;
 		constval parameter_list = impl::parameter_list;
+		using parameter_list_t = typename impl::parameter_list_t;
 	};
 
-	template <class F, class Ret, class... Args>
-	struct lambda_trait<Ret(F::*)(Args...)>
-	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
-	};
+#define lambda_trait_body \
+	{ \
+		constval return_type = hana::type_c<Ret>; \
+		constval parameter_list = hana::tuple_t<Args...>; \
+		using parameter_list_t = std::tuple<Args...>; \
+	}
 
 	template <class F, class Ret, class... Args>
-	struct lambda_trait<Ret(F::*)(Args...) const>
-	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
-	};
+	struct lambda_trait<Ret(F::*)(Args...)> lambda_trait_body;
+	
+	template <class F, class Ret, class... Args>
+	struct lambda_trait<Ret(F::*)(Args...) const> lambda_trait_body;
 
 	template <class F, class Ret, class... Args>
-	struct lambda_trait<Ret(F::*)(Args...) noexcept>
-	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
-	};
+	struct lambda_trait<Ret(F::*)(Args...) noexcept> lambda_trait_body;
 
 	template <class F, class Ret, class... Args>
-	struct lambda_trait<Ret(F::*)(Args...) const noexcept>
-	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
-	};
+	struct lambda_trait<Ret(F::*)(Args...) const noexcept> lambda_trait_body;
 
 	template <class Ret, class... Args>
-	struct lambda_trait<Ret(*)(Args...)>
-	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
-	};
+	struct lambda_trait<Ret(*)(Args...)> lambda_trait_body;
 
 	template <class Ret, class... Args>
-	struct lambda_trait<Ret(Args...)>
+	struct lambda_trait<Ret(Args...)> lambda_trait_body;
+
+	template<class F>
+	using parameter_list_t = typename lambda_trait<F>::parameter_list_t;
+
+
+
+
+	template<template<class...> class Tmp, class T>
+	struct is_template_instance : std::false_type {};
+	template<template<class...> class Tmp, class... Ts>
+	struct is_template_instance<Tmp, Tmp<Ts...>> : std::true_type {};
+	template<template<class...> class Tmp, class T>
+	constexpr bool is_template_instance_v = is_template_instance<Tmp, T>::value;
+
+	template<template<class...> class Tmp, class T>
+	struct instantiate;
+	template<template<class...> class Tmp, template<class...> class Tmp2, class... Ts>
+	struct instantiate<Tmp, Tmp2<Ts...>> { using type = Tmp<Ts...>; };
+	template<template<class...> class Tmp, class T>
+	using instantiate_t = typename instantiate<Tmp, T>::type;
+
+	template<class T>
+	struct is_empty_instance : std::false_type {};
+	template<template<class...> class Tmp>
+	struct is_empty_instance<Tmp<>> : std::true_type {};
+	template<class T>
+	constexpr bool is_empty_instance_v = is_empty_instance<T>::value;
+
+	template<class T>
+	struct car;
+	template<template<class...> class Tmp, class T, class... Ts>
+	struct car<Tmp<T, Ts...>> { using type = T; };
+	template<class T>
+	using car_t = typename car<T>::type;
+
+	template<class T>
+	struct cdr;
+	template<template<class...> class Tmp, class T, class... Ts>
+	struct cdr<Tmp<T, Ts...>> { using type = Tmp<Ts...>; };
+	template<class T>
+	using cdr_t = typename cdr<T>::type;
+
+#ifdef Cpp20
+	template<class T>
+	concept Component = requires
 	{
-		constval return_type = hana::type_c<Ret>;
-		constval parameter_list = hana::tuple_t<Args...>;
+		typename component<T>;
+	};
+
+	template<class T>
+	concept AccessableComponent = Component<T> && !component<T>::is_buffer && !component<T>::is_meta;
+
+	template<class T>
+	concept DataComponent = Component<T> && !component<T>::is_meta;
+
+	template<class T>
+	concept BufferComponent = Component<T> && component<T>::is_buffer;
+
+	template<class T>
+	concept MetaComponent = Component<T> && component<T>::is_meta;
+
+	namespace KernelConcepts
+	{
+		template<class T>
+		using remove_pc = std::remove_const_t<std::remove_pointer_t<T>>;
+
+		template<class T>
+		using rcc = std::remove_const_t<car_t<T>>;
+
+		template<class T>
+		concept ComponentParameter = std::is_pointer_v<T> && AccessableComponent<remove_pc<T>>;
+
+		template<class T>
+		concept MetaParameter = std::is_const_v<T> && std::is_pointer_v<T> && MetaComponent<remove_pc<T>>;
+
+		template<class T>
+		concept BufferParameter = is_template_instance_v<buffer, T> && BufferComponent<rcc<T>>;
+
+		template<class T>
+		concept AccessorParameter = is_template_instance_v<accessor, T> && Component<rcc<T>> && !component<rcc<T>>::is_meta;
+
+		template<class T>
+		concept Parameter = ComponentParameter<T> || MetaParameter<T> || BufferParameter<T> || AccessorParameter<T> || std::same_as<int, T> || std::same_as<const entity*>;
+
+		template<class T>
+		struct is_parameter_list : std::false_type {};
+		template<template<class...> class Tmp, class... Ts>
+		struct is_parameter_list<Tmp<Ts...>>
+		{
+			static constexpr bool value = Parameter<Ts> &&...;
+		};
+
+		template<class T>
+		concept ParameterList = is_parameter_list<T>::value;
+	}
+
+	template<class F>
+	concept KernelFunction = KernelConcepts::ParameterList<paramter_list_t<F>>;
+#define Require(expr) requires expr
+#endif
+#define Requires(expr)
+
+	template<class T> Requires(MetaComponent<T>)
+	class meta_handle
+	{
+		uint16_t id;
+		bool is_valid()
+		{
+			return id != -1;
+		}
+		operator bool()
+		{
+			return is_valid();
+		}
+		const T& operator*()
+		{
+			return meta::get<T>(id);
+		}
+		const T* operator->()
+		{
+			return &meta::get<T>(id);
+		}
 	};
 
 	namespace meta
@@ -166,7 +274,16 @@ namespace ecs
 		}
 	};
 
-	template<class T>
+	template<class T> Requires(BufferComponent<T>)
+	class buffer_array
+	{
+		char* data;
+		uint16_t stride;
+	public:
+		buffer<T> operator[](size_t i) { return { (memory_model::buffer*)(data + i * stride) }; }
+	};
+
+	template<class T> Requires(BufferComponent<T>)
 	class buffer
 	{
 		memory_model::buffer* header;
@@ -181,7 +298,7 @@ namespace ecs
 		T& operator[](uint16_t i) { return data()[i]; }
 	};
 
-	template<class T>
+	template<class T> Requires(AccessableComponent<T>)
 	class accessor
 	{
 		class context* cont;
@@ -190,138 +307,13 @@ namespace ecs
 		T& operator[](entity);
 	};
 
-	template<class T>
+	template<class T> Requires(BufferComponent<T>)
 	class buffer_accessor
 	{
 		class context* cont;
 	public:
 		buffer_accessor(context* c) :cont(c) {}
 		buffer<T> operator[](entity);
-	};
-
-	template<template<class...> class Tmp, class T>
-	struct is_template_instance : std::false_type {};
-	template<template<class...> class Tmp, class... Ts>
-	struct is_template_instance<Tmp, Tmp<Ts...>> : std::true_type {};
-	template<template<class...> class Tmp, class T>
-	constexpr bool is_template_instance_v = is_template_instance<Tmp, T>::value;
-
-	template<class T>
-	struct is_empty_instance : std::false_type {};
-	template<template<class...> class Tmp>
-	struct is_empty_instance<Tmp<>> : std::true_type {};
-	template<class T>
-	constexpr bool is_empty_instance_v = is_empty_instance<T>::value;
-
-	template<class T>
-	struct car;
-	template<template<class...> class Tmp, class T, class... Ts>
-	struct car<Tmp<T, Ts...>> { using type = T; };
-	template<class T>
-	using car_t = typename car<T>::type;
-
-	template<class T>
-	struct cdr;
-	template<template<class...> class Tmp, class T, class... Ts>
-	struct cdr<Tmp<T, Ts...>> { using type = Tmp<Ts...>; };
-	template<class T>
-	using cdr_t = typename cdr<T>::type;
-
-	template<class T>
-	concept Component = requires
-	{
-		typename component<T>;
-	};
-
-	template<class T>
-	concept BufferComponent = Component<T> && component<T>::is_buffer;
-
-	template<class T>
-	concept MetaComponent = Component<T> && component<T>::is_meta;
-
-	namespace KernelConcepts
-	{
-		template<class T>
-		using remove_pc = std::remove_const_t<std::remove_pointer_t<T>>;
-
-		template<class T>
-		using remove_rc = std::remove_const_t<std::remove_reference_t<T>>;
-
-		template<class T>
-		using rcc = std::remove_const_t<car_t<T>>;
-
-		template<class T>
-		concept ComponentParameter = std::is_pointer_v<T> && Component<remove_pc<T>> && !component<remove_pc<T>>::is_meta;
-
-		template<class T>
-		concept MetaParameter = std::is_const_v<T> && std::is_reference_v<T> && MetaComponent<remove_rc<T>>;
-
-		template<class T>
-		concept BufferParameter = is_template_instance_v<buffer, T> && BufferComponent<rcc<T>>;
-
-		template<class T>
-		concept AccessorParameter = is_template_instance_v<accessor, T> && Component<rcc<T>> && !component<rcc<T>>::is_meta;
-
-		template<class T>
-		concept Parameter = ComponentParameter<T> || MetaParameter<T> || BufferParameter<T> || AccessorParameter<T> || std::same_as<int, T>;
-
-		template<class T>
-		concept ParameterList = is_empty_instance_v<T> || (Parameter<car_t<T>> && ParameterList<cdr_t<T>>)
-	}
-
-
-	x_t(element_type);
-
-	template<class ...Cs>
-	struct typeset
-	{
-		constval size = sizeof...(Cs);
-		uint16_t arr[size];
-		memory_model::typeset to_raw()
-		{
-			return { arr, size };
-		}
-		typeset() : arr{ typeof<Cs>... }
-		{
-			std::sort(arr, arr + sizeof...(Cs));
-		}
-	};
-
-	template<class ...Ms>
-	struct metaset
-	{
-		constval size = sizeof...(Ms);
-		uint16_t arr[size];
-		uint16_t metaarr[size];
-
-		memory_model::metaset to_raw()
-		{
-			return { arr, metaarr, size };
-		}
-
-		metaset(Ms&& ...ms) : arr{ typeof<Ms>... }, metaarr { meta::find(ms)... }
-		{
-			forloop(i, 0, size)
-			{
-				uint16_t* min = std::min_element(arr + i, arr + size);
-				std::swap(arr[i], *min);
-				std::swap(metaarr[i], metaarr[min - arr]);
-			}
-		}
-	};
-	template<class ...Ms>
-	metaset(Ms&& ...ms)->metaset<Ms...>;
-
-	template<class ...Cs>
-	inline static typeset<Cs...> typeset_v;
-
-	template<class T>
-	class buffer_array
-	{
-		char* data;
-		uint16_t stride;
-	public:
-		buffer<T> operator[](size_t i) { return { (memory_model::buffer*)(data + i * stride) }; }
 	};
 
 	using entity_type = memory_model::entity_type;
@@ -331,18 +323,10 @@ namespace ecs
 	{
 		memory_model::context cont;
 
-		template<class ...Cs, class... MCs>
-		void create(gsl::span<entity> es, MCs&& ... mcs)
+	public:
+		void create(gsl::span<entity> es, entity_type type)
 		{
-#define deftype \
-			static typeset<Cs..., MCs...> ts; \
-			metaset<MCs...> ms{ std::forward<MCs>(mcs)... }; \
-			memory_model::entity_type type{ {ts.arr, sizeof...(Cs)}, {ms.metaarr, sizeof...(MCs), ts.arr + sizeof...(Cs)} }
-
 #define parm_slice(es) es.data(), (uint32_t)es.size()
-
-
-			deftype;
 			cont.allocate(type, parm_slice(es));
 		}
 
@@ -383,51 +367,45 @@ namespace ecs
 				cont.destroy(*s);
 		}
 
-		template<class ...Cs, class... MCs>
-		void extend(const entity_filter& g, MCs&& ... mcs)
+		void extend(const entity_filter& g, entity_type type)
 		{
-			deftype;
 			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.extend(*s, type);
 		}
 
-		template<class ...Cs>
-		void shrink(const entity_filter& g)
+		void shrink(const entity_filter& g, memory_model::typeset ts)
 		{
-			static typeset<Cs...> ts;
 			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.shrink(*s, ts);
 		}
 
-#undef deftype
-
-		template<class T>
-		buffer<const T> read_buffer(entity e)
-		{
-			return { (memory_model::buffer*)cont.get_component_ro(entity, typeof<T>) };
-		}
-
-		template<class T>
+		template<class T> Requires(AccessableComponent<T>)
 		const T& read_component(entity e)
 		{
 			return *(const T*)cont.get_component_ro(entity, typeof<T>);
 		}
 
-		template<class T>
+		template<class T> Requires(BufferComponent<T>)
+		buffer<const T> read_buffer(entity e)
+		{
+			return { (memory_model::buffer*)cont.get_component_ro(entity, typeof<T>) };
+		}
+
+		template<class T> Requires(MetaComponent<T>)
 		const T& read_meta(entity e)
 		{
 			return meta::get<T>(cont.get_metatype(e, typeof<T>));
 		}
 
-		template<class T>
+		template<class T> Requires(AccessableComponent<T>)
 		T& write_component(entity e)
 		{
 			return *(T*)cont.get_component_rw(entity, typeof<T>);
 		}
 
-		template<class T>
+		template<class T> Requires(BufferComponent<T>)
 		buffer<T> write_buffer(entity e)
 		{
 			return { (memory_model::buffer*)cont.get_component_rw(entity, typeof<T>) };
@@ -438,37 +416,39 @@ namespace ecs
 			return cont.exist(e);
 		}
 
-		template<class T>
-		bool has(entity e)
+		template<class T> Requires(Component<T>)
+		bool has(entity e) 
 		{
 			return cont.has_component(e, typeof<T>);
 		}
 
-		template<class T>
-		const T& get_array_param(memory_model::chunk* c, tid<const T&>)
-		{
-			return meta::get<T>(cont.get_metatype(c, typeof<T>));
-		}
-
-		template<class T>
+	private:
 		int get_array_param(memory_model::chunk* c, tid<int>)
 		{
 			return c->get_count();
 		}
 
-		template<class T>
+		template<class T> 
 		const T* get_array_param(memory_model::chunk* c, tid<const T*>)
 		{
-			return (const T*)cont.get_array_ro(c, typeof<T>);
+			if constexpr (component<T>::is_meta)
+			{
+				uint16_t id = cont.get_metatype(c, typeof<T>);
+				if (id == -1)
+					return  nullptr;
+				return meta::get<T>(id);
+			}
+			else
+				return (const T*)cont.get_array_ro(c, typeof<T>);
 		}
 
-		template<class T>
+		template<class T> 
 		T* get_array_param(memory_model::chunk* c, tid<T*>)
 		{
 			return (T*)cont.get_array_rw(c, typeof<T>);
 		}
 
-		template<class T>
+		template<class T> 
 		buffer_array<T> get_array_param(memory_model::chunk* c, tid<buffer_array<T>>)
 		{
 			return { cont.get_array_rw(c, typeof<T>), cont.get_element_size(c, typeof<T>) };
@@ -512,51 +492,22 @@ namespace ecs
 		template<class T>
 		const T get_param_type(tid<accessor<const T>>);
 
-		template<class F, class ...Ts>
-		void for_filter(entity_filter& f, F&& action)
+		template<class T>
+		T get_param_type(tid<buffer_accessor<T>>);
+
+		template<class T>
+		const T get_param_type(tid<buffer_accessor<const T>>);
+
+	public:
+		template<class F> Requires(KernelFunction<F>)
+		void for_each_chunk(entity_filter& f, F&& action)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
-			bool valid = true;
-			auto check_parameter = [&](auto arg)
-			{
-				using raw_parameter = typename decltype(arg)::type;
-				using raw_type = std::decay_t<raw_parameter>;
-				using tagged_index = memory_model::tagged_index;
-				if constexpr (is_buffer_v<raw_parameter>)
-				{
-					using element = std::decay_t<element_type_t<raw_parameter>>;
-					static_asset(component<element>::is_buffer);
-				}
-				else if constexpr (is_accessor_v<raw_parameter>)
-				{
-					using element = std::decay_t<element_type_t<raw_parameter>>;
-					static_asset(!component<element>::is_meta);
-				}
-				else if constexpr (is_buffer_accessor_v<raw_parameter>)
-				{
-					using element = std::decay_t<element_type_t<raw_parameter>>;
-					static_asset(component<element>::is_buffer);
-				}
-				else if constexpr (std::is_same<raw_parameter, int>)
-				{
-				}
-				else if constexpr (std::is_pointer_v<raw_parameter>)
-				{
-					component<raw_type> test;
-				}
-				else
-				{
-					static_asset(!component<raw_type>::is_meta);
-				}
-			};
 			auto get_array = [&](auto arg)
 			{
 				using raw_parameter = typename decltype(arg)::type;
 				return get_array_param(c, tid<raw_parameter>{});
 			};
-			hana::for_each(parameter_list, check_parameter);
-			if (!valid)
-				return;
 			auto iter = cont.query(f);
 			foriter(s, iter)
 			{
@@ -566,6 +517,86 @@ namespace ecs
 			}
 		}
 	};
+
+	template<class... Cs, class... Ms> Requires((DataComponent<Cs>&&...) && (MetaComponent<Ms>&&...))
+	auto make_entity_type(Ms&&... metas)
+	{
+		struct type_t
+		{
+			memory_model::index_t arr[sizeof...(Cs) + sizeof...(Ms)];
+			memory_model::index_t metaarr[sizeof...(Ms)];
+			entity_type get()
+			{
+				memory_model::typeset ts{ arr, sizeof...(Cs) + sizeof...(Ms) };
+				memory_model::metaset ms{ {metaarr, sizeof...(Ms)}, arr + sizeof(Cs) };
+				return { ts, ms };
+			}
+		};
+		type_t type{ {typeof<Cs>..., typeof<Ms>... },{meta::map(std::forward<Ms>(metas)...} };
+		memory_model::index_t* marr = type.arr + sizeof...(Cs);
+		forloop(i, 0, sizeof...(Ms))
+		{
+			uint16_t* min = std::min_element(marr + i, marr + sizeof...(Ms));
+			std::swap(marr[i], *min);
+			std::swap(type.metaarr[i], type.metaarr[min - marr]);
+		}
+		std::sort(type.arr, type.arr + sizeof...(Cs));
+		memory_model::index_t* dup = std::adjacent_find(type.arr, type.arr + sizeof...(Cs) + sizeof...(Ms));
+		assert(dup == type.arr + sizeof...(Cs) + sizeof...(Ms));
+		return type;
+	}
+
+	template<class... Cs, class... Ms> Requires((Component<Cs>&&...) && (MetaComponent<Ms>&&...))
+	auto make_filter_type(Ms&&... metas)
+	{
+		struct type_t
+		{
+			memory_model::index_t arr[sizeof...(Cs) + sizeof...(Ms)];
+			memory_model::index_t metas[sizeof...(Ms)];
+			memory_model::index_t metaarr[sizeof...(Ms)];
+			entity_type get()
+			{
+				memory_model::typeset ts{ arr, sizeof...(Cs) + sizeof...(Ms) };
+				memory_model::metaset ms{ {metaarr, sizeof...(Ms)}, metas };
+				return { ts, ms };
+			}
+		};
+		type_t type{ {typeof<Cs>..., typeof<Ms>...}, {typeof<Ms>...},{meta::find(std::forward<Ms>(metas)...} };
+		forloop(i, 0, sizeof...(Ms))
+		{
+			uint16_t* min = std::min_element(type.metas + i, type.metas + sizeof...(Ms));
+			std::swap(type.metas[i], *min);
+			std::swap(type.metaarr[i], type.metaarr[min - type.metas]);
+		}
+		std::sort(type.arr, type.arr + sizeof...(Cs) + sizeof...(Ms));
+		memory_model::index_t* dup = std::adjacent_find(type.arr, type.arr + sizeof...(Cs) + sizeof...(Ms));
+		assert(dup == type.arr + sizeof...(Cs) + sizeof...(Ms));
+		return type;
+	}
+
+	struct Kernel
+	{
+		entity_filter filter;
+		virtual void Run(context*) = 0;
+	};
+
+	template<class F>
+	struct KernelImpl : Kernel
+	{
+		F f;
+		template<class T>
+		KernelImpl(T&& t) : f(std::forward<T>(t)) {}
+		void Run(context* cont)
+		{
+			cont->for_each_chunk(filter, f);
+		}
+	};
+
+	template<class F> Requires(KernelFunction<std::decay_t<F>>)
+	Kernel* for_each_chunk(F&& action)
+	{
+		return new KernelImpl<std::decay_t<F>>{std::forward<F>(action)};
+	}
 
 	template<class T>
 	T& accessor<T>::operator[](entity e)
