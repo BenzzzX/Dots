@@ -35,8 +35,8 @@ struct info
 
 };
 
-uint16_t ecs::memory_model::disable_id = 0;
-uint16_t ecs::memory_model::cleanup_id = 1;
+index_t ecs::memory_model::disable_id = 0;
+index_t ecs::memory_model::cleanup_id = 1;
 
 struct global_data
 {
@@ -60,7 +60,7 @@ struct global_data
 
 static global_data gd;
 
-uint16_t ecs::memory_model::register_type(component_desc desc)
+index_t ecs::memory_model::register_type(component_desc desc)
 {
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
@@ -73,7 +73,7 @@ uint16_t ecs::memory_model::register_type(component_desc desc)
 	uint16_t id = (uint16_t)gd.infos.size();
 	info i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount};
 	gd.infos.push_back(i);
-	id = tagged_index{ id, desc.isInsternal, desc.isElement, i.size == 0, desc.isMeta };
+	id = tagged_index{ id, desc.isInsternal, desc.isManaged, desc.isElement, i.size == 0, desc.isMeta };
 	gd.hash2type.insert({ desc.hash, id });
 	return id;
 }
@@ -108,7 +108,7 @@ void chunk::unlink() noexcept
 	prev = next = nullptr;
 }
 
-uint32_t chunk::get_version(uint16_t t) noexcept
+uint32_t chunk::get_version(index_t t) noexcept
 {
 	uint16_t id = type->index(t);
 	if (id == -1) return 0;
@@ -316,7 +316,6 @@ void chunk::serialize(chunk_slice s, serializer_i *stream)
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		const auto& t = gd.infos[types[i].index()];
 		stream->write(arr, sizes[i] * s.count);
 	}
 
@@ -344,7 +343,6 @@ void chunk::deserialize(chunk_slice s, deserializer_i* stream)
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		const auto& t = gd.infos[types[i].index()];
 		stream->read(arr, sizes[i] * s.count);
 	}
 
@@ -372,7 +370,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 	uint16_t* dstOffsets = dstType->offsets();
 	uint16_t* srcSizes = srcType->sizes();
 	uint16_t* dstSizes = dstType->sizes();
-	uint16_t* srcTypes = srcType->types(); uint16_t* dstTypes = dstType->types();
+	index_t* srcTypes = srcType->types(); index_t* dstTypes = dstType->types();
 	while (srcI < srcType->firstBuffer && dstI < dstType->firstBuffer)
 	{
 		auto st = srcTypes[srcI];
@@ -446,10 +444,10 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 
 inline uint32_t* context::group::versions(chunk* c) noexcept { return (uint32_t*)(c->data() + kChunkBufferSize) - firstTag; }
 
-uint16_t context::group::index(uint16_t type) noexcept
+uint16_t context::group::index(index_t type) noexcept
 {
-	uint16_t* ts = types();
-	uint16_t* result = std::lower_bound(ts, ts + componentCount, type);
+	index_t* ts = types();
+	index_t* result = std::lower_bound(ts, ts + componentCount, type);
 	if (result != ts + componentCount && *result == type)
 		return uint16_t(result - ts);
 	else
@@ -458,7 +456,7 @@ uint16_t context::group::index(uint16_t type) noexcept
 
 entity_type context::group::get_type()
 {
-	uint16_t* ts = types();
+	index_t* ts = types();
 	return entity_type
 	{
 		typeset { ts, componentCount },
@@ -469,10 +467,10 @@ entity_type context::group::get_type()
 
 size_t context::group::calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta)
 {
-	return sizeof(uint16_t)* componentCount +
+	return sizeof(index_t)* componentCount +
 		sizeof(uint16_t) * firstTag +
 		sizeof(uint16_t) * firstTag +
-		sizeof(uint16_t) * (componentCount - firstMeta) +
+		sizeof(index_t) * (componentCount - firstMeta) +
 		sizeof(context::group);// +40;
 }
 
@@ -522,10 +520,10 @@ context::group* context::get_group(const entity_type& key)
 	g->needsClean = false;
 	g->zerosize = false;
 	g->lastChunk = g->firstChunk = g->firstFree = nullptr;
-	uint16_t* types = g->types();
-	uint16_t* metatypes = g->metatypes();
-	memcpy(types, key.types.data, count * sizeof(uint16_t));
-	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(uint16_t));
+	index_t* types = g->types();
+	index_t* metatypes = g->metatypes();
+	memcpy(types, key.types.data, count * sizeof(index_t));
+	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(index_t));
 	forloop(i, g->firstMeta, g->componentCount)
 	{
 		auto& info = gd.metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
@@ -583,11 +581,11 @@ context::group* context::get_cleaning(group* g)
 	uint16_t k = 0, count = g->componentCount;
 	uint16_t mk = 0, mcount = count - g->firstMeta;
 	const uint16_t cleanupType = cleanup_id;
-	uint16_t* types = g->types();
-	uint16_t* metatypes = g->metatypes();
+	index_t* types = g->types();
+	index_t* metatypes = g->metatypes();
 
-	stack_array(uint16_t, dstTypes, count + 1);
-	stack_array(uint16_t, dstMetaTypes, mcount);
+	stack_array(index_t, dstTypes, count + 1);
+	stack_array(index_t, dstMetaTypes, mcount);
 	bool cleanAdded = false;
 	forloop(i, 0, count)
 	{
@@ -628,11 +626,11 @@ context::group* context::get_instatiation(group* g)
 
 	uint16_t k = 0, count = g->componentCount;
 	uint16_t mk = 0, mcount = count - g->firstMeta;
-	uint16_t* types = g->types();
-	uint16_t* metatypes = g->metatypes();
+	index_t* types = g->types();
+	index_t* metatypes = g->metatypes();
 
-	stack_array(uint16_t, dstTypes, count + 1);
-	stack_array(uint16_t, dstMetaTypes, mcount);
+	stack_array(index_t, dstTypes, count + 1);
+	stack_array(index_t, dstMetaTypes, mcount);
 	forloop(i, 0, count)
 	{
 		auto type = (tagged_index)types[i];
@@ -727,8 +725,8 @@ void context::unmark_free(group* g, chunk* c)
 
 void context::release_reference(group* g)
 {
-	uint16_t* metatypes = g->metatypes();
-	uint16_t* types = g->types();
+	index_t* metatypes = g->metatypes();
+	index_t* types = g->types();
 	forloop(i, g->firstMeta, g->componentCount)
 	{
 		auto key = metakey{ types[i], metatypes[i - g->firstMeta] };
@@ -755,7 +753,7 @@ void context::serialize_type(group* g, serializer_i* s)
 
 context::group* context::deserialize_group(deserializer_i* s, uint16_t tlength)
 {
-	stack_array(uint16_t, types, tlength);
+	stack_array(index_t, types, tlength);
 	forloop(i, 0, tlength)
 	{
 		size_t hash;
@@ -765,16 +763,16 @@ context::group* context::deserialize_group(deserializer_i* s, uint16_t tlength)
 	}
 	uint16_t mlength;
 	s->read(&mlength, sizeof(uint16_t));
-	stack_array(uint16_t, metatypes, mlength);
+	stack_array(index_t, metatypes, mlength);
 	s->read(metatypes, mlength);
 	forloop(i, 0, mlength)
 		metatypes[i] = s->readmeta({ types[tlength - mlength + i] });
 	std::sort(types, types + tlength - mlength);
 
-	uint16_t* arr = types + tlength - mlength;
+	index_t* arr = types + tlength - mlength;
 	forloop(i, 0, mlength)
 	{
-		uint16_t* min = std::min_element(arr + i, arr + mlength);
+		index_t* min = std::min_element(arr + i, arr + mlength);
 		std::swap(arr[i], *min);
 		std::swap(metatypes[i], metatypes[min - arr]);
 	}
@@ -949,16 +947,16 @@ void context::destroy(chunk_slice s)
 void context::extend(chunk_slice s, const entity_type& type)
 {
 	entity_type srcType = s.c->type->get_type();
-	stack_array(uint16_t, newTypes, srcType.types.length + type.types.length);
-	stack_array(uint16_t, newMetaTypes, srcType.metatypes.length + type.metatypes.length);
+	stack_array(index_t, newTypes, srcType.types.length + type.types.length);
+	stack_array(index_t, newMetaTypes, srcType.metatypes.length + type.metatypes.length);
 	cast(s, entity_type::merge(srcType, type, newTypes, newMetaTypes));
 }
 
 void context::shrink(chunk_slice s, const typeset& type)
 {
 	entity_type srcType = s.c->type->get_type();
-	stack_array(uint16_t, newTypes, srcType.types.length);
-	stack_array(uint16_t, newMetaTypes, srcType.metatypes.length );
+	stack_array(index_t, newTypes, srcType.types.length);
+	stack_array(index_t, newMetaTypes, srcType.metatypes.length );
 	auto key = entity_type::substract(srcType, type, newTypes, newMetaTypes);
 	if (s.c->type->cleaning && is_cleaned(key))
 		free_slice(s);
@@ -981,7 +979,7 @@ void context::cast(chunk_slice s, const entity_type& type)
 		cast_slice(s, g);
 }
 
-const void* context::get_component_ro(entity e, uint16_t type)
+const void* context::get_component_ro(entity e, index_t type)
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; group* g = c->type;
@@ -990,7 +988,7 @@ const void* context::get_component_ro(entity e, uint16_t type)
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-void* context::get_component_rw(entity e, uint16_t type)
+void* context::get_component_rw(entity e, index_t type)
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; group* g = c->type;
@@ -1000,14 +998,14 @@ void* context::get_component_rw(entity e, uint16_t type)
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_array_ro(chunk* c, uint16_t t) const noexcept
+const void* context::get_array_ro(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;
 	return c->data() + c->type->offsets()[id];
 }
 
-void* context::get_array_rw(chunk* c, uint16_t t) noexcept
+void* context::get_array_rw(chunk* c, index_t t) noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;
@@ -1020,7 +1018,7 @@ const entity* ecs::memory_model::context::get_entities(chunk* c) noexcept
 	return c->get_entities();
 }
 
-uint16_t ecs::memory_model::context::get_element_size(chunk* c, uint16_t t) const noexcept
+uint16_t ecs::memory_model::context::get_element_size(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return 0;
@@ -1270,14 +1268,14 @@ void context::serialize_prefab(prefab p, serializer_i* s)
 	s->write(0, sizeof(uint16_t));
 }
 
-uint16_t context::get_metatype(entity e, uint16_t t)
+index_t context::get_metatype(entity e, index_t t)
 {
 	const auto& data = ents.datas[e.id];
 	group* type = data.c->type;
 	return type->metatypes()[type->index(t) - type->firstMeta];
 }
 
-bool context::has_component(entity e, uint16_t t) const
+bool context::has_component(entity e, index_t t) const
 {
 	const auto& data = ents.datas[e.id];
 	return data.c->type->index(t) != -1;
@@ -1288,7 +1286,7 @@ bool context::exist(entity e) const
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
 
-uint16_t ecs::memory_model::context::get_metatype(chunk* c, uint16_t t)
+index_t ecs::memory_model::context::get_metatype(chunk* c, index_t t)
 {;
 	group* type = c->type;
 	return type->metatypes()[type->index(t) - type->firstMeta];

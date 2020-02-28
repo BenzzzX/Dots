@@ -23,25 +23,27 @@ namespace ecs
 	{
 		class tagged_index
 		{
-			uint16_t id;
+			index_t id;
 
-			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 4;
-			static constexpr uint16_t mask = (uint16_t(2) << offset) - 1;
+			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 5;
+			static constexpr index_t mask = (index_t(2) << offset) - 1;
 		public:
-			constexpr uint16_t index() const noexcept { return id & mask; }
+			constexpr index_t index() const noexcept { return id & mask; }
 			constexpr bool is_internal() const noexcept { return (id >> offset) & 1; }
-			constexpr bool is_buffer() const noexcept { return (id >> (offset + 1)) & 1; }
-			constexpr bool is_tag() const noexcept { return (id >> (offset + 2)) & 1; }
-			constexpr bool is_meta() const noexcept { return (id >> (offset + 3)) & 1; }
+			constexpr bool is_managed() const noexcept { return (id >> (offset + 1)) & 1; }
+			constexpr bool is_buffer() const noexcept { return (id >> (offset + 2)) & 1; }
+			constexpr bool is_tag() const noexcept { return (id >> (offset + 3)) & 1; }
+			constexpr bool is_meta() const noexcept { return (id >> (offset + 4)) & 1; }
 
-			constexpr tagged_index(uint16_t value = 0) noexcept :id(value) { }
-			constexpr tagged_index(uint16_t a, bool b, bool c, bool d, bool e) noexcept
-				: id(a | ((uint16_t)b << offset) |
-				((uint16_t)c << (offset + 1)) |
-					((uint16_t)d << (offset + 2)) |
-					((uint16_t)e << (offset + 3))) { }
+			constexpr tagged_index(index_t value = 0) noexcept :id(value) { }
+			constexpr tagged_index(index_t a, bool b, bool c, bool d, bool e, bool f) noexcept
+				: id(a | ((index_t)b << offset) |
+					((index_t)c << (offset + 1)) |
+					((index_t)d << (offset + 2)) |
+					((index_t)e << (offset + 3)) |
+					((index_t)e << (offset + 4))) { }
 
-			constexpr operator uint16_t() const { return id; }
+			constexpr operator index_t() const { return id; }
 		};
 
 		struct metainfo
@@ -51,8 +53,8 @@ namespace ecs
 
 		struct metakey
 		{
-			uint16_t type;
-			uint16_t metatype;
+			index_t type;
+			index_t metatype;
 			bool operator==(const metakey& other) const
 			{
 				return type == other.type && metatype == other.metatype;
@@ -67,23 +69,45 @@ namespace ecs
 			};
 		};
 
+		struct serializer_i
+		{
+			virtual void write(const void* data, uint32_t bytes) = 0;
+			virtual void writemeta(metakey metatype) = 0;
+		};
+
+		struct deserializer_i
+		{
+			virtual void read(void* data, uint32_t bytes) = 0;
+			virtual index_t readmeta(index_t type) = 0;
+		};
+
+		struct managed_rtti
+		{
+			void(*copy_constructor)(char*) = nullptr;
+			void(*destructor)(char*) = nullptr;
+			void(*serialize)(serializer_i* stream) = nullptr;
+			void(*deserialize)(deserializer_i* stream) = nullptr;
+		};
+
 		struct component_desc
 		{
 			bool isInsternal = false;
 			bool isElement = false;
 			bool isMeta = false; 
+			bool isManaged = false;
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			intptr_t* entityRefs = nullptr; 
 			uint16_t entityRefCount = 0;
+			managed_rtti rtti;
 		};
 
 		using metatype_release_callback_t = void(*)(metakey);
-		uint16_t register_type(component_desc desc);
+		index_t register_type(component_desc desc);
 
-		extern uint16_t disable_id;
-		extern uint16_t cleanup_id;
+		extern index_t disable_id;
+		extern index_t cleanup_id;
 		void register_metatype_release_callback(metatype_release_callback_t callback);
 
 		struct buffer
@@ -175,15 +199,15 @@ namespace ecs
 				return memcmp(metatypes.metaData, types.data + types.length - metatypes.length, metatypes.length) == 0;
 			}
 
-			static const uint16_t* get_meta(typeset ts)
+			static const index_t* get_meta(typeset ts)
 			{
-				return std::find_if(ts.data, ts.data + ts.length, [](uint16_t v) { return ((tagged_index)v).is_meta(); });
+				return std::find_if(ts.data, ts.data + ts.length, [](index_t v) { return ((tagged_index)v).is_meta(); });
 			}
 
-			static entity_type merge(const entity_type& lhs, const entity_type& rhs, uint16_t* dst, uint16_t* metaDst)
+			static entity_type merge(const entity_type& lhs, const entity_type& rhs, index_t* dst, index_t* metaDst)
 			{
 				typeset ts = typeset::merge(lhs.types, rhs.types, dst);
-				const uint16_t* meta = get_meta(ts);
+				const index_t* meta = get_meta(ts);
 				if (meta != ts.data + ts.length)
 				{
 					metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, meta, metaDst);
@@ -193,10 +217,10 @@ namespace ecs
 					return { ts, {{nullptr, 0}, nullptr} };
 			}
 
-			static entity_type substract(const entity_type& lhs, const typeset& rhs, uint16_t* dst, uint16_t* metaDst)
+			static entity_type substract(const entity_type& lhs, const typeset& rhs, index_t* dst, index_t* metaDst)
 			{
 				typeset ts = typeset::substract(lhs.types, rhs, dst);
-				const uint16_t* meta = get_meta(ts);
+				const index_t* meta = get_meta(ts);
 				if (meta != ts.data + ts.length)
 				{
 					metaset ms = metaset::substract(lhs.metatypes, rhs, meta, metaDst);

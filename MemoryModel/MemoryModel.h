@@ -33,18 +33,6 @@ namespace ecs
 			uint32_t count;
 		};
 
-		struct serializer_i
-		{
-			virtual void write(const void* data, uint32_t bytes) = 0;
-			virtual void writemeta(metakey metatype) = 0;
-		};
-
-		struct deserializer_i
-		{
-			virtual void read(void* data, uint32_t bytes) = 0;
-			virtual uint16_t readmeta(uint16_t type) = 0;
-		};
-
 		class context
 		{
 			struct group
@@ -63,19 +51,19 @@ namespace ecs
 				bool zerosize;
 
 				/*
-				uint16_t types[componentCount];
+				index_t types[componentCount];
 				uint16_t offsets[firstTag];
 				uint16_t sizes[firstTag];
-				uint16_t metatypes[componentCount - firstMeta];
+				index_t metatypes[componentCount - firstMeta];
 				*/
 
 				inline char* data() noexcept { return (char*)(this + 1); };
-				inline uint16_t* types() noexcept { return (uint16_t*)data(); }
-				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount * sizeof(uint16_t)); }
-				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + (componentCount + firstTag) * sizeof(uint16_t)); }
-				inline uint16_t* metatypes() noexcept { return (uint16_t*)(data() + (componentCount + firstTag + firstTag) * sizeof(uint16_t)); }
+				inline index_t* types() noexcept { return (index_t*)data(); }
+				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount ); }
+				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t)); }
+				inline index_t* metatypes() noexcept { return (index_t*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* versions(chunk* c) noexcept;
-				inline uint16_t index(uint16_t type) noexcept;
+				inline uint16_t index(index_t type) noexcept;
 
 				inline entity_type get_type();
 
@@ -192,20 +180,20 @@ namespace ecs
 			void extend(chunk_slice, const entity_type& type);
 			void shrink(chunk_slice, const typeset& type);
 			void cast(chunk_slice, const entity_type& type);
-			void* get_component_rw(entity, uint16_t type);
+			void* get_component_rw(entity, index_t type);
 
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
 			chunk_iterator query(const entity_filter& type);
-			const void* get_component_ro(entity, uint16_t type);
-			uint16_t get_metatype(entity, uint16_t type);
-			bool has_component(entity, uint16_t type) const;
+			const void* get_component_ro(entity, index_t type);
+			index_t get_metatype(entity, index_t type);
+			bool has_component(entity, index_t type) const;
 			bool exist(entity) const;
-			uint16_t get_metatype(chunk* c, uint16_t type);
-			const void* get_array_ro(chunk* c, uint16_t type) const noexcept;
-			void* get_array_rw(chunk* c, uint16_t type) noexcept;
+			index_t get_metatype(chunk* c, index_t type);
+			const void* get_array_ro(chunk* c, index_t type) const noexcept;
+			void* get_array_rw(chunk* c, index_t type) noexcept;
 			const entity* get_entities(chunk* c) noexcept;
-			uint16_t get_element_size(chunk* c, uint16_t type) const noexcept;
+			uint16_t get_element_size(chunk* c, index_t type) const noexcept;
 			entity_type get_type(entity) const noexcept;
 
 			//multi context
@@ -259,7 +247,7 @@ namespace ecs
 		public:
 			uint16_t get_count() { return count; }
 			const entity* get_entities() const { return (entity*)data(); }
-			uint32_t get_version(uint16_t type) noexcept;
+			uint32_t get_version(index_t type) noexcept;
 		};
 
 		//system overhead

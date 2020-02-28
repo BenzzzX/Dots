@@ -3,6 +3,7 @@
 #include <gsl/span>
 #include <boost/hana.hpp>
 #include <map>
+#include <concepts>
 
 #define constval static constexpr auto
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
@@ -12,6 +13,19 @@
 
 namespace ecs
 {
+	template<class T>
+	struct component;
+	//{
+		//constval is_internal = false;
+		//constval is_buffer = false;
+		//constval is_meta = false;
+		//constval is_tag = false;
+		//constval hash = (size_t)-1;
+		//constval size = (uint16_t)0;
+		//constval elementSize = (uint16_t)0;
+		//constval entityRefs[] = { (intptr)0 };
+	//};
+
 	template<class T>
 	inline uint16_t typeof = 0;
 
@@ -185,40 +199,48 @@ namespace ecs
 		buffer<T> operator[](entity);
 	};
 
-	template<class T>
-	struct is_buffer : std::false_type {};
-	template<class T>
-	struct is_buffer<buffer<T>> : std::true_type {};
+	template<template<class...> class Tmp, class T>
+	struct is_template_instance : std::false_type {};
+	template<template<class...> class Tmp, class... Ts>
+	struct is_template_instance<Tmp, Tmp<Ts...>> : std::true_type {};
+	template<template<class...> class Tmp, class T>
+	constexpr bool is_template_instance_v = is_template_instance<Tmp, T>::value;
 
 	template<class T>
-	struct is_accessor : std::false_type {};
+	struct first_param;
+	template<template<class...> class Tmp, class T, class... Ts>
+	struct first_param<Tmp<T, Ts...>> { using type = T; };
 	template<class T>
-	struct is_accessor<accessor<T>> : std::true_type {};
+	using first_param_t = typename first_param<T>::type;
 
 	template<class T>
-	struct is_buffer_accessor : std::false_type {};
-	template<class T>
-	struct is_buffer_accessor<buffer_accessor<T>> : std::true_type {};
-
-	x_v(is_buffer);
-	x_v(is_accessor);
-	x_v(is_buffer_accessor);
+	concept Component = requires
+	{
+		typename component<T>;
+	};
 
 	template<class T>
-	struct element_type;
+	concept BufferComponent = Component<T> && component<T>::is_buffer;
+
 	template<class T>
-	struct element_type<buffer<T>> { using type = std::remove_const_t<T>; };
-	template<class T>
-	struct element_type<accessor<T>> { using type = std::remove_const_t<T>; };
-	template<class T>
-	struct element_type<buffer_accessor<T>> { using type = std::remove_const_t<T>; };
+	concept MetaComponent = Component<T> && component<T>::is_meta;
+
+	namespace KernelConcepts
+	{
+		template<class T>
+		concept BufferParameter = is_template_instance_v<buffer, T> && BufferComponent<first_param_t<T>>;
+
+		template<class T>
+		concept AccessorParameter = is_template_instance_v<accessor, T> && Component<T> && !component<T>::is_meta;
+	}
+
 
 	x_t(element_type);
 
 	template<class ...Cs>
 	struct typeset
 	{
-		consteval size = sizeof...(Cs);
+		constval size = sizeof...(Cs);
 		uint16_t arr[size];
 		memory_model::typeset to_raw()
 		{
@@ -468,40 +490,28 @@ namespace ecs
 				if constexpr (is_buffer_v<raw_parameter>)
 				{
 					using element = std::decay_t<element_type_t<raw_parameter>>;
-					auto type = (tagged_index)typeof<element>;
-					if (!type.is_buffer())
-						valid = false;
+					static_asset(component<element>::is_buffer);
 				}
 				else if constexpr (is_accessor_v<raw_parameter>)
 				{
 					using element = std::decay_t<element_type_t<raw_parameter>>;
-					auto type = (tagged_index)typeof<element>;
-					if (type.is_meta())
-						valid = false;
+					static_asset(!component<element>::is_meta);
 				}
 				else if constexpr (is_buffer_accessor_v<raw_parameter>)
 				{
 					using element = std::decay_t<element_type_t<raw_parameter>>;
-					auto type = (tagged_index)typeof<element>;
-					if (!type.is_buffer())
-						valid = false;
+					static_asset(component<element>::is_buffer);
 				}
 				else if constexpr (std::is_same<raw_parameter, int>)
 				{
 				}
 				else if constexpr (std::is_pointer_v<raw_parameter>)
 				{
-					auto type = (tagged_index)typeof<raw_type>;
-					if (type == 0)
-						valid = false;
+					component<raw_type> test;
 				}
 				else
 				{
-					auto type = (tagged_index)typeof<raw_type>;
-					if (type == 0)
-						valid = false;
-					if (!type.is_meta())
-						valid = false;
+					static_asset(!component<raw_type>::is_meta);
 				}
 			};
 			auto get_array = [&](auto arg)

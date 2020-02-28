@@ -7,6 +7,7 @@ namespace ecs
 {
 	namespace memory_model
 	{
+		using index_t = uint32_t;
 #if _WIN64
 		constexpr size_t _FNV_offset_basis = 14695981039346656037ULL;
 		constexpr size_t _FNV_prime = 1099511628211ULL;
@@ -38,10 +39,10 @@ namespace ecs
 
 		struct typeset
 		{
-			const uint16_t* data;
+			const index_t* data;
 			uint16_t length;
 
-			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
+			const index_t& operator[](uint32_t i) const noexcept { return data[i]; }
 
 			bool operator==(const typeset& other) const
 			{
@@ -56,7 +57,7 @@ namespace ecs
 				}
 			};
 
-			static typeset merge(const typeset& lhs, const typeset& rhs, uint16_t* dst)
+			static typeset merge(const typeset& lhs, const typeset& rhs, index_t* dst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
@@ -75,7 +76,7 @@ namespace ecs
 				return  { dst, k };
 			}
 
-			static typeset substract(const typeset& lhs, const typeset& rhs, uint16_t* dst)
+			static typeset substract(const typeset& lhs, const typeset& rhs, index_t* dst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
@@ -126,7 +127,7 @@ namespace ecs
 
 		struct metaset : typeset
 		{
-			const uint16_t* metaData;
+			const index_t* metaData;
 
 			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
 
@@ -143,7 +144,7 @@ namespace ecs
 				}
 			};
 
-			static metaset merge(const metaset& lhs, const metaset& rhs, const uint16_t* dst, uint16_t* metaDst)
+			static metaset merge(const metaset& lhs, const metaset& rhs, const index_t* dst, index_t* metaDst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
@@ -163,7 +164,7 @@ namespace ecs
 				return { {metaDst, k}, dst };
 			}
 
-			static metaset substract(const metaset& lhs, const typeset& rhs, const uint16_t* dst, uint16_t* metaDst)
+			static metaset substract(const metaset& lhs, const typeset& rhs, const index_t* dst, index_t* metaDst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
