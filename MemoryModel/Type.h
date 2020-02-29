@@ -103,12 +103,10 @@ namespace ecs
 			managed_rtti rtti;
 		};
 
-		using metatype_release_callback_t = void(*)(metakey);
 		index_t register_type(component_desc desc);
 
 		extern index_t disable_id;
 		extern index_t cleanup_id;
-		void register_metatype_release_callback(metatype_release_callback_t callback);
 
 		struct buffer
 		{
@@ -185,12 +183,6 @@ namespace ecs
 					return hash;
 				}
 			};
-
-			bool valid_for_filter() const
-			{
-				typeset mt = { metatypes.metaData,metatypes.length };
-				return types.all(mt);
-			}
 
 			bool valid_for_entity() const
 			{

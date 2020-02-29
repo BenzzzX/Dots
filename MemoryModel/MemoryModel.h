@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <array>
 #include <optional>
+#include <functional>
 #include "Set.h"
 #include "Type.h"
 namespace ecs
@@ -83,6 +84,17 @@ namespace ecs
 				std::optional<chunk_slice> next();
 			};
 
+			struct alloc_iterator
+			{
+				context* cont;
+				group* g;
+				entity* ret;
+				uint32_t count;
+				uint32_t k;
+
+				std::optional<chunk_slice> next();
+			};
+
 			struct chunk_iterator
 			{
 				context* cont;
@@ -140,6 +152,8 @@ namespace ecs
 			groups_t groups;
 			queries_t queries;
 			entities ents;
+			std::function<void(metakey)> release_metatype;
+			std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
 
 			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
 
@@ -161,7 +175,7 @@ namespace ecs
 			void free_slice(chunk_slice);
 			void cast_slice(chunk_slice, group*);
 
-			static void release_reference(group* g);
+			void release_reference(group* g);
 
 			static void serialize_type(group* g, serializer_i* s);
 			group* deserialize_group(deserializer_i* s, uint16_t tlength);
@@ -173,7 +187,7 @@ namespace ecs
 		public:
 			~context();
 			//create
-			void allocate(const entity_type& type, entity* ret, uint32_t count = 1);
+			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
 			void instantiate(entity src, entity* ret, uint32_t count = 1);
 
 			//modify(batched)
@@ -194,7 +208,7 @@ namespace ecs
 			const void* get_array_ro(chunk* c, index_t type) const noexcept;
 			void* get_array_rw(chunk* c, index_t type) noexcept;
 			const entity* get_entities(chunk* c) noexcept;
-			uint16_t get_element_size(chunk* c, index_t type) const noexcept;
+			uint16_t get_size(chunk* c, index_t type) const noexcept;
 			entity_type get_type(entity) const noexcept;
 
 			//multi context

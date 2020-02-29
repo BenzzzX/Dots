@@ -40,11 +40,9 @@ index_t ecs::memory_model::cleanup_id = 1;
 
 struct global_data
 {
-	metatype_release_callback_t release_metatype = nullptr;
 	std::vector<type_data> infos;
 	std::vector<intptr_t> entityRefs;
 	std::unordered_map<size_t, uint16_t> hash2type;
-	std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
 	
 	global_data()
 	{
@@ -76,11 +74,6 @@ index_t ecs::memory_model::register_type(component_desc desc)
 	id = tagged_index{ id, desc.isInsternal, desc.isManaged, desc.isElement, i.size == 0, desc.isMeta };
 	gd.hash2type.insert({ desc.hash, id });
 	return id;
-}
-
-void ecs::memory_model::register_metatype_release_callback(metatype_release_callback_t callback)
-{
-	gd.release_metatype = callback;
 }
 
 inline bool chunk_slice::full() { return start == 0 && count == c->get_count(); }
@@ -427,7 +420,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		auto dt = dstTypes[dstI];
 		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
 		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
-		if (st < dt)
+		if (st < dt) //destruct 
 		{
 			if (st > srcType->firstManaged)
 			{
@@ -441,7 +434,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 						f(j * srcSizes[srcI] + s);
 				}
 			}
-			srcI++; //destruct 
+			srcI++; 
 		}
 		else if (st > dt) //construct
 #ifndef NOINITIALIZE
@@ -452,7 +445,18 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		else //move
 			memcpy(d, s, dstSizes[(srcI++, dstI++)] * count);
 	}
-	srcI = srcType->firstBuffer;
+	srcI = std::max(srcI, srcType->firstManaged); 
+	while (srcI < srcType->firstBuffer) //destruct
+	{
+		char* s = src->data() + srcOffsets[srcI];
+		tagged_index type = srcTypes[srcI];
+		const auto& info = gd.infos[type.index()];
+		auto f = info.rtti.destructor;
+		if (f == nullptr)
+			continue;
+		forloop(j, 0, src->count)
+			f(j * srcSizes[srcI] + s);
+	}
 #ifndef NOINITIALIZE
 	while (dstI < dstType->firstBuffer) //construct
 	{
@@ -597,7 +601,7 @@ context::group* context::get_group(const entity_type& key)
 	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(index_t));
 	forloop(i, g->firstMeta, g->componentCount)
 	{
-		auto& info = gd.metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
+		auto& info = metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
 		info.refCount++;
 	}
 
@@ -801,11 +805,11 @@ void context::release_reference(group* g)
 	forloop(i, g->firstMeta, g->componentCount)
 	{
 		auto key = metakey{ types[i], metatypes[i - g->firstMeta] };
-		auto iter = gd.metainfos.find(key);
+		auto iter = metainfos.find(key);
 		if (--iter->second.refCount == 0)
 		{
-			gd.release_metatype(key);
-			gd.metainfos.erase(iter);
+			release_metatype(key);
+			metainfos.erase(iter);
 		}
 	}
 }
@@ -954,19 +958,20 @@ ecs::memory_model::context::~context()
 		free(chunkPool[i]);
 }
 
-void context::allocate(const entity_type& type, entity* ret, uint32_t count)
+context::alloc_iterator context::allocate(const entity_type& type, entity* ret, uint32_t count)
 {
+	alloc_iterator iterator;
+	iterator.ret = ret;
+	iterator.count = count;
+	iterator.cont = this;
+
 	group *g = get_group(type);
 	g = get_instatiation(g);
-	uint32_t k = 0;
-	while (k < count)
-	{
-		chunk_slice s = allocate_slice(g, count - k);
-		chunk::construct(s);
-		ents.new_entities(s);
-		memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
-		k += s.count;
-	}
+	iterator.g = g;
+
+	iterator.k = 0;
+	
+	return iterator;
 }
 
 void context::instantiate(entity src, entity* ret, uint32_t count)
@@ -1084,12 +1089,12 @@ void* context::get_array_rw(chunk* c, index_t t) noexcept
 	return c->data() + c->type->offsets()[id];
 }
 
-const entity* ecs::memory_model::context::get_entities(chunk* c) noexcept
+const entity* context::get_entities(chunk* c) noexcept
 {
 	return c->get_entities();
 }
 
-uint16_t ecs::memory_model::context::get_element_size(chunk* c, index_t t) const noexcept
+uint16_t context::get_size(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return 0;
@@ -1500,4 +1505,19 @@ void context::entities::fill_entities(chunk_slice dst, uint16_t srcIndex)
 	forloop(i, 0, dst.count)
 		datas[toMove[i].id].i = dst.start + i;
 	memcpy((entity*)dst.c->data() + dst.start, toMove, dst.count * sizeof(entity));
+}
+
+std::optional<chunk_slice> context::alloc_iterator::next()
+{
+	if (k < count)
+	{
+		chunk_slice s = cont->allocate_slice(g, count - k);
+		chunk::construct(s);
+		cont->ents.new_entities(s);
+		memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
+		k += s.count;
+		return s;
+	}
+	else
+		return {};
 }

@@ -274,6 +274,11 @@ namespace ecs
 		}
 	};
 
+	void release_meta(memory_model::metakey key)
+	{
+		meta::release(key.metatype);
+	}
+
 	template<class T> Requires(BufferComponent<T>)
 	class buffer_array
 	{
@@ -324,10 +329,11 @@ namespace ecs
 		memory_model::context cont;
 
 	public:
-		void create(gsl::span<entity> es, entity_type type)
-		{
 #define parm_slice(es) es.data(), (uint32_t)es.size()
-			cont.allocate(type, parm_slice(es));
+		void construct(gsl::span<entity> es, entity_type type)
+		{
+			auto iter = cont.allocate(type, parm_slice(es));
+			foriter(s, iter);
 		}
 
 		void instantiate(gsl::span<entity> es, entity proto)
@@ -342,22 +348,18 @@ namespace ecs
 				cont.destroy(*s);
 		}
 
-		template<class ...Cs, class... MCs>
-		void extend(gsl::span<entity> es, MCs&& ... mcs)
+		void extend(gsl::span<entity> es, entity_type type)
 		{
-			deftype;
 			auto iter = cont.batch(parm_slice(es));
 			foriter(s, iter)
 				cont.extend(*s, type);
 		}
 
-		template<class ...Cs>
-		void shrink(gsl::span<entity> es)
+		void shrink(gsl::span<entity> es, entity_type type)
 		{
-			static typeset<Cs...> ts;
 			auto iter = cont.batch(parm_slice(es));
 			foriter(s, iter)
-				cont.shrink(*s, ts);
+				cont.shrink(*s, type.types);
 		}
 
 		void destroy(const entity_filter& g)
@@ -374,11 +376,11 @@ namespace ecs
 				cont.extend(*s, type);
 		}
 
-		void shrink(const entity_filter& g, memory_model::typeset ts)
+		void shrink(const entity_filter& g, entity_type type)
 		{
 			auto iter = cont.query(g);
 			foriter(s, iter)
-				cont.shrink(*s, ts);
+				cont.shrink(*s, type.types);
 		}
 
 		template<class T> Requires(AccessableComponent<T>)
@@ -423,58 +425,60 @@ namespace ecs
 		}
 
 	private:
-		int get_array_param(memory_model::chunk* c, tid<int>)
+		int get_array_param(memory_model::chunk_slice c, tid<int>)
 		{
-			return c->get_count();
+			return c.count;
 		}
 
 		template<class T> 
-		const T* get_array_param(memory_model::chunk* c, tid<const T*>)
+		const T* get_array_param(memory_model::chunk_slice c, tid<const T*>)
 		{
 			if constexpr (component<T>::is_meta)
 			{
-				uint16_t id = cont.get_metatype(c, typeof<T>);
+				uint16_t id = cont.get_metatype(c.c, typeof<T>);
 				if (id == -1)
 					return  nullptr;
 				return meta::get<T>(id);
 			}
 			else
-				return (const T*)cont.get_array_ro(c, typeof<T>);
+				return (const T*)cont.get_array_ro(c.c, typeof<T>) + c.start;
 		}
 
 		template<class T> 
-		T* get_array_param(memory_model::chunk* c, tid<T*>)
+		T* get_array_param(memory_model::chunk_slice c, tid<T*>)
 		{
-			return (T*)cont.get_array_rw(c, typeof<T>);
+			return (T*)cont.get_array_rw(c.c, typeof<T>) + c.start;
 		}
 
 		template<class T> 
-		buffer_array<T> get_array_param(memory_model::chunk* c, tid<buffer_array<T>>)
+		buffer_array<T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<T>>)
 		{
-			return { cont.get_array_rw(c, typeof<T>), cont.get_element_size(c, typeof<T>) };
+			auto size = cont.get_size(c.c, typeof<T>);
+			return { cont.get_array_rw(c.c, typeof<T>) + size * c.start, size };
 		}
 
 		template<class T>
-		buffer_array<const T> get_array_param(memory_model::chunk* c, tid<buffer_array<const T>>)
+		buffer_array<const T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<const T>>)
 		{
-			return { cont.get_array_ro(c, typeof<T>), cont.get_element_size(c, typeof<T>) };
+			auto size = cont.get_size(c.c, typeof<T>);
+			return { cont.get_array_ro(c.c, typeof<T>) + size * c.start, size };
 		}
 
 		template<class T>
-		accessor<T> get_array_param(memory_model::chunk* c, tid<accessor<T>>)
+		accessor<T> get_array_param(memory_model::chunk_slice c, tid<accessor<T>>)
 		{
 			return { &cont };
 		}
 
 		template<class T>
-		accessor<const T> get_array_param(memory_model::chunk* c, tid<accessor<const T>>)
+		accessor<const T> get_array_param(memory_model::chunk_slice c, tid<accessor<const T>>)
 		{
 			return { &cont };
 		}
 
-		const entity* get_array_param(memory_model::chunk* c, tid<const entity*>)
+		const entity* get_array_param(memory_model::chunk_slice c, tid<const entity*>)
 		{
-			return { cont.get_entities(c) };
+			return (const entity*)cont.get_entities(c.c) + c.start;
 		}
 
 		template<class T>
@@ -499,55 +503,67 @@ namespace ecs
 		const T get_param_type(tid<buffer_accessor<const T>>);
 
 	public:
-		template<class F> Requires(KernelFunction<F>)
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void construct(gsl::span<entity> es, entity_type type, F&& action)
+		{
+			assert(type.valid_for_entity());
+			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
+			
+			auto iter = cont.allocate(type, parm_slice(es));
+			foriter(s, iter)
+			{
+				auto c = *s;
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(action));
+			}
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void for_entities(gsl::span<const entity> entities, F&& action)
+		{
+			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
+
+			auto iter = cont.batch(entities);
+			foriter(s, iter)
+			{
+				auto c = *s;
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(action));
+			}
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
 		void for_each_chunk(entity_filter& f, F&& action)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
-			auto get_array = [&](auto arg)
-			{
-				using raw_parameter = typename decltype(arg)::type;
-				return get_array_param(c, tid<raw_parameter>{});
-			};
+			
 			auto iter = cont.query(f);
 			foriter(s, iter)
 			{
-				memory_model::chunk* c = *s;
+				auto c = *s;
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
 				auto arrays = hana::transform(parameter_list, get_array);
-				hana::unpack(std::move(arrays), std::forward<F>(action))
+				hana::unpack(std::move(arrays), std::forward<F>(action));
 			}
 		}
 	};
 
-	template<class... Cs, class... Ms> Requires((DataComponent<Cs>&&...) && (MetaComponent<Ms>&&...))
-	auto make_entity_type(Ms&&... metas)
-	{
-		struct type_t
-		{
-			memory_model::index_t arr[sizeof...(Cs) + sizeof...(Ms)];
-			memory_model::index_t metaarr[sizeof...(Ms)];
-			entity_type get()
-			{
-				memory_model::typeset ts{ arr, sizeof...(Cs) + sizeof...(Ms) };
-				memory_model::metaset ms{ {metaarr, sizeof...(Ms)}, arr + sizeof(Cs) };
-				return { ts, ms };
-			}
-		};
-		type_t type{ {typeof<Cs>..., typeof<Ms>... },{meta::map(std::forward<Ms>(metas)...} };
-		memory_model::index_t* marr = type.arr + sizeof...(Cs);
-		forloop(i, 0, sizeof...(Ms))
-		{
-			uint16_t* min = std::min_element(marr + i, marr + sizeof...(Ms));
-			std::swap(marr[i], *min);
-			std::swap(type.metaarr[i], type.metaarr[min - marr]);
-		}
-		std::sort(type.arr, type.arr + sizeof...(Cs));
-		memory_model::index_t* dup = std::adjacent_find(type.arr, type.arr + sizeof...(Cs) + sizeof...(Ms));
-		assert(dup == type.arr + sizeof...(Cs) + sizeof...(Ms));
-		return type;
-	}
-
 	template<class... Cs, class... Ms> Requires((Component<Cs>&&...) && (MetaComponent<Ms>&&...))
-	auto make_filter_type(Ms&&... metas)
+	auto make_type(Ms&&... metas)
 	{
 		struct type_t
 		{
