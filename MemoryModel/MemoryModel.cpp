@@ -1075,6 +1075,7 @@ void context::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32
 	} p;
 	p.count = size;
 	uint32_t k = 0;
+	//todo: multithread?
 	for (auto& s : allSlices)
 	{
 		p.curr = p.base = &allEnts[(k % count) * size];
@@ -1420,6 +1421,7 @@ void context::deserialize(deserializer_i* s, entity* ret, uint32_t times)
 
 void context::move_context(context& src, entity* patch, uint32_t count)
 {
+	//todo: fixme
 	for (auto& pair : src.archetypes)
 	{
 		archetype* g = pair.second;
@@ -1446,6 +1448,7 @@ void context::move_context(context& src, entity* patch, uint32_t count)
 
 void context::move_chunk(context& src, chunk* c, entity* patch, uint32_t count)
 {
+	//todo: fixme
 	archetype* dstG = get_archetype(c->type->get_type());
 
 	src.ents.free_entities(c);
@@ -1517,6 +1520,7 @@ void context::deserialize(deserializer_i* s)
 	patcher.target = patch;
 	patcher.count = count;
 
+	//todo: multithread?
 	for(archetype* g = deserialize_archetype(s); g!=nullptr; g = deserialize_archetype(s))
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
