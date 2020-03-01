@@ -171,8 +171,8 @@ namespace ecs
 			archetype* deserialize_archetype(deserializer_i* s);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, deserializer_i* stream);
 
-			void cast_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
-			void uncast_from_prefab(entity* src, uint32_t count);
+			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
+			void prefab_to_group(entity* src, uint32_t count);
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);

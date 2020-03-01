@@ -994,7 +994,7 @@ struct linear_patcher : patcher_i
 	entity patch(entity e) override;
 };
 
-void context::cast_to_prefab(entity* src, uint32_t size, bool keepExternal)
+void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
 	struct patcher : patcher_i
 	{
@@ -1020,7 +1020,7 @@ void context::cast_to_prefab(entity* src, uint32_t size, bool keepExternal)
 	}
 }
 
-void context::uncast_from_prefab(entity* members, uint32_t size)
+void context::prefab_to_group(entity* members, uint32_t size)
 {
 	struct patcher : patcher_i
 	{
@@ -1225,9 +1225,9 @@ void context::instantiate(entity src, entity* ret, uint32_t count)
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
 		memcpy(members, group_data->data(), group_data->size);
-		cast_to_prefab(members, size);
+		group_to_prefab(members, size);
 		instantiate_prefab(members, size, ret, count);
-		uncast_from_prefab(members, size);
+		prefab_to_group(members, size);
 	}
 }
 
@@ -1382,13 +1382,13 @@ void context::serialize(serializer_i* s, entity src)
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
 		memcpy(members, group_data->data(), group_data->size);
-		cast_to_prefab(members, size, false);
+		group_to_prefab(members, size, false);
 		forloop(i, 0, size)
 		{
 			src = members[i];
 			serialize_single(s, src);
 		}
-		uncast_from_prefab(members, size);
+		prefab_to_group(members, size);
 	}
 }
 
@@ -1414,7 +1414,7 @@ void context::deserialize(deserializer_i* s, entity* ret, uint32_t times)
 		}
 		if (times > 1)
 			instantiate_prefab(members, size, ret + 1, times - 1);
-		uncast_from_prefab(members, size);
+		prefab_to_group(members, size);
 	}
 }
 
