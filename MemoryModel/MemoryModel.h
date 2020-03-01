@@ -25,18 +25,9 @@ namespace ecs
 				: c(c), start(s), count(count) {}
 		};
 
-		//liner sequence of entity is prefab
-		struct prefab
-		{
-			const context* src;
-			//TODO: do we need version?
-			entity start;
-			uint32_t count;
-		};
-
 		class context
 		{
-			struct group
+			struct archetype
 			{
 				chunk* firstChunk;
 				chunk* lastChunk;
@@ -44,12 +35,11 @@ namespace ecs
 				uint16_t componentCount;
 				uint16_t firstTag;
 				uint16_t firstMeta;
-				uint16_t firstManaged;
 				uint16_t firstBuffer;
 				uint16_t chunkCapacity;
 				bool disabled;
 				bool cleaning;
-				bool needsClean;
+				bool withTracked;
 				bool zerosize;
 
 				/*
@@ -72,59 +62,6 @@ namespace ecs
 				static size_t calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
 			};
 
-			using groups_t = std::unordered_map<entity_type, group*, entity_type::hash>;
-
-			struct batch_iterator
-			{
-				entity* ents;
-				uint32_t count;
-				context* cont;
-				uint32_t i;
-
-				std::optional<chunk_slice> next();
-			};
-
-			struct alloc_iterator
-			{
-				context* cont;
-				group* g;
-				entity* ret;
-				uint32_t count;
-				uint32_t k;
-
-				std::optional<chunk_slice> next();
-			};
-
-			struct chunk_iterator
-			{
-				context* cont;
-				chunk* currc;
-				groups_t::iterator currg;
-				entity_filter filter;
-
-				std::optional<chunk*> next();
-			};
-			
-			struct query_iterator
-			{
-				chunk* currc;
-				std::vector<group*>::iterator currg;
-				std::optional<chunk*> next();
-			};
-
-			struct query
-			{
-				std::unique_ptr<uint16_t> data;
-				entity_filter filter;
-				std::vector<group*> groups;
-				query_iterator iter();
-			};
-
-			using queries_t = std::unordered_map<entity_filter, query, entity_filter::hash>;
-
-			query* get_query(entity_filter& f);
-			void update_queries(group* g, bool add);
-			
 			struct entities
 			{
 				struct data
@@ -145,41 +82,101 @@ namespace ecs
 				void fill_entities(chunk_slice dst, uint16_t srcIndex);
 			};
 
+			using archetypes_t = std::unordered_map<entity_type, archetype*, entity_type::hash>;
+
+			struct batch_iterator
+			{
+				entity* ents;
+				uint32_t count;
+				context* cont;
+				uint32_t i;
+
+				std::optional<chunk_slice> next();
+			};
+
+			struct alloc_iterator
+			{
+				context* cont;
+				archetype* g;
+				entity* ret;
+				uint32_t count;
+				uint32_t k;
+
+				std::optional<chunk_slice> next();
+			};
+
+			struct chunk_iterator
+			{
+				context* cont;
+				chunk* currc;
+				archetypes_t::iterator currg;
+				entity_filter filter;
+
+				std::optional<chunk*> next();
+			};
+			
+			struct query_iterator
+			{
+				chunk* currc;
+				std::vector<archetype*>::iterator currg;
+				std::optional<chunk*> next();
+			};
+
+			struct query
+			{
+				std::unique_ptr<uint16_t> data;
+				entity_filter filter;
+				std::vector<archetype*> archetypes;
+				query_iterator iter();
+			};
+
+			using queries_t = std::unordered_map<entity_filter, query, entity_filter::hash>;
+
+			query* get_query(entity_filter& f);
+			void update_queries(archetype* g, bool add);
+
 			static constexpr size_t kChunkPoolCapacity = 8000;
 
 			std::array<chunk*, kChunkPoolCapacity> chunkPool;
 			uint16_t poolSize = 0;
-			groups_t groups;
+			archetypes_t archetypes;
 			queries_t queries;
 			entities ents;
-			std::function<void(metakey)> release_metatype;
-			std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
 
 			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
 
-			group* get_group(const entity_type&);
-			group* get_cleaning(group*);
+			archetype* get_archetype(const entity_type&);
+			archetype* get_cleaning(archetype*);
 			bool is_cleaned(const entity_type&);
-			group* get_instatiation(group*);
+			archetype* get_instatiation(archetype*);
+			archetype* get_extending(archetype*, const entity_type&);
+			archetype* get_shrinking(archetype*, const typeset&);
 
-			static void add_chunk(group* g, chunk* c);
-			void remove_chunk(group* g, chunk* c);
-			static void mark_free(group* g, chunk* c);
-			static void unmark_free(group* g, chunk* c);
+			static void add_chunk(archetype* g, chunk* c);
+			void remove_chunk(archetype* g, chunk* c);
+			static void mark_free(archetype* g, chunk* c);
+			static void unmark_free(archetype* g, chunk* c);
 
-			chunk* new_chunk(group*);
-			void destroy_chunk(group*, chunk*);
+			chunk* new_chunk(archetype*);
+			void destroy_chunk(archetype*, chunk*);
 			void resize_chunk(chunk*, uint16_t);
 
-			chunk_slice allocate_slice(group*, uint32_t = 1);
+			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			void cast_slice(chunk_slice, group*);
+			void cast_slice(chunk_slice, archetype*);
 
-			void release_reference(group* g);
+			void release_reference(archetype* g);
 
-			static void serialize_type(group* g, serializer_i* s);
-			group* deserialize_group(deserializer_i* s, uint16_t tlength);
-			chunk_slice deserialize_slice(group* g, deserializer_i* stream, uint16_t count);
+			static void serialize_archetype(archetype* g, serializer_i* s);
+			archetype* deserialize_archetype(deserializer_i* s);
+			std::optional<chunk_slice> deserialize_slice(archetype* g, deserializer_i* stream);
+
+			void cast_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
+			void uncast_from_prefab(entity* src, uint32_t count);
+			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
+			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
+			void serialize_single(serializer_i* s, entity);
+			entity deserialize_single(deserializer_i* s);
 
 			friend chunk;
 			friend batch_iterator;
@@ -195,6 +192,7 @@ namespace ecs
 			void extend(chunk_slice, const entity_type& type);
 			void shrink(chunk_slice, const typeset& type);
 			void cast(chunk_slice, const entity_type& type);
+			void cast(chunk_slice, archetype* g);
 			void* get_component_rw(entity, index_t type);
 
 			//query
@@ -211,19 +209,19 @@ namespace ecs
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
 			entity_type get_type(entity) const noexcept;
 
-			//multi context
-			entity allocate_prefab(const entity_type& type);
-			prefab instantiate_as_prefab(entity* src, uint32_t count);
-			void instantiate_prefab(prefab p, entity* ret, uint32_t count);
+			//as prefab
+			void serialize(serializer_i* s, entity);
+			void deserialize(deserializer_i* s, entity*, uint32_t times = 1);
 
+			//multi context
 			void move_context(context& src, entity* patch, uint32_t count);
 			void move_chunk(context& src, chunk* c, entity* patch, uint32_t count);
-			void patch_chunk(chunk* c, const entity* patch, uint32_t count);
+			void patch_chunk(chunk* c, patcher_i* patcher);
 
-			static void serialize(context& cont, serializer_i* s);
-			static void deserialize(context& cont, deserializer_i* s);
-			static void serialize_prefab(prefab p, serializer_i *s);
-			static prefab deserialize_prefab(context& cont, deserializer_i* s);
+			void serialize(serializer_i* s);
+			void deserialize(deserializer_i* s);
+
+
 
 			uint32_t version;
 		};
@@ -232,7 +230,7 @@ namespace ecs
 		{
 		private:
 			chunk *next, *prev;
-			context::group* type;
+			context::archetype* type;
 			uint16_t count;
 			/*
 			entity entities[chunkCapacity];
@@ -249,8 +247,7 @@ namespace ecs
 			static void move(chunk_slice dst, uint16_t srcIndex) noexcept;
 			static void cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
-			static void patch(chunk_slice s, uint32_t start, const entity* target, uint32_t count) noexcept;
-			static void depatch(chunk_slice dst, const entity *src, const entity *target, uint32_t count) noexcept;
+			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
 			static void deserialize(chunk_slice s, deserializer_i* stream);
 			void link(chunk*) noexcept;

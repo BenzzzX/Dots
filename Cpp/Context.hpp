@@ -17,15 +17,23 @@ namespace ecs
 	template<class T>
 	struct component;
 	//{
-		//constval is_internal = false;
+		//constval is_managed = false;
 		//constval is_buffer = false;
 		//constval is_meta = false;
 		//constval is_tag = false;
+		//constval track_copy = false;
+		//constval track_destroy = false;
 		//constval hash = (size_t)-1;
 		//constval size = (uint16_t)0;
 		//constval elementSize = (uint16_t)0;
 		//constval entityRefs[] = { (intptr)0 };
 	//};
+
+	template<class T>
+	struct copying
+	{
+		T value;
+	};
 
 	template<class T>
 	inline memory_model::index_t typeof = 0;
@@ -324,17 +332,16 @@ namespace ecs
 	using entity_type = memory_model::entity_type;
 	using entity_filter = memory_model::entity_filter;
 
+
+
+	inline auto do_nothing = []() {};
+
 	class context
 	{
 		memory_model::context cont;
 
 	public:
 #define parm_slice(es) es.data(), (uint32_t)es.size()
-		void construct(gsl::span<entity> es, entity_type type)
-		{
-			auto iter = cont.allocate(type, parm_slice(es));
-			foriter(s, iter);
-		}
 
 		void instantiate(gsl::span<entity> es, entity proto)
 		{
@@ -348,39 +355,11 @@ namespace ecs
 				cont.destroy(*s);
 		}
 
-		void extend(gsl::span<entity> es, entity_type type)
-		{
-			auto iter = cont.batch(parm_slice(es));
-			foriter(s, iter)
-				cont.extend(*s, type);
-		}
-
-		void shrink(gsl::span<entity> es, entity_type type)
-		{
-			auto iter = cont.batch(parm_slice(es));
-			foriter(s, iter)
-				cont.shrink(*s, type.types);
-		}
-
 		void destroy(const entity_filter& g)
 		{
 			auto iter = cont.query(g);
 			foriter(s, iter)
 				cont.destroy(*s);
-		}
-
-		void extend(const entity_filter& g, entity_type type)
-		{
-			auto iter = cont.query(g);
-			foriter(s, iter)
-				cont.extend(*s, type);
-		}
-
-		void shrink(const entity_filter& g, entity_type type)
-		{
-			auto iter = cont.query(g);
-			foriter(s, iter)
-				cont.shrink(*s, type.types);
 		}
 
 		template<class T> Requires(AccessableComponent<T>)
@@ -504,7 +483,7 @@ namespace ecs
 
 	public:
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
-		void construct(gsl::span<entity> es, entity_type type, F&& action)
+		void construct(gsl::span<entity> es, entity_type type, F&& f)
 		{
 			assert(type.valid_for_entity());
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
@@ -519,12 +498,12 @@ namespace ecs
 					return get_array_param(c, tid<raw_parameter>{});
 				};
 				auto arrays = hana::transform(parameter_list, get_array);
-				hana::unpack(std::move(arrays), std::forward<F>(action));
+				hana::unpack(std::move(arrays), std::forward<F>(f));
 			}
 		}
 
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
-		void for_entities(gsl::span<const entity> entities, F&& action)
+		void for_entities(gsl::span<const entity> entities, F&& f)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
 
@@ -538,16 +517,16 @@ namespace ecs
 					return get_array_param(c, tid<raw_parameter>{});
 				};
 				auto arrays = hana::transform(parameter_list, get_array);
-				hana::unpack(std::move(arrays), std::forward<F>(action));
+				hana::unpack(std::move(arrays), std::forward<F>(f));
 			}
 		}
 
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
-		void for_each_chunk(entity_filter& f, F&& action)
+		void for_filter(entity_filter& filter, F&& f)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
 			
-			auto iter = cont.query(f);
+			auto iter = cont.query(filter);
 			foriter(s, iter)
 			{
 				auto c = *s;
@@ -557,7 +536,122 @@ namespace ecs
 					return get_array_param(c, tid<raw_parameter>{});
 				};
 				auto arrays = hana::transform(parameter_list, get_array);
-				hana::unpack(std::move(arrays), std::forward<F>(action));
+				hana::unpack(std::move(arrays), std::forward<F>(f));
+			}
+		}
+
+		void extend(gsl::span<entity> es, entity_type type)
+		{
+			auto iter = cont.batch(parm_slice(es));
+			foriter(s, iter)
+				cont.extend(*s, type);
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void extend(gsl::span<entity> es, entity_type type, F&& f)
+		{
+			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
+			{
+				auto iter = cont.batch(parm_slice(es));
+				foriter(s, iter)
+					cont.extend(*s, type);
+			}
+			{
+				auto iter = cont.batch(parm_slice(es));
+				foriter(s, iter)
+				{
+					auto c = *s;
+					auto get_array = [&](auto arg)
+					{
+						using raw_parameter = typename decltype(arg)::type;
+						return get_array_param(c, tid<raw_parameter>{});
+					};
+					auto arrays = hana::transform(parameter_list, get_array);
+					hana::unpack(std::move(arrays), std::forward<F>(f));
+				}
+			}
+		}
+
+		void shrink(gsl::span<entity> es, entity_type type)
+		{
+			auto iter = cont.batch(parm_slice(es));
+			foriter(s, iter)
+				cont.shrink(*s, type.types);
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void shrink(gsl::span<entity> es, entity_type type, F&& f)
+		{
+			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
+			auto iter = cont.batch(parm_slice(es));
+			foriter(s, iter)
+			{
+				auto c = *s;
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(f));
+				cont.shrink(*s, type.types);
+			}
+		}
+
+		void extend(const entity_filter& g, entity_type type)
+		{
+			auto iter = cont.query(g);
+			foriter(s, iter)
+				cont.extend(*s, type);
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void extend(const entity_filter& g, entity_type type, F&& f)
+		{
+			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
+			{
+				auto iter = cont.query(g);
+				foriter(s, iter)
+					cont.extend(*s, type);
+			}
+			{
+				auto iter = cont.query(g);
+				foriter(s, iter)
+				{
+					auto c = *s;
+					auto get_array = [&](auto arg)
+					{
+						using raw_parameter = typename decltype(arg)::type;
+						return get_array_param(c, tid<raw_parameter>{});
+					};
+					auto arrays = hana::transform(parameter_list, get_array);
+					hana::unpack(std::move(arrays), std::forward<F>(f));
+				}
+			}
+		}
+
+		void shrink(const entity_filter& g, entity_type type)
+		{
+			auto iter = cont.query(g);
+			foriter(s, iter)
+				cont.shrink(*s, type.types);
+		}
+
+		template<class F> Requires(KernelFunction<std::decay_t<F>>)
+		void shrink(const entity_filter& g, entity_type type, F&& f)
+		{
+			auto iter = cont.query(g);
+			foriter(s, iter)
+			{
+				auto c = *s;
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(f));
+				cont.shrink(*s, type.types);
 			}
 		}
 	};
@@ -604,7 +698,7 @@ namespace ecs
 		KernelImpl(T&& t) : f(std::forward<T>(t)) {}
 		void Run(context* cont)
 		{
-			cont->for_each_chunk(filter, f);
+			cont->for_filter(filter, f);
 		}
 	};
 
