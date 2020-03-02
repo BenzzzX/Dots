@@ -89,8 +89,6 @@ namespace ecs
 
 		struct component_vtable
 		{
-			void(*serialize)(char* data, serializer_i* stream) = nullptr;
-			void(*deserialize)(char* data, deserializer_i* stream) = nullptr;
 			void(*patch)(char* data, patcher_i* stream) = nullptr;
 		};
 

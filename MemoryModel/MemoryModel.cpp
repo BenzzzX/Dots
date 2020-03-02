@@ -874,10 +874,10 @@ context::archetype* context::deserialize_archetype(serializer_i* s)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* stream)
+std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* s)
 {
 	uint16_t count;
-	stream->stream(&count, sizeof(uint16_t));
+	s->stream(&count, sizeof(uint16_t));
 	if (count == 0)
 		return {};
 	chunk* c;
@@ -893,9 +893,9 @@ std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i
 	}
 	uint16_t start = c->count;
 	resize_chunk(c, start + count);
-	chunk_slice s = { c, start, count };
-	chunk::deserialize(s, stream);
-	return s;
+	chunk_slice slice = { c, start, count };
+	chunk::deserialize(slice, s);
+	return slice;
 }
 
 struct linear_patcher : patcher_i

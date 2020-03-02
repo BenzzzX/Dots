@@ -169,7 +169,7 @@ namespace ecs
 
 			static void serialize_archetype(archetype* g, serializer_i* s);
 			archetype* deserialize_archetype(serializer_i* s);
-			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* stream);
+			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
 
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
@@ -249,7 +249,7 @@ namespace ecs
 			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
-			static void deserialize(chunk_slice s, deserializer_i* stream);
+			static void deserialize(chunk_slice s, serializer_i* stream);
 			void link(chunk*) noexcept;
 			void unlink() noexcept;
 			char* data() { return (char*)(this + 1); }
