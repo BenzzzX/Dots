@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include "Set.h"
-namespace ecs
+namespace core
 {
 	struct entity
 	{
@@ -21,7 +21,7 @@ namespace ecs
 		}
 	};
 
-	namespace memory_model
+	namespace database
 	{
 		class tagged_index
 		{

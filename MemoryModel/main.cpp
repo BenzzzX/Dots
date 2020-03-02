@@ -24,7 +24,7 @@ struct test_meta
 	int v;
 };
 
-using namespace ecs::memory_model;
+using namespace core::database;
 
 uint16_t disable_id;
 uint16_t cleanup_id;
@@ -56,8 +56,8 @@ struct initialzie
 #define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
 constexpr uint32_t size = 10000000;
 constexpr uint32_t size2 = 100000;
-static ecs::entity es[size];
-static ecs::entity ess[size2];
+static core::entity es[size];
+static core::entity ess[size2];
 int main()
 { 
 	initialzie _;

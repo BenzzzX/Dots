@@ -7,9 +7,9 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
-namespace ecs
+namespace core
 {
-	namespace memory_model
+	namespace database
 	{
 		class context;
 		struct chunk;

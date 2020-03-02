@@ -16,8 +16,8 @@ struct guard
 template<typename F>
 guard(F&&)->guard<std::remove_reference_t<F>>;
 
-using namespace ecs;
-using namespace memory_model;
+using namespace core;
+using namespace database;
 
 struct type_data
 {
@@ -29,9 +29,9 @@ struct type_data
 	component_vtable vtable;
 };
 
-index_t ecs::memory_model::disable_id = 0;
-index_t ecs::memory_model::cleanup_id = 1;
-index_t ecs::memory_model::group_id = 1;
+index_t core::database::disable_id = 0;
+index_t core::database::cleanup_id = 1;
+index_t core::database::group_id = 1;
 
 struct global_data
 {
@@ -69,12 +69,12 @@ component_vtable& set_vtable(index_t m)
 	return gd.infos[m].vtable;
 }
 
-void memory_model::set_meta_release_function(std::function<void(metakey)> func)
+void database::set_meta_release_function(std::function<void(metakey)> func)
 {
 	gd.release_metatype = std::move(func);
 }
 
-index_t memory_model::register_type(component_desc desc)
+index_t database::register_type(component_desc desc)
 {
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
