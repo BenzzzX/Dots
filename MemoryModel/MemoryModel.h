@@ -207,7 +207,7 @@ namespace ecs
 			void patch_chunk(chunk* c, const entity* patch, uint32_t count);
 
 			static void serialize(context& cont, serializer_i* s);
-			static void deserialize(context& cont, deserializer_i* s);
+			static void deserialize(context& cont, deserializer_i* s, entity* ret = nullptr);
 			static void serialize_prefab(prefab p, serializer_i *s);
 			static prefab deserialize_prefab(context& cont, deserializer_i* s);
 

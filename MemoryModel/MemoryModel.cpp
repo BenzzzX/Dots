@@ -1260,13 +1260,23 @@ void context::serialize(context& cont, serializer_i* s)
 	s->write(0, sizeof(uint16_t));
 }
 
-void context::deserialize(context& cont, deserializer_i* s)
+void context::deserialize(context& cont, deserializer_i* s, entity* ret)
 {
 	uint32_t start, count;
 	s->read(&start, sizeof(uint32_t));
 	s->read(&count, sizeof(uint32_t));
 
-	adaptive_array(entity, patch, count);
+	bool needFree = false;
+	entity* patch;
+	if (ret != nullptr)
+		patch = ret;
+	else if (count * sizeof(entity) <= 1024 * 4) 
+		patch = (entity*)alloca(count * sizeof(entity));
+	else
+	{
+		needFree = true;
+		patch = (entity*)malloc(count * sizeof(entity));
+	}
 
 	forloop(i, 0, count)
 		patch[i] = cont.ents.new_entity();
@@ -1287,6 +1297,9 @@ void context::deserialize(context& cont, deserializer_i* s)
 		}
 		s->read(&tlength, sizeof(uint16_t));
 	}
+
+	if (needFree)
+		::free(patch);
 }
 
 prefab context::deserialize_prefab(context& cont, deserializer_i* s)
@@ -1295,7 +1308,15 @@ prefab context::deserialize_prefab(context& cont, deserializer_i* s)
 	s->read(&start, sizeof(uint32_t));
 	s->read(&count, sizeof(uint32_t));
 
-	adaptive_array(entity, patch, count);
+	bool needFree = false;
+	entity* patch;
+	if (count * sizeof(entity) <= 1024 * 4)
+		patch = (entity*)alloca(count * sizeof(entity));
+	else
+	{
+		needFree = true;
+		patch = (entity*)malloc(count * sizeof(entity));
+	}
 
 	forloop(i, 0, count)
 		patch[i] = cont.ents.new_prefab();
@@ -1320,6 +1341,9 @@ prefab context::deserialize_prefab(context& cont, deserializer_i* s)
 	}
 
 	prefab ret{ &cont, patch[0], count };
+
+	if (needFree)
+		::free(patch);
 
 	return ret;
 }
