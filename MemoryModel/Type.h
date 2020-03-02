@@ -70,14 +70,9 @@ namespace ecs
 
 		struct serializer_i
 		{
-			virtual void write(const void* data, uint32_t bytes) = 0;
-			virtual void writemeta(metakey metatype) = 0;
-		};
-
-		struct deserializer_i
-		{
-			virtual void read(void* data, uint32_t bytes) = 0;
-			virtual index_t readmeta(index_t type) = 0;
+			virtual void stream(const void* data, uint32_t bytes) = 0;
+			virtual void streammeta(metakey* metatype) = 0;
+			virtual bool is_serialize() = 0;
 		};
 
 		struct patcher_i

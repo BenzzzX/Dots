@@ -168,15 +168,15 @@ namespace ecs
 			void release_reference(archetype* g);
 
 			static void serialize_archetype(archetype* g, serializer_i* s);
-			archetype* deserialize_archetype(deserializer_i* s);
-			std::optional<chunk_slice> deserialize_slice(archetype* g, deserializer_i* stream);
+			archetype* deserialize_archetype(serializer_i* s);
+			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* stream);
 
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);
-			entity deserialize_single(deserializer_i* s);
+			entity deserialize_single(serializer_i* s);
 
 			friend chunk;
 			friend batch_iterator;
@@ -211,7 +211,7 @@ namespace ecs
 
 			//as prefab
 			void serialize(serializer_i* s, entity);
-			void deserialize(deserializer_i* s, entity*, uint32_t times = 1);
+			void deserialize(serializer_i* s, entity*, uint32_t times = 1);
 
 			//multi context
 			void move_context(context& src, entity* patch, uint32_t count);
@@ -219,7 +219,7 @@ namespace ecs
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
 			void serialize(serializer_i* s);
-			void deserialize(deserializer_i* s, entity* ret);
+			void deserialize(serializer_i* s, entity* ret);
 
 
 

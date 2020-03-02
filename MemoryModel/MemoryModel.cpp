@@ -337,114 +337,27 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 }
 
 //TODO: handle transient data?
-void chunk::serialize(chunk_slice s, serializer_i *stream)
+void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
 	context::archetype* type = s.c->type;
 	uint16_t* offsets = type->offsets();
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
-	stream->write(&s.count, sizeof(uint16_t));
-
-	uint16_t maxSize = 0;
-	forloop(i, 0, type->firstTag)
-		maxSize = std::max(maxSize, sizes[i]);
+	stream->stream(&s.count, sizeof(uint16_t));
 
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		stream->write(arr, sizes[i] * s.count);
-	}
-
-	forloop(i, 0, type->firstBuffer)
-	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.serialize;
-		if (f == nullptr)
-			continue;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-			f(arr + j * sizes[i], stream);
+		stream->stream(arr, sizes[i] * s.count);
 	}
 
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.serialize;
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
 			buffer* b = (buffer*)(arr + j * sizes[i]);
-			stream->write(b->data(), b->size);
-		}
-		if (f == nullptr)
-			continue;
-
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			uint16_t n = b->size / info.elementSize;
-			forloop(l, 0, n)
-			{
-				char* data = b->data() + info.elementSize * l;
-				f(data, stream);
-			}
-		}
-		
-	}
-}
-
-void chunk::deserialize(chunk_slice s, deserializer_i* stream)
-{
-	context::archetype* type = s.c->type;
-	uint16_t* offsets = type->offsets();
-	uint16_t* sizes = type->sizes();
-	tagged_index* types = (tagged_index*)type->types();
-
-	forloop(i, 0, type->firstTag)
-	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		stream->read(arr, sizes[i] * s.count);
-	}
-
-	forloop(i, 0, type->firstBuffer)
-	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.deserialize;
-		if (f == nullptr)
-			continue;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-			f(arr + j * sizes[i], stream);
-	}
-
-	forloop(i, type->firstBuffer, type->firstTag)
-	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.deserialize;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			stream->read(b->data(), b->size);
-		}
-
-		if (f == nullptr)
-			continue;
-
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			uint16_t n = b->size / info.elementSize;
-			forloop(l, 0, n)
-			{
-				char* data = b->data() + info.elementSize * l;
-				f(data, stream);
-			}
+			stream->stream(b->data(), b->size);
 		}
 	}
 }
@@ -913,15 +826,18 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 {
 	entity_type type = g->get_type();
 	uint16_t tlength = type.types.length, mlength = type.metatypes.length;
-	s->write(&tlength, sizeof(uint16_t));
+	s->stream(&tlength, sizeof(uint16_t));
 	forloop(i, 0, tlength)
-		s->write(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
-	s->write(&mlength, sizeof(uint16_t));
+		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
+	s->stream(&mlength, sizeof(uint16_t));
 	forloop(i, 0, mlength)
-		s->writemeta({ type.types[tlength - mlength + i], type.metatypes[i] });
+	{
+		metakey key = { type.types[tlength - mlength + i], type.metatypes[i] };
+		s->streammeta(&key);
+	}
 }
 
-context::archetype* context::deserialize_archetype(deserializer_i* s)
+context::archetype* context::deserialize_archetype(serializer_i* s)
 {
 	uint16_t tlength;
 	stack_array(index_t, types, tlength);
@@ -930,16 +846,20 @@ context::archetype* context::deserialize_archetype(deserializer_i* s)
 	forloop(i, 0, tlength)
 	{
 		size_t hash;
-		s->read(&hash, sizeof(size_t));
+		s->stream(&hash, sizeof(size_t));
 		//TODO: check validation
 		types[i] = gd.hash2type[hash];
 	}
 	uint16_t mlength;
-	s->read(&mlength, sizeof(uint16_t));
+	s->stream(&mlength, sizeof(uint16_t));
 	stack_array(index_t, metatypes, mlength);
-	s->read(metatypes, mlength);
+	s->stream(metatypes, mlength);
 	forloop(i, 0, mlength)
-		metatypes[i] = s->readmeta({ types[tlength - mlength + i] });
+	{
+		metakey key{ types[tlength - mlength + i] , 0 };
+		s->streammeta(&key);
+		metatypes[i] = key.metatype;
+	}
 	std::sort(types, types + tlength - mlength);
 
 	index_t* arr = types + tlength - mlength;
@@ -954,10 +874,10 @@ context::archetype* context::deserialize_archetype(deserializer_i* s)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> context::deserialize_slice(archetype* g, deserializer_i* stream)
+std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* stream)
 {
 	uint16_t count;
-	stream->read(&count, sizeof(uint16_t));
+	stream->stream(&count, sizeof(uint16_t));
 	if (count == 0)
 		return {};
 	chunk* c;
@@ -1109,7 +1029,7 @@ void context::serialize_single(serializer_i* s, entity src)
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
-entity context::deserialize_single(deserializer_i* s)
+entity context::deserialize_single(serializer_i* s)
 {
 	auto *g = deserialize_archetype(s);
 	auto slice = deserialize_slice(g, s);
@@ -1385,7 +1305,7 @@ void context::serialize(serializer_i* s, entity src)
 	}
 }
 
-void context::deserialize(deserializer_i* s, entity* ret, uint32_t times)
+void context::deserialize(serializer_i* s, entity* ret, uint32_t times)
 {
 	entity src = deserialize_single(s);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
@@ -1477,8 +1397,8 @@ struct Data
 void context::serialize(serializer_i* s)
 {
 	const uint32_t start = 0;
-	s->write(&start, sizeof(uint32_t));
-	s->write(&ents.size, sizeof(uint32_t));
+	s->stream(&start, sizeof(uint32_t));
+	s->stream(&ents.size, sizeof(uint32_t));
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
@@ -1487,9 +1407,9 @@ void context::serialize(serializer_i* s)
 		for (chunk* c = g->firstChunk; c; c= c->next)
 			chunk::serialize({ c, 0, c->count }, s);
 
-		s->write(0, sizeof(uint16_t));
+		s->stream(0, sizeof(uint16_t));
 	}
-	s->write(0, sizeof(uint16_t));
+	s->stream(0, sizeof(uint16_t));
 }
 
 entity linear_patcher::patch(entity e)
@@ -1497,11 +1417,11 @@ entity linear_patcher::patch(entity e)
 	patch_entity(e, start, target, count);
 }
 
-void context::deserialize(deserializer_i* s, entity* ret)
+void context::deserialize(serializer_i* s, entity* ret)
 {
 	uint32_t start, count;
-	s->read(&start, sizeof(uint32_t));
-	s->read(&count, sizeof(uint32_t));
+	s->stream(&start, sizeof(uint32_t));
+	s->stream(&count, sizeof(uint32_t));
 
 	bool needFree = false;
 	entity* patch;
