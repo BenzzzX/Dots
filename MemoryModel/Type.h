@@ -13,6 +13,8 @@ namespace ecs
 		uint32_t id;
 		uint32_t version;
 
+		static entity Invalid;
+
 		bool operator==(const entity& e) const
 		{
 			return id == e.id && version == e.version;
@@ -25,23 +27,20 @@ namespace ecs
 		{
 			index_t id;
 
-			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 5;
+			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 4;
 			static constexpr index_t mask = (index_t(2) << offset) - 1;
 		public:
 			constexpr index_t index() const noexcept { return id & mask; }
-			constexpr bool is_internal() const noexcept { return (id >> offset) & 1; }
-			constexpr bool is_managed() const noexcept { return (id >> (offset + 1)) & 1; }
-			constexpr bool is_buffer() const noexcept { return (id >> (offset + 2)) & 1; }
-			constexpr bool is_tag() const noexcept { return (id >> (offset + 3)) & 1; }
-			constexpr bool is_meta() const noexcept { return (id >> (offset + 4)) & 1; }
+			constexpr bool is_buffer() const noexcept { return (id >> (offset + 1)) & 1; }
+			constexpr bool is_tag() const noexcept { return (id >> (offset + 2)) & 1; }
+			constexpr bool is_meta() const noexcept { return (id >> (offset + 3)) & 1; }
 
 			constexpr tagged_index(index_t value = 0) noexcept :id(value) { }
-			constexpr tagged_index(index_t a, bool b, bool c, bool d, bool e, bool f) noexcept
+			constexpr tagged_index(index_t a, bool b, bool c, bool d, bool e) noexcept
 				: id(a | ((index_t)b << offset) |
 					((index_t)c << (offset + 1)) |
 					((index_t)d << (offset + 2)) |
-					((index_t)e << (offset + 3)) |
-					((index_t)e << (offset + 4))) { }
+					((index_t)e << (offset + 3))) { }
 
 			constexpr operator index_t() const { return id; }
 		};
@@ -81,34 +80,55 @@ namespace ecs
 			virtual index_t readmeta(index_t type) = 0;
 		};
 
-		struct managed_rtti
+		struct patcher_i
 		{
-			void(*copy)(char* dst, const char* src) = nullptr;
-			void(*destructor)(char* data) = nullptr;
+			virtual entity patch(entity e) = 0;
+			virtual void move() {}
+			virtual void reset() {}
+		};
+
+		struct group
+		{
+			entity e;
+		};
+
+		struct component_vtable
+		{
 			void(*serialize)(char* data, serializer_i* stream) = nullptr;
 			void(*deserialize)(char* data, deserializer_i* stream) = nullptr;
+			void(*patch)(char* data, patcher_i* stream) = nullptr;
+		};
+
+		enum track_state : uint8_t
+		{
+			Valid = 0,
+			Copying = 1,
+			NeedCopying = 2,
+			NeedCleaning = 4,
+			NeedCC = 6
 		};
 
 		struct component_desc
 		{
-			bool isInsternal = false;
+			bool isManaged = false;
 			bool isElement = false;
 			bool isMeta = false; 
-			bool isManaged = false;
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			intptr_t* entityRefs = nullptr; 
 			uint16_t entityRefCount = 0;
-			managed_rtti rtti;
+			bool need_copy = false;
+			bool need_clean = false;
+			component_vtable vtable;
 		};
 
-		using metatype_release_callback_t = void(*)(metakey);
 		index_t register_type(component_desc desc);
+		void set_meta_release_function(std::function<void(metakey)> func);
 
 		extern index_t disable_id;
 		extern index_t cleanup_id;
-		void register_metatype_release_callback(metatype_release_callback_t callback);
+		extern index_t group_id;
 
 		struct buffer
 		{
@@ -186,12 +206,6 @@ namespace ecs
 				}
 			};
 
-			bool valid_for_filter() const
-			{
-				typeset mt = { metatypes.metaData,metatypes.length };
-				return types.all(mt);
-			}
-
 			bool valid_for_entity() const
 			{
 				if (types.length == 0)
@@ -241,7 +255,6 @@ namespace ecs
 
 			typeset changed;
 			size_t prevVersion;
-			bool includeDisabled;
 
 			struct hash
 			{
@@ -255,7 +268,6 @@ namespace ecs
 					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
 					hash = hash_array(key.changed.data, key.changed.length, hash);
 					hash = hash_array(&key.prevVersion, 1, hash);
-					hash ^= key.includeDisabled;
 					return hash;
 				}
 			};
@@ -265,8 +277,7 @@ namespace ecs
 				return all == other.all && any == other.any && 
 					none == other.any && all.metatypes == other.all.metatypes &&
 					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes &&
-					changed == other.changed && prevVersion == prevVersion &&
-					includeDisabled == other.includeDisabled;
+					changed == other.changed && prevVersion == prevVersion
 			}
 
 			bool match_chunk(const entity_type& t, uint32_t* versions) const
@@ -284,10 +295,8 @@ namespace ecs
 				return i == changed.length;
 			}
 
-			bool match(const entity_type& t, bool disabled) const
+			bool match(const entity_type& t) const
 			{
-				if (disabled > includeDisabled)
-					return false;
 
 				if (!t.types.all(all.types))
 					return false;
