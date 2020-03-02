@@ -1037,6 +1037,24 @@ entity context::deserialize_single(serializer_i* s)
 	return slice->c->get_entities()[slice->start];
 }
 
+void context::destroy_single(chunk_slice s)
+{
+	archetype* g = s.c->type;
+	if (g->cleaning)
+		return;
+
+	g = get_cleaning(g);
+	if (g == nullptr)
+	{
+		ents.free_entities(s);
+		free_slice(s);
+	}
+	else
+	{
+		cast_slice(s, g);
+	}
+}
+
 void context::destroy_chunk(archetype* g, chunk* c)
 {
 	remove_chunk(g, c);
@@ -1129,7 +1147,6 @@ context::alloc_iterator context::allocate(const entity_type& type, entity* ret, 
 
 void context::instantiate(entity src, entity* ret, uint32_t count)
 {
-	//todo: group
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
 		instantiate_single(src, ret, count);
@@ -1159,21 +1176,25 @@ context::chunk_iterator context::query(const entity_filter& type)
 
 void context::destroy(chunk_slice s)
 {
-	//todo: group
 	archetype* g = s.c->type;
-	if (g->cleaning)
-		return;
-
-	g = get_cleaning(g);
-	if (g == nullptr)
+	uint16_t id = g->index(group_id);
+	if (id != -1)
 	{
-		ents.free_entities(s);
-		free_slice(s);
+		uint16_t* sizes = g->sizes();
+		char* src = (s.c->data() + g->offsets()[id]);
+		forloop(i, 0, s.count)
+		{
+			auto* group_data = (buffer*)(src + i * sizes[i]);
+			uint16_t size = group_data->size / sizeof(entity);
+			forloop(j, 1, size)
+			{
+				entity e = ((entity*)group_data->data())[i];
+				auto& data = ents.datas[i];
+				destroy_single({ data.c, data.i, 1 });
+			}
+		}
 	}
-	else
-	{
-		cast_slice(s, g);
-	}
+	destroy_single(s);
 }
 
 void context::extend(chunk_slice s, const entity_type& type)
@@ -1331,9 +1352,20 @@ void context::deserialize(serializer_i* s, entity* ret, uint32_t times)
 	}
 }
 
-void context::move_context(context& src, entity* patch, uint32_t count)
+void context::move_context(context& src)
 {
-	//todo: fixme
+	auto& sents = src.ents;
+	uint32_t count = sents.size;
+	entity* patch = new entity[count];
+	forloop(i, 0, count)
+		if (sents.datas[i].c != nullptr)
+			patch[i] = ents.new_entity();
+
+	linear_patcher p;
+	p.start = 0;
+	p.target = patch;
+	p.count = count;
+	//todo: multithread?
 	for (auto& pair : src.archetypes)
 	{
 		archetype* g = pair.second;
@@ -1343,34 +1375,17 @@ void context::move_context(context& src, entity* patch, uint32_t count)
 			chunk* next = c->next;
 			add_chunk(dstG, c);
 			c = next;
+			patch_chunk(c, &p);
 		}
 		release_reference(g);
 		free(g);
 	}
 	src.archetypes.clear();
-	auto& sents = src.ents;
-	forloop(i, 0, count)
-		if (sents.datas[i].c != nullptr)
-			patch[i] = ents.new_entity();
 
 	sents.size = sents.free = sents.capacity = 0;
 	::free(sents.datas);
 	sents.datas = nullptr;
-}
-
-void context::move_chunk(context& src, chunk* c, entity* patch, uint32_t count)
-{
-	//todo: fixme
-	archetype* dstG = get_archetype(c->type->get_type());
-
-	src.ents.free_entities(c);
-	src.remove_chunk(c->type, c);
-
-	add_chunk(dstG, c);
-	entity* es = (entity*)c->data();
-	forloop(i, 0, c->count)
-		if(es[i].id < count)
-			patch[es[i].id] = ents.new_entity();
+	::free(patch);
 }
 
 void context::patch_chunk(chunk* c, patcher_i* patcher)
@@ -1473,7 +1488,7 @@ bool context::exist(entity e) const
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
 
-index_t ecs::memory_model::context::get_metatype(chunk* c, index_t t)
+index_t context::get_metatype(chunk* c, index_t t)
 {;
 	archetype* type = c->type;
 	uint16_t id = type->index(t);

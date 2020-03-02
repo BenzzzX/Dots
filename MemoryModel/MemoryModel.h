@@ -177,6 +177,7 @@ namespace ecs
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);
 			entity deserialize_single(serializer_i* s);
+			void destroy_single(chunk_slice);
 
 			friend chunk;
 			friend batch_iterator;
@@ -214,8 +215,7 @@ namespace ecs
 			void deserialize(serializer_i* s, entity*, uint32_t times = 1);
 
 			//multi context
-			void move_context(context& src, entity* patch, uint32_t count);
-			void move_chunk(context& src, chunk* c, entity* patch, uint32_t count);
+			void move_context(context& src);
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
 			void serialize(serializer_i* s);
