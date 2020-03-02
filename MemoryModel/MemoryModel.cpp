@@ -26,6 +26,7 @@ struct type_data
 	uint16_t elementSize;
 	uint32_t entityRefs;
 	uint16_t entityRefCount;
+	const char* name;
 	component_vtable vtable;
 };
 
@@ -47,9 +48,11 @@ struct global_data
 		component_desc desc{};
 		desc.size = 0;
 		desc.hash = 0;
+		desc.name = "cleaning";
 		cleanup_id = register_type(desc);
 		desc.size = 0;
 		desc.hash = 1;
+		desc.name = "disabled";
 		disable_id = register_type(desc);
 		desc.size = sizeof(entity) * 5;
 		desc.hash = 2;
@@ -58,6 +61,7 @@ struct global_data
 		static intptr_t entityRefs[] = { (intptr_t)offsetof(group, e) };
 		desc.entityRefs = entityRefs;
 		desc.entityRefCount = 1;
+		desc.name = "group";
 		group_id = register_type(desc);
 	}
 };
@@ -86,7 +90,7 @@ index_t database::register_type(component_desc desc)
 	
 	uint16_t id = (uint16_t)gd.infos.size();
 	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.vtable };
+	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
 	if (desc.need_clean)
@@ -98,7 +102,7 @@ index_t database::register_type(component_desc desc)
 
 	id = (uint16_t)gd.infos.size();
 	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.vtable };
+	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.tracks.push_back(Copying);
 	gd.infos.push_back(i);
 	return id;

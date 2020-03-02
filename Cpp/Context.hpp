@@ -334,16 +334,17 @@ namespace core
 		using entity_type = database::entity_type;
 		using entity_filter = database::entity_filter;
 
-
-
-		inline auto do_nothing = []() {};
-
 		class context
 		{
 			database::context cont;
 
 		public:
 #define parm_slice(es) es.data(), (uint32_t)es.size()
+
+			database::context& get_raw()
+			{
+				return cont;
+			}
 
 			void instantiate(gsl::span<entity> es, entity proto)
 			{
@@ -403,6 +404,11 @@ namespace core
 				bool has(entity e)
 			{
 				return cont.has_component(e, typeof<T>);
+			}
+
+			entity_type get_type(entity e)
+			{
+				return cont.get_type(e);
 			}
 
 		private:
@@ -684,30 +690,6 @@ namespace core
 			database::index_t* dup = std::adjacent_find(type.arr, type.arr + sizeof...(Cs) + sizeof...(Ms));
 			assert(dup == type.arr + sizeof...(Cs) + sizeof...(Ms));
 			return type;
-		}
-
-		struct Kernel
-		{
-			entity_filter filter;
-			virtual void Run(context*) = 0;
-		};
-
-		template<class F>
-		struct KernelImpl : Kernel
-		{
-			F f;
-			template<class T>
-			KernelImpl(T&& t) : f(std::forward<T>(t)) {}
-			void Run(context* cont)
-			{
-				cont->for_filter(filter, f);
-			}
-		};
-
-		template<class F> Requires(KernelFunction<std::decay_t<F>>)
-			Kernel* for_each_chunk(F&& action)
-		{
-			return new KernelImpl<std::decay_t<F>>{ std::forward<F>(action) };
 		}
 
 		template<class T>

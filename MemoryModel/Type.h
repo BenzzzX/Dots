@@ -114,6 +114,7 @@ namespace core
 			bool need_copy = false;
 			bool need_clean = false;
 			component_vtable vtable;
+			const char* name = nullptr;
 		};
 
 		index_t register_type(component_desc desc);
