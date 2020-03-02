@@ -219,7 +219,7 @@ namespace ecs
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
 			void serialize(serializer_i* s);
-			void deserialize(deserializer_i* s);
+			void deserialize(deserializer_i* s, entity* ret);
 
 
 

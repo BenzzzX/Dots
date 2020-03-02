@@ -5,12 +5,6 @@
 #define stack_array(type, name, size) \
 type* name = (type*)alloca((size) * sizeof(type))
 
-#define adaptive_array(type, name, size) \
-type* name; \
-if ((size) * sizeof(type) <= 1024*4) name = (type*)alloca((size) * sizeof(type)); \
-else name = (type*)malloc((size) * sizeof(type)); \
-guard guard##__LINE__ {[&]{if((size) * sizeof(type) > 1024*4) ::free(name);}}
-
 entity entity::Invalid{ -1, -1 };
 
 template<typename F>
@@ -354,8 +348,6 @@ void chunk::serialize(chunk_slice s, serializer_i *stream)
 	uint16_t maxSize = 0;
 	forloop(i, 0, type->firstTag)
 		maxSize = std::max(maxSize, sizes[i]);
-
-	adaptive_array(char, temp, maxSize);
 
 	forloop(i, 0, type->firstTag)
 	{
@@ -1505,13 +1497,23 @@ entity linear_patcher::patch(entity e)
 	patch_entity(e, start, target, count);
 }
 
-void context::deserialize(deserializer_i* s)
+void context::deserialize(deserializer_i* s, entity* ret)
 {
 	uint32_t start, count;
 	s->read(&start, sizeof(uint32_t));
 	s->read(&count, sizeof(uint32_t));
 
-	adaptive_array(entity, patch, count);
+	bool needFree = false;
+	entity* patch;
+	if (ret != nullptr)
+		patch = ret;
+	else if (count * sizeof(entity) <= 1024 * 4)
+		patch = (entity*)alloca(count * sizeof(entity));
+	else
+	{
+		needFree = true;
+		patch = (entity*)malloc(count * sizeof(entity));
+	}
 
 	forloop(i, 0, count)
 		patch[i] = ents.new_entity();
@@ -1524,6 +1526,10 @@ void context::deserialize(deserializer_i* s)
 	for(archetype* g = deserialize_archetype(s); g!=nullptr; g = deserialize_archetype(s))
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
+
+
+	if (needFree)
+		::free(patch);
 }
 
 index_t context::get_metatype(entity e, index_t t)
