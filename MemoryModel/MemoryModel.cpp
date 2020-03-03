@@ -1418,6 +1418,28 @@ void context::serialize(serializer_i* s)
 	const uint32_t start = 0;
 	s->stream(&start, sizeof(uint32_t));
 	s->stream(&ents.size, sizeof(uint32_t));
+	
+	//hack: save entity validation instead of patch all data
+	//trade space for time
+	auto size = ents.size / 4 + 1;
+	bool needFree = false;
+	char* bitset;
+	if (size < 1024 * 4)
+		bitset = (char*)alloca(size);
+	else
+	{
+		needFree = true;
+		bitset = (char*)malloc(size);
+	}
+	memset(bitset, 0, size);
+
+	forloop(i, 0, ents.size)
+		if (ents.datas[i].c != nullptr)
+		{
+			bitset[i/4] |= (1<<i%4);
+		}
+	s->stream(bitset, size);
+
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
@@ -1429,6 +1451,9 @@ void context::serialize(serializer_i* s)
 		s->stream(0, sizeof(uint16_t));
 	}
 	s->stream(0, sizeof(uint16_t));
+
+	if(needFree)
+		::free(bitset);
 }
 
 entity linear_patcher::patch(entity e)
@@ -1441,8 +1466,9 @@ void context::deserialize(serializer_i* s, entity* ret)
 	uint32_t start, count;
 	s->stream(&start, sizeof(uint32_t));
 	s->stream(&count, sizeof(uint32_t));
+	auto size = count / 4 + 1;
 
-	bool needFree = false;
+	bool needFree = false, needFreeB = false;
 	entity* patch;
 	if (ret != nullptr)
 		patch = ret;
@@ -1454,8 +1480,21 @@ void context::deserialize(serializer_i* s, entity* ret)
 		patch = (entity*)malloc(count * sizeof(entity));
 	}
 
+	char* bitset;
+	if (size < 1024 * 4)
+		bitset = (char*)alloca(size);
+	else
+	{
+		needFreeB = true;
+		bitset = (char*)malloc(size);
+	}
+	s->stream(bitset, size);
+
 	forloop(i, 0, count)
-		patch[i] = ents.new_entity();
+		if (bitset[i / 4] & (1 << (i % 4)) != 0)
+			patch[i] = ents.new_entity();
+		else
+			patch[i] = entity::Invalid;
 	linear_patcher patcher;
 	patcher.start = start;
 	patcher.target = patch;
@@ -1466,9 +1505,10 @@ void context::deserialize(serializer_i* s, entity* ret)
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
 
-
 	if (needFree)
 		::free(patch);
+	if (needFreeB)
+		::free(bitset);
 }
 
 index_t context::get_metatype(entity e, index_t t)
