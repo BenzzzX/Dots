@@ -37,6 +37,8 @@ namespace ecs
 				uint16_t firstMeta;
 				uint16_t firstBuffer;
 				uint16_t chunkCapacity;
+				uint32_t timestamp;
+				uint32_t size;
 				bool disabled;
 				bool cleaning;
 				bool withTracked;
@@ -54,7 +56,7 @@ namespace ecs
 				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount ); }
 				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t)); }
 				inline index_t* metatypes() noexcept { return (index_t*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
-				inline uint32_t* versions(chunk* c) noexcept;
+				inline uint32_t* timestamps(chunk* c) noexcept;
 				inline uint16_t index(index_t type) noexcept;
 
 				inline entity_type get_type();
@@ -111,7 +113,8 @@ namespace ecs
 				chunk* currc;
 				archetypes_t::iterator currg;
 				entity_filter filter;
-
+				
+				void fetch_next();
 				std::optional<chunk*> next();
 			};
 			
@@ -152,7 +155,7 @@ namespace ecs
 			archetype* get_extending(archetype*, const entity_type&);
 			archetype* get_shrinking(archetype*, const typeset&);
 
-			static void add_chunk(archetype* g, chunk* c);
+			void add_chunk(archetype* g, chunk* c);
 			void remove_chunk(archetype* g, chunk* c);
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
@@ -177,22 +180,35 @@ namespace ecs
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);
 			entity deserialize_single(deserializer_i* s);
+			void structural_change(archetype* g, chunk* c, int32_t count);
 
 			friend chunk;
 			friend batch_iterator;
 			friend chunk_iterator;
 		public:
+			context(index_t typeCapacity = 4096u);
 			~context();
 			//create
 			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
 			void instantiate(entity src, entity* ret, uint32_t count = 1);
 
-			//modify(batched)
+			//batched stuctural change
 			void destroy(chunk_slice);
 			void extend(chunk_slice, const entity_type& type);
-			void shrink(chunk_slice, const typeset& type);
+			void shrink(chunk_slice, const entity_type& type);
 			void cast(chunk_slice, const entity_type& type);
 			void cast(chunk_slice, archetype* g);
+
+			//stuctural change
+			void destroy(entity* es, int32_t count);
+			void destroy(const entity_filter& filter);
+			void extend(entity* es, int32_t count, const entity_type& type);
+			void extend(const entity_filter& filter, const entity_type& type);
+			void shrink(entity* es, int32_t count, const entity_type& type);
+			void shrink(const entity_filter& filter, const entity_type& type);
+			void cast(entity* es, int32_t count, const entity_type& type);
+			void cast(const entity_filter& filter, const entity_type& type);
+			//update
 			void* get_component_rw(entity, index_t type);
 
 			//query
@@ -222,8 +238,8 @@ namespace ecs
 			void deserialize(deserializer_i* s);
 
 
-
-			uint32_t version;
+			uint32_t *typeTimestamps;
+			uint32_t timestamp;
 		};
 
 		struct chunk
@@ -239,7 +255,7 @@ namespace ecs
 				.
 				.
 				.
-			uint32_t versions[firstTag];
+			uint32_t timestamps[firstTag];
 			*/
 
 			static void construct(chunk_slice) noexcept;
@@ -259,7 +275,7 @@ namespace ecs
 		public:
 			uint16_t get_count() { return count; }
 			const entity* get_entities() const { return (entity*)data(); }
-			uint32_t get_version(index_t type) noexcept;
+			uint32_t get_timestamp(index_t type) noexcept;
 		};
 
 		//system overhead

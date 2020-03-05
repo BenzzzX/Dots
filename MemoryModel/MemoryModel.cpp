@@ -11,7 +11,8 @@ if ((size) * sizeof(type) <= 1024*4) name = (type*)alloca((size) * sizeof(type))
 else name = (type*)malloc((size) * sizeof(type)); \
 guard guard##__LINE__ {[&]{if((size) * sizeof(type) > 1024*4) ::free(name);}}
 
-entity entity::Invalid{ -1, -1 };
+entity entity::Invalid{ -1, -1 }; 
+uint32_t memory_model::metaTimestamp;
 
 template<typename F>
 struct guard
@@ -38,6 +39,12 @@ struct type_data
 index_t ecs::memory_model::disable_id = 0;
 index_t ecs::memory_model::cleanup_id = 1;
 index_t ecs::memory_model::group_id = 1;
+
+struct metainfo
+{
+	uint32_t refCount = 0;
+	uint32_t timestamp = 0;
+};
 
 struct global_data
 {
@@ -135,11 +142,11 @@ void chunk::unlink() noexcept
 	prev = next = nullptr;
 }
 
-uint32_t chunk::get_version(index_t t) noexcept
+uint32_t chunk::get_timestamp(index_t t) noexcept
 {
 	uint16_t id = type->index(t);
 	if (id == -1) return 0;
-	return type->versions(this)[id];
+	return type->timestamps(this)[id];
 }
 
 void chunk::move(chunk_slice dst, uint16_t srcIndex) noexcept
@@ -543,7 +550,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 	}
 }
 
-inline uint32_t* context::archetype::versions(chunk* c) noexcept { return (uint32_t*)(c->data() + kChunkBufferSize) - firstTag; }
+inline uint32_t* context::archetype::timestamps(chunk* c) noexcept { return (uint32_t*)(c->data() + kChunkBufferSize) - firstTag; }
 
 uint16_t context::archetype::index(index_t type) noexcept
 {
@@ -618,6 +625,8 @@ context::archetype* context::get_archetype(const entity_type& key)
 	g->disabled = false;
 	g->withTracked = false;
 	g->zerosize = false;
+	g->size = 0;
+	g->timestamp = timestamp;
 	g->lastChunk = g->firstChunk = g->firstFree = nullptr;
 	index_t* types = g->types();
 	index_t* metatypes = g->metatypes();
@@ -848,6 +857,7 @@ chunk* context::new_chunk(archetype* g)
 
 void context::add_chunk(archetype* g, chunk* c)
 {
+	structural_change(g, c, c->count);
 	c->type = g;
 	if (g->firstChunk == nullptr)
 	{
@@ -870,6 +880,7 @@ void context::add_chunk(archetype* g, chunk* c)
 
 void context::remove_chunk(archetype* g, chunk* c)
 {
+	structural_change(g, c, -c->count);
 	chunk* h = g->firstChunk;
 	if (c == g->firstFree) 
 		g->firstFree = c->next;
@@ -1117,6 +1128,31 @@ void context::serialize_single(serializer_i* s, entity src)
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
+void context::structural_change(archetype* g, chunk* c, int32_t count)
+{
+	entity_type t = g->get_type();
+	
+	g->size += count;
+	if (g->timestamp != timestamp)
+	{
+		g->timestamp = timestamp;
+		forloop(i, 0, t.types.length)
+		{
+			auto type = (tagged_index)t.types[i];
+			typeTimestamps[type.index()] = timestamp;
+		}
+		//todo: meta type timestamp£¿
+
+		forloop(i, 0, t.metatypes.length)
+		{
+			metakey key{ t.metatypes.metaData[i], t.metatypes[i] };
+			gd.metainfos[key].timestamp = metaTimestamp;
+		}
+	}
+	forloop(i, 0, t.types.length)
+		g->timestamps(c)[i] = timestamp;
+}
+
 entity context::deserialize_single(deserializer_i* s)
 {
 	auto *g = deserialize_archetype(s);
@@ -1154,6 +1190,7 @@ chunk_slice context::allocate_slice(archetype* g, uint32_t count)
 	chunk* c = g->firstFree;
 	if (c == nullptr)
 		c = new_chunk(g);
+	structural_change(g, c, count);
 	uint16_t start = c->count;
 	uint16_t allocated = std::min(count, uint32_t(g->chunkCapacity - start));
 	resize_chunk(c, start + allocated);
@@ -1162,6 +1199,8 @@ chunk_slice context::allocate_slice(archetype* g, uint32_t count)
 
 void context::free_slice(chunk_slice s)
 {
+	archetype* g = s.c->type;
+	structural_change(g, s.c, -s.count);
 	uint16_t toMoveCount = std::min(s.count, uint16_t(s.c->count - s.start - s.count));
 	if (toMoveCount > 0)
 	{
@@ -1174,6 +1213,8 @@ void context::free_slice(chunk_slice s)
 
 void context::cast_slice(chunk_slice src, archetype* g) 
 {
+	archetype* srcG = src.c->type;
+	structural_change(srcG, src.c, -src.count);
 	uint16_t k = 0;
 	while (k < src.count)
 	{
@@ -1185,8 +1226,15 @@ void context::cast_slice(chunk_slice src, archetype* g)
 	free_slice(src);
 }
 
+context::context(index_t typeCapacity)
+{
+	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
+	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+}
+
 context::~context()
 {
+	free(typeTimestamps);
 	for (auto& g : archetypes)
 	{
 		chunk* c = g.second->firstChunk;
@@ -1206,13 +1254,13 @@ context::~context()
 
 context::alloc_iterator context::allocate(const entity_type& type, entity* ret, uint32_t count)
 {
-	alloc_iterator iterator;
-	iterator.ret = ret;
-	iterator.count = count;
-	iterator.cont = this;
-	iterator.g = get_archetype(type);
-	iterator.k = 0;
-	return iterator;
+	alloc_iterator i;
+	i.ret = ret;
+	i.count = count;
+	i.cont = this;
+	i.g = get_archetype(type);
+	i.k = 0;
+	return i;
 }
 
 void context::instantiate(entity src, entity* ret, uint32_t count)
@@ -1273,10 +1321,10 @@ void context::extend(chunk_slice s, const entity_type& type)
 		cast(s, g);
 }
 
-void context::shrink(chunk_slice s, const typeset& type)
+void context::shrink(chunk_slice s, const entity_type& type)
 {
 
-	archetype* g = get_shrinking(s.c->type, type);
+	archetype* g = get_shrinking(s.c->type, type.types);
 	if(g == nullptr)
 		free_slice(s);
 	else
@@ -1321,6 +1369,63 @@ void context::cast(chunk_slice s, archetype* g)
 		cast_slice(s, g);
 }
 
+#define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
+void context::destroy(entity* es, int32_t count)
+{
+	auto iter = batch(es, count);
+	foriter(s, iter)
+		destroy(*s);
+}
+
+void context::destroy(const entity_filter& filter)
+{
+	auto iter = query(filter);
+	foriter(s, iter)
+		destroy(*s);
+}
+
+void context::extend(entity* es, int32_t count, const entity_type& type)
+{
+	auto iter = batch(es, count);
+	foriter(s, iter)
+		extend(*s, type);
+}
+
+void context::extend(const entity_filter& filter, const entity_type& type)
+{
+	auto iter = query(filter);
+	foriter(s, iter)
+		extend(*s, type);
+}
+
+void context::shrink(entity* es, int32_t count, const entity_type& type)
+{
+	auto iter = batch(es, count);
+	foriter(s, iter)
+		shrink(*s, type);
+}
+
+void context::shrink(const entity_filter& filter, const entity_type& type)
+{
+	auto iter = query(filter);
+	foriter(s, iter)
+		shrink(*s, type);
+}
+
+void context::cast(entity* es, int32_t count, const entity_type& type)
+{
+	auto iter = batch(es, count);
+	foriter(s, iter)
+		cast(*s, type);
+}
+
+void context::cast(const entity_filter& filter, const entity_type& type)
+{
+	auto iter = query(filter);
+	foriter(s, iter)
+		cast(*s, type);
+}
+
 const void* context::get_component_ro(entity e, index_t type)
 {
 	const auto& data = ents.datas[e.id];
@@ -1336,7 +1441,7 @@ void* context::get_component_rw(entity e, index_t type)
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
 	if (id == -1) return nullptr;
-	g->versions(c)[id] = version;
+	g->timestamps(c)[id] = timestamp;
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
@@ -1351,7 +1456,7 @@ void* context::get_array_rw(chunk* c, index_t t) noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;
-	c->type->versions(c)[id] = version;
+	c->type->timestamps(c)[id] = timestamp;
 	return c->data() + c->type->offsets()[id];
 }
 
@@ -1572,11 +1677,13 @@ std::optional<chunk_slice> context::batch_iterator::next()
 	return { s };
 }
 
-std::optional<chunk*> context::chunk_iterator::next()
+void context::chunk_iterator::fetch_next()
 {
+	if (currc == nullptr)
+		return;
 	auto valid_chunk = [&]
 	{
-		return filter.match_chunk(currg->second->get_type(), currg->second->versions(currc));
+		return filter.match_chunk(currg->second->get_type(), currg->second->timestamps(currc));
 	};
 	bool includeClean = false;
 	bool includeDisabled = false;
@@ -1623,13 +1730,22 @@ std::optional<chunk*> context::chunk_iterator::next()
 			while (!valid_chunk() && currc != nullptr)
 				currc = currc->next;
 			if (currc != nullptr)
-				return currc;
+				return;
 			++currg;
 		}
-		return {};
 	}
-	else
-		return currc;
+}
+
+//careful! currc could be invalidated due to structural change
+std::optional<chunk*> ecs::memory_model::context::chunk_iterator::next()
+{
+	std::optional<chunk*> ret;
+	if (currc != nullptr)
+	{
+		ret = currc;
+		fetch_next();
+	}
+	return ret;
 }
 
 context::entities::~entities()

@@ -341,27 +341,7 @@ namespace ecs
 		memory_model::context cont;
 
 	public:
-#define parm_slice(es) es.data(), (uint32_t)es.size()
-
-		void instantiate(gsl::span<entity> es, entity proto)
-		{
-			cont.instantiate(proto, parm_slice(es));
-		}
-
-		void destroy(gsl::span<entity> es)
-		{
-			auto iter = cont.batch(parm_slice(es));
-			foriter(s, iter)
-				cont.destroy(*s);
-		}
-
-		void destroy(const entity_filter& g)
-		{
-			auto iter = cont.query(g);
-			foriter(s, iter)
-				cont.destroy(*s);
-		}
-
+		//operation of query and update
 		template<class T> Requires(AccessableComponent<T>)
 		const T& read_component(entity e)
 		{
@@ -403,85 +383,23 @@ namespace ecs
 			return cont.has_component(e, typeof<T>);
 		}
 
-	private:
-		int get_array_param(memory_model::chunk_slice c, tid<int>)
+		//operation with dynamic type, optional tracked
+		void instantiate(gsl::span<entity> es, entity proto)
 		{
-			return c.count;
+			cont.instantiate(proto, es.data(), es.size());
 		}
 
-		template<class T> 
-		const T* get_array_param(memory_model::chunk_slice c, tid<const T*>)
+		void destroy(gsl::span<entity> es)
 		{
-			if constexpr (component<T>::is_meta)
-			{
-				uint16_t id = cont.get_metatype(c.c, typeof<T>);
-				if (id == -1)
-					return  nullptr;
-				return meta::get<T>(id);
-			}
-			else
-				return (const T*)cont.get_array_ro(c.c, typeof<T>) + c.start;
+			cont.destroy(es.data(), es.size());
 		}
 
-		template<class T> 
-		T* get_array_param(memory_model::chunk_slice c, tid<T*>)
+		void destroy(const entity_filter& g)
 		{
-			return (T*)cont.get_array_rw(c.c, typeof<T>) + c.start;
+			cont.destroy(g);
 		}
 
-		template<class T> 
-		buffer_array<T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<T>>)
-		{
-			auto size = cont.get_size(c.c, typeof<T>);
-			return { cont.get_array_rw(c.c, typeof<T>) + size * c.start, size };
-		}
-
-		template<class T>
-		buffer_array<const T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<const T>>)
-		{
-			auto size = cont.get_size(c.c, typeof<T>);
-			return { cont.get_array_ro(c.c, typeof<T>) + size * c.start, size };
-		}
-
-		template<class T>
-		accessor<T> get_array_param(memory_model::chunk_slice c, tid<accessor<T>>)
-		{
-			return { &cont };
-		}
-
-		template<class T>
-		accessor<const T> get_array_param(memory_model::chunk_slice c, tid<accessor<const T>>)
-		{
-			return { &cont };
-		}
-
-		const entity* get_array_param(memory_model::chunk_slice c, tid<const entity*>)
-		{
-			return (const entity*)cont.get_entities(c.c) + c.start;
-		}
-
-		template<class T>
-		const T get_param_type(tid<const T&>);
-
-		template<class T>
-		T get_param_type(tid<buffer<T>>);
-
-		template<class T>
-		const T get_param_type(tid<buffer<const T>>);
-
-		template<class T>
-		T get_param_type(tid<accessor<T>>);
-
-		template<class T>
-		const T get_param_type(tid<accessor<const T>>);
-
-		template<class T>
-		T get_param_type(tid<buffer_accessor<T>>);
-
-		template<class T>
-		const T get_param_type(tid<buffer_accessor<const T>>);
-
-	public:
+		//operation with static type and always tracked
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
 		void construct(gsl::span<entity> es, entity_type type, F&& f)
 		{
@@ -540,43 +458,24 @@ namespace ecs
 			}
 		}
 
-		void extend(gsl::span<entity> es, entity_type type)
-		{
-			auto iter = cont.batch(parm_slice(es));
-			foriter(s, iter)
-				cont.extend(*s, type);
-		}
-
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
 		void extend(gsl::span<entity> es, entity_type type, F&& f)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
-			{
-				auto iter = cont.batch(parm_slice(es));
-				foriter(s, iter)
-					cont.extend(*s, type);
-			}
-			{
-				auto iter = cont.batch(parm_slice(es));
-				foriter(s, iter)
-				{
-					auto c = *s;
-					auto get_array = [&](auto arg)
-					{
-						using raw_parameter = typename decltype(arg)::type;
-						return get_array_param(c, tid<raw_parameter>{});
-					};
-					auto arrays = hana::transform(parameter_list, get_array);
-					hana::unpack(std::move(arrays), std::forward<F>(f));
-				}
-			}
-		}
 
-		void shrink(gsl::span<entity> es, entity_type type)
-		{
 			auto iter = cont.batch(parm_slice(es));
 			foriter(s, iter)
-				cont.shrink(*s, type.types);
+			{
+				auto c = *s;
+				cont.extend(c, type);
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(f));
+			}
 		}
 
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
@@ -594,47 +493,28 @@ namespace ecs
 				};
 				auto arrays = hana::transform(parameter_list, get_array);
 				hana::unpack(std::move(arrays), std::forward<F>(f));
-				cont.shrink(*s, type.types);
+				cont.shrink(c, type.types);
 			}
-		}
-
-		void extend(const entity_filter& g, entity_type type)
-		{
-			auto iter = cont.query(g);
-			foriter(s, iter)
-				cont.extend(*s, type);
 		}
 
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
 		void extend(const entity_filter& g, entity_type type, F&& f)
 		{
 			constval parameter_list = lambda_trait<std::decay_t<F>>::parameter_list;
-			{
-				auto iter = cont.query(g);
-				foriter(s, iter)
-					cont.extend(*s, type);
-			}
-			{
-				auto iter = cont.query(g);
-				foriter(s, iter)
-				{
-					auto c = *s;
-					auto get_array = [&](auto arg)
-					{
-						using raw_parameter = typename decltype(arg)::type;
-						return get_array_param(c, tid<raw_parameter>{});
-					};
-					auto arrays = hana::transform(parameter_list, get_array);
-					hana::unpack(std::move(arrays), std::forward<F>(f));
-				}
-			}
-		}
 
-		void shrink(const entity_filter& g, entity_type type)
-		{
 			auto iter = cont.query(g);
 			foriter(s, iter)
-				cont.shrink(*s, type.types);
+			{
+				auto c = *s;
+				cont.extend(c, type);
+				auto get_array = [&](auto arg)
+				{
+					using raw_parameter = typename decltype(arg)::type;
+					return get_array_param(c, tid<raw_parameter>{});
+				};
+				auto arrays = hana::transform(parameter_list, get_array);
+				hana::unpack(std::move(arrays), std::forward<F>(f));
+			}
 		}
 
 		template<class F> Requires(KernelFunction<std::decay_t<F>>)
@@ -651,9 +531,90 @@ namespace ecs
 				};
 				auto arrays = hana::transform(parameter_list, get_array);
 				hana::unpack(std::move(arrays), std::forward<F>(f));
-				cont.shrink(*s, type.types);
+				cont.shrink(c, type.types);
 			}
 		}
+
+#pragma region helpers
+	private:
+		int get_array_param(memory_model::chunk_slice c, tid<int>)
+		{
+			return c.count;
+		}
+
+		template<class T>
+		const T* get_array_param(memory_model::chunk_slice c, tid<const T*>)
+		{
+			if constexpr (component<T>::is_meta)
+			{
+				uint16_t id = cont.get_metatype(c.c, typeof<T>);
+				if (id == -1)
+					return  nullptr;
+				return meta::get<T>(id);
+			}
+			else
+				return (const T*)cont.get_array_ro(c.c, typeof<T>) + c.start;
+		}
+
+		template<class T>
+		T* get_array_param(memory_model::chunk_slice c, tid<T*>)
+		{
+			return (T*)cont.get_array_rw(c.c, typeof<T>) + c.start;
+		}
+
+		template<class T>
+		buffer_array<T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<T>>)
+		{
+			auto size = cont.get_size(c.c, typeof<T>);
+			return { cont.get_array_rw(c.c, typeof<T>) + size * c.start, size };
+		}
+
+		template<class T>
+		buffer_array<const T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<const T>>)
+		{
+			auto size = cont.get_size(c.c, typeof<T>);
+			return { cont.get_array_ro(c.c, typeof<T>) + size * c.start, size };
+		}
+
+		template<class T>
+		accessor<T> get_array_param(memory_model::chunk_slice c, tid<accessor<T>>)
+		{
+			return { &cont };
+		}
+
+		template<class T>
+		accessor<const T> get_array_param(memory_model::chunk_slice c, tid<accessor<const T>>)
+		{
+			return { &cont };
+		}
+
+		const entity* get_array_param(memory_model::chunk_slice c, tid<const entity*>)
+		{
+			return (const entity*)cont.get_entities(c.c) + c.start;
+		}
+
+		template<class T>
+		const T get_param_type(tid<const T&>);
+
+		template<class T>
+		T get_param_type(tid<buffer<T>>);
+
+		template<class T>
+		const T get_param_type(tid<buffer<const T>>);
+
+		template<class T>
+		T get_param_type(tid<accessor<T>>);
+
+		template<class T>
+		const T get_param_type(tid<accessor<const T>>);
+
+		template<class T>
+		T get_param_type(tid<buffer_accessor<T>>);
+
+		template<class T>
+		const T get_param_type(tid<buffer_accessor<const T>>);
+	public:
+#pragma endregion
 	};
 
 	template<class... Cs, class... Ms> Requires((Component<Cs>&&...) && (MetaComponent<Ms>&&...))

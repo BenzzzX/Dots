@@ -45,11 +45,6 @@ namespace ecs
 			constexpr operator index_t() const { return id; }
 		};
 
-		struct metainfo
-		{
-			uint32_t refCount = 0;
-		};
-
 		struct metakey
 		{
 			index_t type;
@@ -67,6 +62,8 @@ namespace ecs
 				}
 			};
 		};
+
+		extern uint32_t metaTimestamp;
 
 		struct serializer_i
 		{
@@ -254,7 +251,7 @@ namespace ecs
 			entity_type none;
 
 			typeset changed;
-			size_t prevVersion;
+			size_t prevTimestamp;
 
 			struct hash
 			{
@@ -267,20 +264,20 @@ namespace ecs
 					hash = hash_array(key.any.metatypes.data, key.any.metatypes.length, hash);
 					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
 					hash = hash_array(key.changed.data, key.changed.length, hash);
-					hash = hash_array(&key.prevVersion, 1, hash);
+					hash = hash_array(&key.prevTimestamp, 1, hash);
 					return hash;
 				}
 			};
 
 			bool operator==(const entity_filter& other) const
 			{
-				return all == other.all && any == other.any && 
+				return all == other.all && any == other.any &&
 					none == other.any && all.metatypes == other.all.metatypes &&
 					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes &&
-					changed == other.changed && prevVersion == prevVersion
+					changed == other.changed && prevTimestamp == other.prevTimestamp;
 			}
 
-			bool match_chunk(const entity_type& t, uint32_t* versions) const
+			bool match_chunk(const entity_type& t, uint32_t* timestamps) const
 			{
 				uint16_t i = 0, j = 0;
 				while (i < changed.length && j < t.types.length)
@@ -289,7 +286,7 @@ namespace ecs
 						j++;
 					else if (changed[i] < t.types[j])
 						i++;
-					else if (versions[j] >= prevVersion)
+					else if (timestamps[j] >= prevTimestamp)
 						(j++, i++);
 				}
 				return i == changed.length;
