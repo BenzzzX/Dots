@@ -535,13 +535,13 @@ namespace core
 
 #pragma region helpers
 	private:
-		int get_array_param(memory_model::chunk_slice c, tid<int>)
+		int get_array_param(database::chunk_slice c, tid<int>)
 		{
 			return c.count;
 		}
 
 		template<class T>
-		const T* get_array_param(memory_model::chunk_slice c, tid<const T*>)
+		const T* get_array_param(database::chunk_slice c, tid<const T*>)
 		{
 			if constexpr (component<T>::is_meta)
 			{
@@ -555,38 +555,38 @@ namespace core
 		}
 
 		template<class T>
-		T* get_array_param(memory_model::chunk_slice c, tid<T*>)
+		T* get_array_param(database::chunk_slice c, tid<T*>)
 		{
 			return (T*)cont.get_array_rw(c.c, typeof<T>) + c.start;
 		}
 
 		template<class T>
-		buffer_array<T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<T>>)
+		buffer_array<T> get_array_param(database::chunk_slice c, tid<buffer_array<T>>)
 		{
 			auto size = cont.get_size(c.c, typeof<T>);
 			return { cont.get_array_rw(c.c, typeof<T>) + size * c.start, size };
 		}
 
 		template<class T>
-		buffer_array<const T> get_array_param(memory_model::chunk_slice c, tid<buffer_array<const T>>)
+		buffer_array<const T> get_array_param(database::chunk_slice c, tid<buffer_array<const T>>)
 		{
 			auto size = cont.get_size(c.c, typeof<T>);
 			return { cont.get_array_ro(c.c, typeof<T>) + size * c.start, size };
 		}
 
 		template<class T>
-		accessor<T> get_array_param(memory_model::chunk_slice c, tid<accessor<T>>)
+		accessor<T> get_array_param(database::chunk_slice c, tid<accessor<T>>)
 		{
 			return { &cont };
 		}
 
 		template<class T>
-		accessor<const T> get_array_param(memory_model::chunk_slice c, tid<accessor<const T>>)
+		accessor<const T> get_array_param(database::chunk_slice c, tid<accessor<const T>>)
 		{
 			return { &cont };
 		}
 
-		const entity* get_array_param(memory_model::chunk_slice c, tid<const entity*>)
+		const entity* get_array_param(database::chunk_slice c, tid<const entity*>)
 		{
 			return (const entity*)cont.get_entities(c.c) + c.start;
 		}

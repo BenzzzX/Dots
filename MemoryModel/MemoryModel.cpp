@@ -6,7 +6,7 @@
 type* name = (type*)alloca((size) * sizeof(type))
 
 entity entity::Invalid{ -1, -1 };
-uint32_t memory_model::metaTimestamp;
+uint32_t database::metaTimestamp;
 
 template<typename F>
 struct guard
@@ -1722,7 +1722,7 @@ void context::chunk_iterator::fetch_next()
 }
 
 //careful! currc could be invalidated due to structural change
-std::optional<chunk*> ecs::memory_model::context::chunk_iterator::next()
+std::optional<chunk*> context::chunk_iterator::next()
 {
 	std::optional<chunk*> ret;
 	if (currc != nullptr)
