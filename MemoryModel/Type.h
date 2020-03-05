@@ -8,17 +8,28 @@
 #include "Set.h"
 namespace core
 {
-	struct entity
+	template<size_t A, size_t B, class T = uint32_t>
+	struct handle
 	{
-		uint32_t id;
-		uint32_t version;
+		using underlying_type = T;
+		static_assert(A + B == sizeof(T) * 8);
+		T id : A;
+		T version : B;
+		operator T() { return *reinterpret_cast<T*>(this); }
+		constexpr handle() = default;
+		constexpr handle(T t) { *reinterpret_cast<T*>(this) = t; }
+		constexpr handle(T i, T v) { id = i; version = v; }
 
-		static entity Invalid;
-
-		bool operator==(const entity& e) const
+		bool operator==(const handle& e) const
 		{
 			return id == e.id && version == e.version;
 		}
+	};
+
+	struct entity : handle<20, 12>
+	{
+		using handle::handle;
+		static entity Invalid;
 	};
 
 	namespace database

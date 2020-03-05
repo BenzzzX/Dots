@@ -5,7 +5,7 @@
 #define stack_array(type, name, size) \
 type* name = (type*)alloca((size) * sizeof(type))
 
-entity entity::Invalid{ -1, -1 };
+entity entity::Invalid{ -1 };
 uint32_t database::metaTimestamp;
 
 template<typename F>
