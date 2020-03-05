@@ -5,13 +5,7 @@
 #define stack_array(type, name, size) \
 type* name = (type*)alloca((size) * sizeof(type))
 
-#define adaptive_array(type, name, size) \
-type* name; \
-if ((size) * sizeof(type) <= 1024*4) name = (type*)alloca((size) * sizeof(type)); \
-else name = (type*)malloc((size) * sizeof(type)); \
-guard guard##__LINE__ {[&]{if((size) * sizeof(type) > 1024*4) ::free(name);}}
-
-entity entity::Invalid{ -1, -1 }; 
+entity entity::Invalid{ -1, -1 };
 uint32_t memory_model::metaTimestamp;
 
 template<typename F>
@@ -23,8 +17,8 @@ struct guard
 template<typename F>
 guard(F&&)->guard<std::remove_reference_t<F>>;
 
-using namespace ecs;
-using namespace memory_model;
+using namespace core;
+using namespace database;
 
 struct type_data
 {
@@ -33,12 +27,13 @@ struct type_data
 	uint16_t elementSize;
 	uint32_t entityRefs;
 	uint16_t entityRefCount;
+	const char* name;
 	component_vtable vtable;
 };
 
-index_t ecs::memory_model::disable_id = 0;
-index_t ecs::memory_model::cleanup_id = 1;
-index_t ecs::memory_model::group_id = 1;
+index_t core::database::disable_id = 0;
+index_t core::database::cleanup_id = 1;
+index_t core::database::group_id = 1;
 
 struct metainfo
 {
@@ -60,9 +55,11 @@ struct global_data
 		component_desc desc{};
 		desc.size = 0;
 		desc.hash = 0;
+		desc.name = "cleaning";
 		cleanup_id = register_type(desc);
 		desc.size = 0;
 		desc.hash = 1;
+		desc.name = "disabled";
 		disable_id = register_type(desc);
 		desc.size = sizeof(entity) * 5;
 		desc.hash = 2;
@@ -71,6 +68,7 @@ struct global_data
 		static intptr_t entityRefs[] = { (intptr_t)offsetof(group, e) };
 		desc.entityRefs = entityRefs;
 		desc.entityRefCount = 1;
+		desc.name = "group";
 		group_id = register_type(desc);
 	}
 };
@@ -82,12 +80,12 @@ component_vtable& set_vtable(index_t m)
 	return gd.infos[m].vtable;
 }
 
-void memory_model::set_meta_release_function(std::function<void(metakey)> func)
+void database::set_meta_release_function(std::function<void(metakey)> func)
 {
 	gd.release_metatype = std::move(func);
 }
 
-index_t memory_model::register_type(component_desc desc)
+index_t database::register_type(component_desc desc)
 {
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
@@ -99,7 +97,7 @@ index_t memory_model::register_type(component_desc desc)
 	
 	uint16_t id = (uint16_t)gd.infos.size();
 	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.vtable };
+	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
 	if (desc.need_clean)
@@ -111,7 +109,7 @@ index_t memory_model::register_type(component_desc desc)
 
 	id = (uint16_t)gd.infos.size();
 	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.vtable };
+	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.tracks.push_back(Copying);
 	gd.infos.push_back(i);
 	return id;
@@ -350,116 +348,27 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 }
 
 //TODO: handle transient data?
-void chunk::serialize(chunk_slice s, serializer_i *stream)
+void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
 	context::archetype* type = s.c->type;
 	uint16_t* offsets = type->offsets();
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
-	stream->write(&s.count, sizeof(uint16_t));
-
-	uint16_t maxSize = 0;
-	forloop(i, 0, type->firstTag)
-		maxSize = std::max(maxSize, sizes[i]);
-
-	adaptive_array(char, temp, maxSize);
+	stream->stream(&s.count, sizeof(uint16_t));
 
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		stream->write(arr, sizes[i] * s.count);
-	}
-
-	forloop(i, 0, type->firstBuffer)
-	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.serialize;
-		if (f == nullptr)
-			continue;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-			f(arr + j * sizes[i], stream);
+		stream->stream(arr, sizes[i] * s.count);
 	}
 
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.serialize;
 		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
 			buffer* b = (buffer*)(arr + j * sizes[i]);
-			stream->write(b->data(), b->size);
-		}
-		if (f == nullptr)
-			continue;
-
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			uint16_t n = b->size / info.elementSize;
-			forloop(l, 0, n)
-			{
-				char* data = b->data() + info.elementSize * l;
-				f(data, stream);
-			}
-		}
-		
-	}
-}
-
-void chunk::deserialize(chunk_slice s, deserializer_i* stream)
-{
-	context::archetype* type = s.c->type;
-	uint16_t* offsets = type->offsets();
-	uint16_t* sizes = type->sizes();
-	tagged_index* types = (tagged_index*)type->types();
-
-	forloop(i, 0, type->firstTag)
-	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		stream->read(arr, sizes[i] * s.count);
-	}
-
-	forloop(i, 0, type->firstBuffer)
-	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.deserialize;
-		if (f == nullptr)
-			continue;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-			f(arr + j * sizes[i], stream);
-	}
-
-	forloop(i, type->firstBuffer, type->firstTag)
-	{
-		tagged_index type = types[i];
-		const auto& info = gd.infos[type.index()];
-		auto f = info.vtable.deserialize;
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			stream->read(b->data(), b->size);
-		}
-
-		if (f == nullptr)
-			continue;
-
-		forloop(j, 0, s.count)
-		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
-			uint16_t n = b->size / info.elementSize;
-			forloop(l, 0, n)
-			{
-				char* data = b->data() + info.elementSize * l;
-				f(data, stream);
-			}
+			stream->stream(b->data(), b->size);
 		}
 	}
 }
@@ -932,15 +841,18 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 {
 	entity_type type = g->get_type();
 	uint16_t tlength = type.types.length, mlength = type.metatypes.length;
-	s->write(&tlength, sizeof(uint16_t));
+	s->stream(&tlength, sizeof(uint16_t));
 	forloop(i, 0, tlength)
-		s->write(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
-	s->write(&mlength, sizeof(uint16_t));
+		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
+	s->stream(&mlength, sizeof(uint16_t));
 	forloop(i, 0, mlength)
-		s->writemeta({ type.types[tlength - mlength + i], type.metatypes[i] });
+	{
+		metakey key = { type.types[tlength - mlength + i], type.metatypes[i] };
+		s->streammeta(&key);
+	}
 }
 
-context::archetype* context::deserialize_archetype(deserializer_i* s)
+context::archetype* context::deserialize_archetype(serializer_i* s)
 {
 	uint16_t tlength;
 	stack_array(index_t, types, tlength);
@@ -949,16 +861,20 @@ context::archetype* context::deserialize_archetype(deserializer_i* s)
 	forloop(i, 0, tlength)
 	{
 		size_t hash;
-		s->read(&hash, sizeof(size_t));
+		s->stream(&hash, sizeof(size_t));
 		//TODO: check validation
 		types[i] = gd.hash2type[hash];
 	}
 	uint16_t mlength;
-	s->read(&mlength, sizeof(uint16_t));
+	s->stream(&mlength, sizeof(uint16_t));
 	stack_array(index_t, metatypes, mlength);
-	s->read(metatypes, mlength);
+	s->stream(metatypes, mlength);
 	forloop(i, 0, mlength)
-		metatypes[i] = s->readmeta({ types[tlength - mlength + i] });
+	{
+		metakey key{ types[tlength - mlength + i] , 0 };
+		s->streammeta(&key);
+		metatypes[i] = key.metatype;
+	}
 	std::sort(types, types + tlength - mlength);
 
 	index_t* arr = types + tlength - mlength;
@@ -973,10 +889,10 @@ context::archetype* context::deserialize_archetype(deserializer_i* s)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> context::deserialize_slice(archetype* g, deserializer_i* stream)
+std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* s)
 {
 	uint16_t count;
-	stream->read(&count, sizeof(uint16_t));
+	s->stream(&count, sizeof(uint16_t));
 	if (count == 0)
 		return {};
 	chunk* c;
@@ -992,9 +908,9 @@ std::optional<chunk_slice> context::deserialize_slice(archetype* g, deserializer
 	}
 	uint16_t start = c->count;
 	resize_chunk(c, start + count);
-	chunk_slice s = { c, start, count };
-	chunk::deserialize(s, stream);
-	return s;
+	chunk_slice slice = { c, start, count };
+	chunk::deserialize(slice, s);
+	return slice;
 }
 
 struct linear_patcher : patcher_i
@@ -1153,12 +1069,30 @@ void context::structural_change(archetype* g, chunk* c, int32_t count)
 		g->timestamps(c)[i] = timestamp;
 }
 
-entity context::deserialize_single(deserializer_i* s)
+entity context::deserialize_single(serializer_i* s)
 {
 	auto *g = deserialize_archetype(s);
 	auto slice = deserialize_slice(g, s);
 	ents.new_entities(*slice);
 	return slice->c->get_entities()[slice->start];
+}
+
+void context::destroy_single(chunk_slice s)
+{
+	archetype* g = s.c->type;
+	if (g->cleaning)
+		return;
+
+	g = get_cleaning(g);
+	if (g == nullptr)
+	{
+		ents.free_entities(s);
+		free_slice(s);
+	}
+	else
+	{
+		cast_slice(s, g);
+	}
 }
 
 void context::destroy_chunk(archetype* g, chunk* c)
@@ -1265,7 +1199,6 @@ context::alloc_iterator context::allocate(const entity_type& type, entity* ret, 
 
 void context::instantiate(entity src, entity* ret, uint32_t count)
 {
-	//todo: group
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
 		instantiate_single(src, ret, count);
@@ -1295,21 +1228,25 @@ context::chunk_iterator context::query(const entity_filter& type)
 
 void context::destroy(chunk_slice s)
 {
-	//todo: group
 	archetype* g = s.c->type;
-	if (g->cleaning)
-		return;
-
-	g = get_cleaning(g);
-	if (g == nullptr)
+	uint16_t id = g->index(group_id);
+	if (id != -1)
 	{
-		ents.free_entities(s);
-		free_slice(s);
+		uint16_t* sizes = g->sizes();
+		char* src = (s.c->data() + g->offsets()[id]);
+		forloop(i, 0, s.count)
+		{
+			auto* group_data = (buffer*)(src + i * sizes[i]);
+			uint16_t size = group_data->size / sizeof(entity);
+			forloop(j, 1, size)
+			{
+				entity e = ((entity*)group_data->data())[i];
+				auto& data = ents.datas[i];
+				destroy_single({ data.c, data.i, 1 });
+			}
+		}
 	}
-	else
-	{
-		cast_slice(s, g);
-	}
+	destroy_single(s);
 }
 
 void context::extend(chunk_slice s, const entity_type& type)
@@ -1498,7 +1435,7 @@ void context::serialize(serializer_i* s, entity src)
 	}
 }
 
-void context::deserialize(deserializer_i* s, entity* ret, uint32_t times)
+void context::deserialize(serializer_i* s, entity* ret, uint32_t times)
 {
 	entity src = deserialize_single(s);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
@@ -1524,9 +1461,20 @@ void context::deserialize(deserializer_i* s, entity* ret, uint32_t times)
 	}
 }
 
-void context::move_context(context& src, entity* patch, uint32_t count)
+void context::move_context(context& src)
 {
-	//todo: fixme
+	auto& sents = src.ents;
+	uint32_t count = sents.size;
+	entity* patch = new entity[count];
+	forloop(i, 0, count)
+		if (sents.datas[i].c != nullptr)
+			patch[i] = ents.new_entity();
+
+	linear_patcher p;
+	p.start = 0;
+	p.target = patch;
+	p.count = count;
+	//todo: multithread?
 	for (auto& pair : src.archetypes)
 	{
 		archetype* g = pair.second;
@@ -1536,34 +1484,17 @@ void context::move_context(context& src, entity* patch, uint32_t count)
 			chunk* next = c->next;
 			add_chunk(dstG, c);
 			c = next;
+			patch_chunk(c, &p);
 		}
 		release_reference(g);
 		free(g);
 	}
 	src.archetypes.clear();
-	auto& sents = src.ents;
-	forloop(i, 0, count)
-		if (sents.datas[i].c != nullptr)
-			patch[i] = ents.new_entity();
 
 	sents.size = sents.free = sents.capacity = 0;
 	::free(sents.datas);
 	sents.datas = nullptr;
-}
-
-void context::move_chunk(context& src, chunk* c, entity* patch, uint32_t count)
-{
-	//todo: fixme
-	archetype* dstG = get_archetype(c->type->get_type());
-
-	src.ents.free_entities(c);
-	src.remove_chunk(c->type, c);
-
-	add_chunk(dstG, c);
-	entity* es = (entity*)c->data();
-	forloop(i, 0, c->count)
-		if(es[i].id < count)
-			patch[es[i].id] = ents.new_entity();
+	::free(patch);
 }
 
 void context::patch_chunk(chunk* c, patcher_i* patcher)
@@ -1590,8 +1521,30 @@ struct Data
 void context::serialize(serializer_i* s)
 {
 	const uint32_t start = 0;
-	s->write(&start, sizeof(uint32_t));
-	s->write(&ents.size, sizeof(uint32_t));
+	s->stream(&start, sizeof(uint32_t));
+	s->stream(&ents.size, sizeof(uint32_t));
+	
+	//hack: save entity validation instead of patch all data
+	//trade space for time
+	auto size = ents.size / 4 + 1;
+	bool needFree = false;
+	char* bitset;
+	if (size < 1024 * 4)
+		bitset = (char*)alloca(size);
+	else
+	{
+		needFree = true;
+		bitset = (char*)malloc(size);
+	}
+	memset(bitset, 0, size);
+
+	forloop(i, 0, ents.size)
+		if (ents.datas[i].c != nullptr)
+		{
+			bitset[i/4] |= (1<<i%4);
+		}
+	s->stream(bitset, size);
+
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
@@ -1600,9 +1553,12 @@ void context::serialize(serializer_i* s)
 		for (chunk* c = g->firstChunk; c; c= c->next)
 			chunk::serialize({ c, 0, c->count }, s);
 
-		s->write(0, sizeof(uint16_t));
+		s->stream(0, sizeof(uint16_t));
 	}
-	s->write(0, sizeof(uint16_t));
+	s->stream(0, sizeof(uint16_t));
+
+	if(needFree)
+		::free(bitset);
 }
 
 entity linear_patcher::patch(entity e)
@@ -1610,16 +1566,40 @@ entity linear_patcher::patch(entity e)
 	patch_entity(e, start, target, count);
 }
 
-void context::deserialize(deserializer_i* s)
+void context::deserialize(serializer_i* s, entity* ret)
 {
 	uint32_t start, count;
-	s->read(&start, sizeof(uint32_t));
-	s->read(&count, sizeof(uint32_t));
+	s->stream(&start, sizeof(uint32_t));
+	s->stream(&count, sizeof(uint32_t));
+	auto size = count / 4 + 1;
 
-	adaptive_array(entity, patch, count);
+	bool needFree = false, needFreeB = false;
+	entity* patch;
+	if (ret != nullptr)
+		patch = ret;
+	else if (count * sizeof(entity) <= 1024 * 4)
+		patch = (entity*)alloca(count * sizeof(entity));
+	else
+	{
+		needFree = true;
+		patch = (entity*)malloc(count * sizeof(entity));
+	}
+
+	char* bitset;
+	if (size < 1024 * 4)
+		bitset = (char*)alloca(size);
+	else
+	{
+		needFreeB = true;
+		bitset = (char*)malloc(size);
+	}
+	s->stream(bitset, size);
 
 	forloop(i, 0, count)
-		patch[i] = ents.new_entity();
+		if (bitset[i / 4] & (1 << (i % 4)) != 0)
+			patch[i] = ents.new_entity();
+		else
+			patch[i] = entity::Invalid;
 	linear_patcher patcher;
 	patcher.start = start;
 	patcher.target = patch;
@@ -1629,6 +1609,11 @@ void context::deserialize(deserializer_i* s)
 	for(archetype* g = deserialize_archetype(s); g!=nullptr; g = deserialize_archetype(s))
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
+
+	if (needFree)
+		::free(patch);
+	if (needFreeB)
+		::free(bitset);
 }
 
 index_t context::get_metatype(entity e, index_t t)
@@ -1652,7 +1637,7 @@ bool context::exist(entity e) const
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
 
-index_t ecs::memory_model::context::get_metatype(chunk* c, index_t t)
+index_t context::get_metatype(chunk* c, index_t t)
 {;
 	archetype* type = c->type;
 	uint16_t id = type->index(t);

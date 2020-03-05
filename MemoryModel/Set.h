@@ -3,9 +3,9 @@
 #include <memory>
 #include <variant>
 
-namespace ecs
+namespace core
 {
-	namespace memory_model
+	namespace database
 	{
 		using index_t = uint32_t;
 #if _WIN64
