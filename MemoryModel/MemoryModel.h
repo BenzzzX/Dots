@@ -113,29 +113,38 @@ namespace core
 				chunk* currc;
 				archetypes_t::iterator currg;
 				entity_filter filter;
-				
+				bool includeDisabled;
+				bool includeClean;
+				bool valid_group(archetype* g);
 				void fetch_next();
-				std::optional<chunk*> next();
-			};
-			
-			struct query_iterator
-			{
-				chunk* currc;
-				std::vector<archetype*>::iterator currg;
+				void next_archetype();
 				std::optional<chunk*> next();
 			};
 
-			struct query
+			struct query_cache;
+			struct query_iterator
 			{
-				std::unique_ptr<uint16_t> data;
+				chunk* currc;
+				query_cache* cache;
+				std::vector<archetype*>::iterator currg;
+				void fetch_next();
+				void next_archetype();
+				std::optional<chunk*> next();
+			};
+
+			struct query_cache
+			{
+				std::vector<index_t> data;
+				bool includeDisabled;
+				bool includeClean;
 				entity_filter filter;
 				std::vector<archetype*> archetypes;
 				query_iterator iter();
 			};
 
-			using queries_t = std::unordered_map<entity_filter, query, entity_filter::hash>;
+			using queries_t = std::unordered_map<entity_filter, query_cache, entity_filter::hash>;
 
-			query* get_query(entity_filter& f);
+			query_cache& get_query_cache(const entity_filter& f);
 			void update_queries(archetype* g, bool add);
 
 			static constexpr size_t kChunkPoolCapacity = 8000;
@@ -183,6 +192,7 @@ namespace core
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
 
+			static bool valid_group(archetype* g, bool includeClean, bool includeDisabled);
 			friend chunk;
 			friend batch_iterator;
 			friend chunk_iterator;
@@ -215,6 +225,8 @@ namespace core
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
 			chunk_iterator query(const entity_filter& type);
+			query_iterator query_cached(const entity_filter& type);
+			entity_filter cache_query(const entity_filter& type);
 			const void* get_component_ro(entity, index_t type);
 			index_t get_metatype(entity, index_t type);
 			bool has_component(entity, index_t type) const;

@@ -18,9 +18,18 @@
     <ClInclude Include="Context.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DataFlow.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Context.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DataFlow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -248,7 +248,6 @@ namespace core
 
 		};
 
-
 		struct entity_filter
 		{
 			entity_type all;
@@ -263,10 +262,10 @@ namespace core
 				size_t operator()(const entity_filter& key) const
 				{
 					size_t hash = hash_array(key.all.types.data, key.all.types.length);
-					hash = hash_array(key.any.types.data, key.any.types.length, hash);
-					hash = hash_array(key.none.types.data, key.none.types.length, hash);
 					hash = hash_array(key.all.metatypes.data, key.all.metatypes.length, hash);
+					hash = hash_array(key.any.types.data, key.any.types.length, hash);
 					hash = hash_array(key.any.metatypes.data, key.any.metatypes.length, hash);
+					hash = hash_array(key.none.types.data, key.none.types.length, hash);
 					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
 					hash = hash_array(key.changed.data, key.changed.length, hash);
 					hash = hash_array(&key.prevTimestamp, 1, hash);
