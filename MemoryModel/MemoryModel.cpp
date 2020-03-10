@@ -8,15 +8,6 @@ type* name = (type*)alloca((size) * sizeof(type))
 entity entity::Invalid{ -1, -1 };
 uint32_t database::metaTimestamp;
 
-template<typename F>
-struct guard
-{
-	F f;
-	~guard() { f(); }
-};
-template<typename F>
-guard(F&&)->guard<std::remove_reference_t<F>>;
-
 using namespace core;
 using namespace database;
 
@@ -1057,7 +1048,7 @@ void context::structural_change(archetype* g, chunk* c, int32_t count)
 			auto type = (tagged_index)t.types[i];
 			typeTimestamps[type.index()] = timestamp;
 		}
-		//todo: meta type timestamp£¿
+		//todo: meta type timestampï¿½ï¿½
 
 		forloop(i, 0, t.metatypes.length)
 		{
