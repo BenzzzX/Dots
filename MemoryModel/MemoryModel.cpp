@@ -5,7 +5,7 @@
 #define stack_array(type, name, size) \
 type* name = (type*)alloca((size) * sizeof(type))
 
-entity entity::Invalid{ -1, -1 };
+entity entity::Invalid{ -1 };
 uint32_t database::metaTimestamp;
 
 using namespace core;
@@ -482,6 +482,121 @@ size_t context::archetype::calculate_size(uint16_t componentCount, uint16_t firs
 		sizeof(context::archetype);// +40;
 }
 
+uint16_t get_filter_size(const entity_filter& f)
+{
+	auto totalSize = f.all.types.length + f.all.metatypes.length * 2 +
+		f.any.types.length + f.any.metatypes.length * 2 +
+		f.none.types.length + f.none.metatypes.length * 2 + 
+		f.changed.length;
+	return totalSize;
+}
+
+entity_filter clone_filter(const entity_filter& f, index_t* data)
+{
+	entity_filter f2;
+	auto write = [&](const typeset& t, typeset& r)
+	{
+		r.data = data; r.length = t.length;
+		memcpy(data, t.data, t.length * sizeof(index_t));
+		data += t.length;
+	};
+	auto writemeta = [&](const metaset& t, metaset& r)
+	{
+		r.data = data; r.length = t.length;
+		memcpy(data, t.data, t.length * sizeof(index_t));
+		data += t.length;
+		r.metaData = data;
+		memcpy(data, t.metaData, t.length * sizeof(index_t));
+		data += t.length;
+	};
+#define writeType(name) \
+		write(f.name.types, f2.name.types); writemeta(f.name.metatypes, f2.name.metatypes);
+	writeType(all);
+	writeType(any);
+	writeType(none);
+	write(f.changed, f2.changed);
+#undef writeType
+	f2.prevTimestamp = f.prevTimestamp;
+	return f2;
+}
+
+context::query_cache& context::get_query_cache(const entity_filter& f)
+{
+	auto iter = queries.find(f);
+	if (iter != queries.end())
+	{
+		return iter->second;
+	}
+	else
+	{
+		query_cache cache;
+		bool includeClean = false;
+		bool includeDisabled = false;
+		bool includeCopy = [&]
+		{
+			auto at = f.all.types;
+			forloop(i, 0, at.length)
+			{
+				tagged_index type = at[i];
+				if (type == cleanup_id)
+					includeClean = true;
+				if (type == disable_id)
+					includeDisabled = true;
+				if (gd.tracks[type.index()] & Copying != 0)
+					return true;
+			}
+			return false;
+		}();
+		includeCopy |= includeClean;
+		includeDisabled |= includeCopy;
+		auto valid_group = [&](archetype* g)
+		{
+			if (includeClean < g->cleaning)
+				return false;
+			if (includeDisabled < g->disabled)
+				return false;
+			return f.match(g->get_type());
+		};
+		for (auto i : archetypes)
+		{
+			if (valid_group(i.second))
+				cache.archetypes.push_back(i.second);
+		}
+		cache.includeClean = includeClean;
+		cache.includeDisabled = includeDisabled;
+		auto totalSize = get_filter_size(f);
+		cache.data.resize(totalSize);
+		index_t* data = cache.data.data();
+		cache.filter = clone_filter(f, data);
+		auto p = queries.insert({ cache.filter, std::move(cache) });
+		return p.first->second;
+	}
+}
+
+void context::update_queries(archetype* g, bool add)
+{
+	auto match_cache = [&](query_cache& cache)
+	{
+		if (cache.includeClean < g->cleaning)
+			return false;
+		if (cache.includeDisabled < g->disabled)
+			return false;
+		return cache.filter.match(g->get_type());
+	};
+	for (auto i : queries)
+	{
+		auto& cache = i.second;
+		if (match_cache(cache))
+		{
+			auto& gs = cache.archetypes;
+			if (add)
+				gs.erase(std::remove(gs.begin(), gs.end(), g), gs.end());
+			else
+				gs.push_back(g);
+		}
+	}
+}
+
 void context::remove(chunk*& h, chunk*& t, chunk* c)
 {
 	if (c == t)
@@ -578,7 +693,7 @@ context::archetype* context::get_archetype(const entity_type& key)
 	}
 
 	archetypes.insert({ g->get_type(), g });
-
+	update_queries(g, true);
 	return g;
 }
 
@@ -790,6 +905,7 @@ void context::remove_chunk(archetype* g, chunk* c)
 	{
 		release_reference(g);
 		archetypes.erase(g->get_type());
+		update_queries(g, false);
 		::free(g);
 	}
 }
@@ -1209,12 +1325,50 @@ context::batch_iterator context::batch(entity* ents, uint32_t count)
 	return batch_iterator{ ents,count,this,0 };
 }
 
-context::chunk_iterator context::query(const entity_filter& type)
+context::chunk_iterator context::query(const entity_filter& filter)
 {
 	auto iter = archetypes.begin();
-	return { this,
-		archetypes.empty() ? nullptr : iter->second->firstChunk,
-		iter, type };
+	bool includeClean = false;
+	bool includeDisabled = false;
+	bool includeCopy = [&]
+	{
+		auto at = filter.all.types;
+		forloop(i, 0, at.length)
+		{
+			tagged_index type = at[i];
+			if (type == cleanup_id)
+				includeClean = true;
+			if (type == disable_id)
+				includeDisabled = true;
+			if (gd.tracks[type.index()] & Copying != 0)
+				return true;
+		}
+		return false;
+	}();
+	includeCopy |= includeClean;
+	includeDisabled |= includeCopy;
+
+	chunk_iterator i;
+	i.includeClean = includeClean;
+	i.includeDisabled = includeDisabled;
+	i.cont = this;
+	i.currg = iter;
+	i.filter = filter;
+	if (!archetypes.empty())
+		i.next_archetype();
+	return i;
+}
+
+context::query_iterator context::query_cached(const entity_filter& type)
+{
+	auto& cache = get_query_cache(type);
+	return cache.iter();
+}
+
+entity_filter context::cache_query(const entity_filter& type)
+{
+	auto& cache = get_query_cache(type);
+	return cache.filter;
 }
 
 void context::destroy(chunk_slice s)
@@ -1653,43 +1807,22 @@ std::optional<chunk_slice> context::batch_iterator::next()
 	return { s };
 }
 
+bool context::chunk_iterator::valid_group(archetype* g)
+{
+	if (includeClean < g->cleaning)
+		return false;
+	if (includeDisabled < g->disabled)
+		return false;
+	return filter.match(g->get_type());
+}
+
 void context::chunk_iterator::fetch_next()
 {
-	if (currc == nullptr)
-		return;
 	auto valid_chunk = [&]
 	{
 		return filter.match_chunk(currg->second->get_type(), currg->second->timestamps(currc));
 	};
-	bool includeClean = false;
-	bool includeDisabled = false;
-	bool includeCopy = [&]
-	{
-		auto at = filter.all.types;
-		forloop(i, 0, at.length)
-		{
-			tagged_index type = at[i];
-			if (type == cleanup_id)
-				includeClean = true;
-			if (type == disable_id)
-				includeDisabled = true;
-			if (gd.tracks[type.index()] & Copying != 0)
-				return true;
-		}
-		return false;
-	}();
-	includeCopy |= includeClean;
-	includeDisabled |= includeCopy;
-	auto valid_group = [&]
-	{
-		archetype* g = currg->second;
-		if (includeClean < g->cleaning)
-			return false;
-		if (includeDisabled < g->disabled)
-			return false;
-		return  currg != cont->archetypes.end() &&
-			filter.match(g->get_type());
-	};
+	
 	if (currc != nullptr)
 	{
 		do
@@ -1697,19 +1830,29 @@ void context::chunk_iterator::fetch_next()
 			currc = currc->next;
 		} while (!valid_chunk() && currc != nullptr);
 	}
-	if (currc == nullptr)
+	if (currc == nullptr && currg != cont->archetypes.end())
 	{
 		++currg;
-		while (valid_group())
-		{
-			currc = currg->second->firstChunk;
-			while (!valid_chunk() && currc != nullptr)
-				currc = currc->next;
-			if (currc != nullptr)
-				return;
-			++currg;
-		}
+		next_archetype();
 	}
+}
+
+void context::chunk_iterator::next_archetype()
+{
+	auto valid_chunk = [&]
+	{
+		return filter.match_chunk(currg->second->get_type(), currg->second->timestamps(currc));
+	};
+	while (currg != cont->archetypes.end() && valid_group(currg->second))
+	{
+		currc = currg->second->firstChunk;
+		while (!valid_chunk() && currc != nullptr)
+			currc = currc->next;
+		if (currc != nullptr)
+			return;
+		++currg;
+	}
+	currc = nullptr;
 }
 
 //careful! currc could be invalidated due to structural change
@@ -1822,4 +1965,62 @@ std::optional<chunk_slice> context::alloc_iterator::next()
 	}
 	else
 		return {};
+}
+
+context::query_iterator context::query_cache::iter()
+{
+	query_iterator i;
+	i.currg = archetypes.begin();
+	i.next_archetype();
+	i.cache = this;
+	return i;
+}
+
+void context::query_iterator::fetch_next()
+{
+	auto valid_chunk = [&]
+	{
+		return cache->filter.match_chunk((*currg)->get_type(), (*currg)->timestamps(currc));
+	};
+	if (currc != nullptr)
+	{
+		do
+		{
+			currc = currc->next;
+		} while (!valid_chunk() && currc != nullptr);
+	}
+	if (currc == nullptr && currg != cache->archetypes.end())
+	{
+		++currg;
+		next_archetype();
+	}
+}
+
+void context::query_iterator::next_archetype()
+{
+	auto valid_chunk = [&]
+	{
+		return cache->filter.match_chunk((*currg)->get_type(), (*currg)->timestamps(currc));
+	};
+	while (currg != cache->archetypes.end())
+	{
+		currc = (*currg)->firstChunk;
+		while (!valid_chunk() && currc != nullptr)
+			currc = currc->next;
+		if (currc != nullptr)
+			return;
+		++currg;
+	}
+	currc = nullptr;
+}
+
+std::optional<chunk*> context::query_iterator::next()
+{
+	std::optional<chunk*> ret;
+	if (currc != nullptr)
+	{
+		ret = currc;
+		fetch_next();
+	}
+	return ret;
 }
