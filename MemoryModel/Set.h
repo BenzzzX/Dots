@@ -36,28 +36,28 @@ namespace core
 				basis, reinterpret_cast<const unsigned char*>(data), length * sizeof(T));
 		}
 
-
-		struct typeset
+		template<class T>
+		struct set
 		{
-			const index_t* data = nullptr;
+			const T* data = nullptr;
 			uint16_t length = 0;
 
-			const index_t& operator[](uint32_t i) const noexcept { return data[i]; }
+			const T& operator[](uint32_t i) const noexcept { return data[i]; }
 
-			bool operator==(const typeset& other) const
+			bool operator==(const set& other) const
 			{
 				return length == other.length ? std::equal(data, data + length, other.data) : false;
 			}
 
 			struct hash
 			{
-				size_t operator()(const typeset& set) const
+				size_t operator()(const set& set) const
 				{
 					return hash_array(set.data, set.length);
 				}
 			};
 
-			static typeset merge(const typeset& lhs, const typeset& rhs, index_t* dst)
+			static set merge(const set& lhs, const set& rhs, T* dst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
@@ -76,7 +76,7 @@ namespace core
 				return  { dst, k };
 			}
 
-			static typeset substract(const typeset& lhs, const typeset& rhs, index_t* dst)
+			static set substract(const set& lhs, const set& rhs, T* dst)
 			{
 				uint16_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
@@ -93,7 +93,7 @@ namespace core
 				return  { dst, k };
 			}
 
-			bool any(const typeset& s) const
+			bool any(const set& s) const
 			{
 				uint16_t i = 0, j = 0;
 				while (i < length && j < s.length)
@@ -108,7 +108,7 @@ namespace core
 				return false;
 			}
 
-			bool all(const typeset& s) const
+			bool all(const set& s) const
 			{
 				uint16_t i = 0, j = 0;
 				while (i < length && j < s.length)
@@ -124,92 +124,7 @@ namespace core
 			}
 		};
 
-
-		struct metaset : typeset
-		{
-			const index_t* metaData = nullptr;
-
-			const uint16_t& operator[](uint32_t i) const noexcept { return data[i]; }
-
-			bool operator==(const metaset& other) const
-			{
-				return length == other.length ? std::equal(data, data + length, other.data) : false;
-			}
-
-			struct hash
-			{
-				size_t operator()(const metaset& set) const
-				{
-					return hash_array(set.data, set.length);
-				}
-			};
-
-			static metaset merge(const metaset& lhs, const metaset& rhs, const index_t* dst, index_t* metaDst)
-			{
-				uint16_t i = 0, j = 0, k = 0;
-				while (i < lhs.length && j < rhs.length)
-				{
-					if (lhs.metaData[i] > rhs.metaData[j])
-						metaDst[k++] = rhs[j++];
-					else if (lhs.metaData[i] < rhs.metaData[j])
-						metaDst[k++] = lhs[i++];
-					else
-						metaDst[k++] = lhs[(i++, j++)];
-				}
-				while (i < lhs.length)
-					metaDst[k++] = lhs[i++];
-				while (j < rhs.length)
-					metaDst[k++] = rhs[j++];
-
-				return { {metaDst, k}, dst };
-			}
-
-			static metaset substract(const metaset& lhs, const typeset& rhs, const index_t* dst, index_t* metaDst)
-			{
-				uint16_t i = 0, j = 0, k = 0;
-				while (i < lhs.length && j < rhs.length)
-				{
-					if (lhs.metaData[i] > rhs[j])
-						j++;
-					else if (lhs.metaData[i] < rhs[j])
-						metaDst[k++] = lhs[i++];
-					else
-						(j++, i++);
-				}
-				while (i < lhs.length)
-					metaDst[k++] = lhs[i++];
-				return   { {metaDst, k}, dst };
-			}
-
-			bool any(const metaset& s) const
-			{
-				uint16_t i = 0, j = 0;
-				while (i < length && j < s.length)
-				{
-					if (metaData[i] > s.metaData[j])
-						j++;
-					else if (metaData[i] < s.metaData[j])
-						i++;
-					else if(data[i] == s[i])
-						return true;
-				}
-				return false;
-			}
-
-			bool all(const metaset& s) const
-			{
-				uint16_t i = 0, j = 0;
-				while (i < length && j < s.length)
-				{
-					if (metaData[i] > s.metaData[j])
-						j++;
-					else if (metaData[i] < s.metaData[j])
-						i++;
-					else if(data[i] == s[i])
-						(j++, i++);
-				}
-				return j == s.length;
-			}
-		};
+		using typeset = set<index_t>;
+		using metaset = set<entity>;
 	}
 }

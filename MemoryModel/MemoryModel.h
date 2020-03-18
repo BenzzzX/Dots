@@ -34,7 +34,7 @@ namespace core
 				chunk* firstFree;
 				uint16_t componentCount;
 				uint16_t firstTag;
-				uint16_t firstMeta;
+				uint16_t metaCount;
 				uint16_t firstBuffer;
 				uint16_t chunkCapacity;
 				uint32_t timestamp;
@@ -55,7 +55,7 @@ namespace core
 				inline index_t* types() noexcept { return (index_t*)data(); }
 				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount ); }
 				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t)); }
-				inline index_t* metatypes() noexcept { return (index_t*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
+				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* timestamps(chunk* c) noexcept;
 				inline uint16_t index(index_t type) noexcept;
 
@@ -134,7 +134,7 @@ namespace core
 
 			struct query_cache
 			{
-				std::vector<index_t> data;
+				std::vector<char> data;
 				bool includeDisabled;
 				bool includeClean;
 				entity_filter filter;
@@ -162,7 +162,7 @@ namespace core
 			bool is_cleaned(const entity_type&);
 			archetype* get_instatiation(archetype*);
 			archetype* get_extending(archetype*, const entity_type&);
-			archetype* get_shrinking(archetype*, const typeset&);
+			archetype* get_shrinking(archetype*, const entity_type&);
 
 			void add_chunk(archetype* g, chunk* c);
 			void remove_chunk(archetype* g, chunk* c);
@@ -228,10 +228,8 @@ namespace core
 			query_iterator query_cached(const entity_filter& type);
 			entity_filter cache_query(const entity_filter& type);
 			const void* get_component_ro(entity, index_t type);
-			index_t get_metatype(entity, index_t type);
 			bool has_component(entity, index_t type) const;
 			bool exist(entity) const;
-			index_t get_metatype(chunk* c, index_t type);
 			const void* get_array_ro(chunk* c, index_t type) const noexcept;
 			void* get_array_rw(chunk* c, index_t type) noexcept;
 			const entity* get_entities(chunk* c) noexcept;

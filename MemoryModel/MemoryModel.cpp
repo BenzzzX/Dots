@@ -8,15 +8,6 @@ type* name = (type*)alloca((size) * sizeof(type))
 entity entity::Invalid{ -1 };
 uint32_t database::metaTimestamp;
 
-template<typename F>
-struct guard
-{
-	F f;
-	~guard() { f(); }
-};
-template<typename F>
-guard(F&&)->guard<std::remove_reference_t<F>>;
-
 using namespace core;
 using namespace database;
 
@@ -47,8 +38,6 @@ struct global_data
 	std::vector<track_state> tracks;
 	std::vector<intptr_t> entityRefs;
 	std::unordered_map<size_t, uint16_t> hash2type;
-	std::function<void(metakey)> release_metatype;
-	std::unordered_map<metakey, metainfo, metakey::hash> metainfos;
 	
 	global_data()
 	{
@@ -80,11 +69,6 @@ component_vtable& set_vtable(index_t m)
 	return gd.infos[m].vtable;
 }
 
-void database::set_meta_release_function(std::function<void(metakey)> func)
-{
-	gd.release_metatype = std::move(func);
-}
-
 index_t database::register_type(component_desc desc)
 {
 	uint32_t rid = -1;
@@ -96,7 +80,7 @@ index_t database::register_type(component_desc desc)
 	}
 	
 	uint16_t id = (uint16_t)gd.infos.size();
-	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
+	id = tagged_index{ id, desc.isElement, desc.size == 0 };
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
@@ -108,7 +92,7 @@ index_t database::register_type(component_desc desc)
 	gd.hash2type.insert({ desc.hash, id });
 
 	id = (uint16_t)gd.infos.size();
-	id = tagged_index{ id, desc.isManaged, desc.isElement, desc.size == 0, desc.isMeta };
+	id = tagged_index{ id, desc.isElement, desc.size == 0 };
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.tracks.push_back(Copying);
 	gd.infos.push_back(i);
@@ -474,49 +458,47 @@ uint16_t context::archetype::index(index_t type) noexcept
 entity_type context::archetype::get_type()
 {
 	index_t* ts = types();
+	entity* ms = metatypes();
 	return entity_type
 	{
 		typeset { ts, componentCount },
-		metaset { {metatypes(), uint16_t(componentCount - firstMeta)}, ts + firstMeta }
+		metaset { ms, metaCount }
 	};
 
 }
 
-size_t context::archetype::calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta)
+size_t context::archetype::calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t metaCount)
 {
 	return sizeof(index_t)* componentCount +
 		sizeof(uint16_t) * firstTag +
 		sizeof(uint16_t) * firstTag +
-		sizeof(index_t) * (componentCount - firstMeta) +
+		sizeof(entity) * metaCount +
 		sizeof(context::archetype);// +40;
 }
 
 uint16_t get_filter_size(const entity_filter& f)
 {
-	auto totalSize = f.all.types.length + f.all.metatypes.length * 2 +
-		f.any.types.length + f.any.metatypes.length * 2 +
-		f.none.types.length + f.none.metatypes.length * 2 + 
-		f.changed.length;
+	auto totalSize = f.all.types.length * sizeof(index_t) + f.all.metatypes.length * sizeof(entity) +
+		f.any.types.length * sizeof(index_t) + f.any.metatypes.length * sizeof(entity) +
+		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity) +
+		f.changed.length * sizeof(index_t);
 	return totalSize;
 }
 
-entity_filter clone_filter(const entity_filter& f, index_t* data)
+entity_filter clone_filter(const entity_filter& f, char* data)
 {
 	entity_filter f2;
 	auto write = [&](const typeset& t, typeset& r)
 	{
-		r.data = data; r.length = t.length;
+		r.data = (index_t*)data; r.length = t.length;
 		memcpy(data, t.data, t.length * sizeof(index_t));
-		data += t.length;
+		data += t.length * sizeof(index_t);
 	};
 	auto writemeta = [&](const metaset& t, metaset& r)
 	{
 		r.data = data; r.length = t.length;
-		memcpy(data, t.data, t.length * sizeof(index_t));
-		data += t.length;
-		r.metaData = data;
-		memcpy(data, t.metaData, t.length * sizeof(index_t));
-		data += t.length;
+		memcpy(data, t.data, t.length * sizeof(entity));
+		data += t.length * sizeof(entity);
 	};
 #define writeType(name) \
 		write(f.name.types, f2.name.types); writemeta(f.name.metatypes, f2.name.metatypes);
@@ -575,7 +557,7 @@ context::query_cache& context::get_query_cache(const entity_filter& f)
 		cache.includeDisabled = includeDisabled;
 		auto totalSize = get_filter_size(f);
 		cache.data.resize(totalSize);
-		index_t* data = cache.data.data();
+		char* data = cache.data.data();
 		cache.filter = clone_filter(f, data);
 		auto p = queries.insert({ cache.filter, std::move(cache) });
 		return p.first->second;
@@ -625,9 +607,9 @@ context::archetype* context::get_archetype(const entity_type& key)
 	const uint16_t count = key.types.length;
 	uint16_t firstTag = 0;
 	uint16_t firstBuffer = 0;
-	uint16_t firstMeta = count - key.metatypes.length;
+	uint16_t metaCount = key.metatypes.length;
 	uint16_t c = 0;
-	for (c = 0; c < firstMeta; c++)
+	for (c = 0; c < count; c++)
 	{
 		auto type = (tagged_index)key.types[c];
 		if (type.is_tag()) break;
@@ -639,10 +621,10 @@ context::archetype* context::get_archetype(const entity_type& key)
 		if (type.is_buffer()) break;
 	}
 	firstBuffer = c;
-	void* data = malloc(archetype::calculate_size(count, firstTag, firstMeta));
+	void* data = malloc(archetype::calculate_size(count, firstTag, metaCount));
 	archetype* g = (archetype*)data;
 	g->componentCount = count;
-	g->firstMeta = firstMeta;
+	g->metaCount = metaCount;
 	g->firstBuffer = firstBuffer;
 	g->firstTag = firstTag;
 	g->cleaning = false;
@@ -653,14 +635,9 @@ context::archetype* context::get_archetype(const entity_type& key)
 	g->timestamp = timestamp;
 	g->lastChunk = g->firstChunk = g->firstFree = nullptr;
 	index_t* types = g->types();
-	index_t* metatypes = g->metatypes();
+	entity* metatypes = g->metatypes();
 	memcpy(types, key.types.data, count * sizeof(index_t));
-	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(index_t));
-	forloop(i, g->firstMeta, g->componentCount)
-	{
-		auto& info = gd.metainfos[metakey{ types[i], metatypes[i - g->firstMeta] }];
-		info.refCount++;
-	}
+	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
 
 	const uint16_t disableType = disable_id;
 	const uint16_t cleanupType = cleanup_id;
@@ -712,13 +689,11 @@ context::archetype* context::get_cleaning(archetype* g)
 	else if (!g->withTracked) return nullptr;
 
 	uint16_t k = 0, count = g->componentCount;
-	uint16_t mk = 0, mcount = count - g->firstMeta;
 	const uint16_t cleanupType = cleanup_id;
 	index_t* types = g->types();
-	index_t* metatypes = g->metatypes();
+	entity* metatypes = g->metatypes();
 
 	stack_array(index_t, dstTypes, count + 1);
-	stack_array(index_t, dstMetaTypes, mcount);
 	dstTypes[k++] = cleanupType;
 	forloop(i, 0, count)
 	{
@@ -730,18 +705,10 @@ context::archetype* context::get_cleaning(archetype* g)
 	if (k == 1)
 		return nullptr;
 
-	forloop(i, 0, mcount)
-	{
-		auto type = (tagged_index)(types + g->firstMeta)[i];
-		auto stage = gd.tracks[type.index()];
-		if (stage & NeedCleaning != 0)
-			dstMetaTypes[mk++] = metatypes[i];
-	}
-
 	auto dstKey = entity_type
 	{
 		typeset {dstTypes, k},
-		metaset {{dstMetaTypes, mk}, dstTypes + k - mk}
+		metaset {metatypes, g->metaCount}
 	};
 
 	return get_archetype(dstKey);
@@ -758,9 +725,8 @@ context::archetype* context::get_instatiation(archetype* g)
 	else if (!g->withTracked) return g;
 
 	uint16_t count = g->componentCount;
-	uint16_t mcount = count - g->firstMeta;
 	index_t* types = g->types();
-	index_t* metatypes = g->metatypes();
+	entity* metatypes = g->metatypes();
 
 	stack_array(index_t, dstTypes, count);
 	forloop(i, 0, count)
@@ -776,7 +742,7 @@ context::archetype* context::get_instatiation(archetype* g)
 	auto dstKey = entity_type
 	{
 		typeset {dstTypes, count},
-		metaset {{metatypes, mcount}, dstTypes + count - mcount}
+		metaset {metatypes, g->metaCount}
 	};
 
 	return get_archetype(dstKey);
@@ -789,7 +755,7 @@ context::archetype* context::get_extending(archetype* g, const entity_type& ext)
 
 	entity_type srcType = g->get_type();
 	stack_array(index_t, newTypes, srcType.types.length + ext.types.length);
-	stack_array(index_t, newMetaTypes, srcType.metatypes.length + ext.metatypes.length);
+	stack_array(entity, newMetaTypes, srcType.metatypes.length + ext.metatypes.length);
 	entity_type key = entity_type::merge(srcType, ext, newTypes, newMetaTypes);
 	if (!g->withTracked)
 		return get_archetype(key);
@@ -797,7 +763,6 @@ context::archetype* context::get_extending(archetype* g, const entity_type& ext)
 	{
 		int k = 0, mk = 0;
 		stack_array(index_t, newTypesx, key.types.length);
-		stack_array(index_t, newMetaTypesx, key.metatypes.length);
 		auto can_zip = [&](int i)
 		{
 			auto type = (tagged_index)newTypes[i];
@@ -813,30 +778,22 @@ context::archetype* context::get_extending(archetype* g, const entity_type& ext)
 			if (i < key.types.length - 1 && can_zip(i))
 				i++;
 		}
-		int offset = key.types.length - key.metatypes.length;
-		forloop(i, 0, key.metatypes.length)
-		{
-			auto type = (tagged_index)(newTypes + offset)[i];
-			newMetaTypesx[mk++] = key.metatypes[i];
-			if (i < key.metatypes.length - 1 && can_zip(i))
-				i++;
-		}
 		auto dstKey = entity_type
 		{
 			typeset {newTypesx, k},
-			metaset {{newMetaTypesx, mk}, newTypesx + k - mk}
+			key.metatypes
 		};
 		return get_archetype(dstKey);
 	}
 }
 
-context::archetype* context::get_shrinking(archetype* g, const typeset& shr)
+context::archetype* context::get_shrinking(archetype* g, const entity_type& shr)
 {
 	if (!g->withTracked)
 	{
 		entity_type srcType = g->get_type();
 		stack_array(index_t, newTypes, srcType.types.length);
-		stack_array(index_t, newMetaTypes, srcType.metatypes.length);
+		stack_array(entity, newMetaTypes, srcType.metatypes.length);
 		auto key = entity_type::substract(srcType, shr, newTypes, newMetaTypes);
 		return get_archetype(key);
 	}
@@ -845,17 +802,17 @@ context::archetype* context::get_shrinking(archetype* g, const typeset& shr)
 		entity_type srcType = g->get_type();
 		stack_array(index_t, shrTypes, srcType.types.length * 2);
 		int k = 0;
-		forloop(i, 0, shr.length)
+		forloop(i, 0, shr.types.length)
 		{
-			auto type = (tagged_index)shr[i];
+			auto type = (tagged_index)shr.types[i];
 			shrTypes[k++] = type;
 			auto stage = gd.tracks[type.index()];
 			if(stage & NeedCopying != 0)
 				shrTypes[k++] = type + 1;
 		}
 		stack_array(index_t, newTypes, srcType.types.length);
-		stack_array(index_t, newMetaTypes, srcType.metatypes.length);
-		typeset shrx{ shrTypes, k };
+		stack_array(entity, newMetaTypes, srcType.metatypes.length);
+		entity_type shrx{ { shrTypes, k }, shr.metatypes };
 		auto key = entity_type::substract(srcType, shrx, newTypes, newMetaTypes);
 		if (g->cleaning && is_cleaned(key))
 			return nullptr;
@@ -939,18 +896,7 @@ void context::unmark_free(archetype* g, chunk* c)
 
 void context::release_reference(archetype* g)
 {
-	index_t* metatypes = g->metatypes();
-	index_t* types = g->types();
-	forloop(i, g->firstMeta, g->componentCount)
-	{
-		auto key = metakey{ types[i], metatypes[i - g->firstMeta] };
-		auto iter = gd.metainfos.find(key);
-		if (--iter->second.refCount == 0)
-		{
-			gd.release_metatype(key);
-			gd.metainfos.erase(iter);
-		}
-	}
+	//TODO
 }
 
 void context::serialize_archetype(archetype* g, serializer_i* s)
@@ -983,25 +929,12 @@ context::archetype* context::deserialize_archetype(serializer_i* s)
 	}
 	uint16_t mlength;
 	s->stream(&mlength, sizeof(uint16_t));
-	stack_array(index_t, metatypes, mlength);
+	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength);
-	forloop(i, 0, mlength)
-	{
-		metakey key{ types[tlength - mlength + i] , 0 };
-		s->streammeta(&key);
-		metatypes[i] = key.metatype;
-	}
-	std::sort(types, types + tlength - mlength);
+	//TODO patch
+	std::sort(types, types + tlength);
 
-	index_t* arr = types + tlength - mlength;
-	forloop(i, 0, mlength)
-	{
-		index_t* min = std::min_element(arr + i, arr + mlength);
-		std::swap(arr[i], *min);
-		std::swap(metatypes[i], metatypes[min - arr]);
-	}
-
-	entity_type type = { {types, tlength}, {{metatypes, mlength}, types + (tlength - mlength)} };
+	entity_type type = { {types, tlength}, {metatypes, mlength} };
 	return get_archetype(type);
 }
 
@@ -1172,13 +1105,6 @@ void context::structural_change(archetype* g, chunk* c, int32_t count)
 		{
 			auto type = (tagged_index)t.types[i];
 			typeTimestamps[type.index()] = timestamp;
-		}
-		//todo: meta type timestamp£¿
-
-		forloop(i, 0, t.metatypes.length)
-		{
-			metakey key{ t.metatypes.metaData[i], t.metatypes[i] };
-			gd.metainfos[key].timestamp = metaTimestamp;
 		}
 	}
 	forloop(i, 0, t.types.length)
@@ -1415,7 +1341,7 @@ void context::extend(chunk_slice s, const entity_type& type)
 void context::shrink(chunk_slice s, const entity_type& type)
 {
 
-	archetype* g = get_shrinking(s.c->type, type.types);
+	archetype* g = get_shrinking(s.c->type, type);
 	if(g == nullptr)
 		free_slice(s);
 	else
@@ -1770,16 +1696,6 @@ void context::deserialize(serializer_i* s, entity* ret)
 		::free(bitset);
 }
 
-index_t context::get_metatype(entity e, index_t t)
-{
-	const auto& data = ents.datas[e.id];
-	archetype* type = data.c->type;
-	uint16_t id = type->index(t);
-	if (id == -1) 
-		return -1;
-	return type->metatypes()[id - type->firstMeta];
-}
-
 bool context::has_component(entity e, index_t t) const
 {
 	const auto& data = ents.datas[e.id];
@@ -1789,15 +1705,6 @@ bool context::has_component(entity e, index_t t) const
 bool context::exist(entity e) const
 {
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
-}
-
-index_t context::get_metatype(chunk* c, index_t t)
-{;
-	archetype* type = c->type;
-	uint16_t id = type->index(t);
-	if (id == -1)
-		return -1;
-	return type->metatypes()[id - type->firstMeta];
 }
 
 std::optional<chunk_slice> context::batch_iterator::next()
