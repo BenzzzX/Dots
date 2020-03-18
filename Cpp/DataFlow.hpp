@@ -66,6 +66,12 @@ namespace core
 			void parallel(bool enable);
 		};
 
+		struct command
+		{
+			data_flow* owner;
+			handle_t index;
+		};
+
 		class data_flow
 		{
 			local_data_pool pool;
@@ -126,12 +132,18 @@ namespace core
 				handle_t overrideGroup = autoStage;
 				handle_t index;
 				bool enableParallel;
-				bool syncPoint;	
+			};
+
+			struct command_node
+			{
+
 			};
 
 			std::unordered_map<rw_handle, data_node> dataNodes;
 			std::vector<kernel_node> kernelNodes;
 			std::vector<data_handle> capturedData;
+			std::unordered_map<std::string, handle_t> kernelByName;
+
 			friend data_handle;
 			void on_data_captured(data_handle handle)
 			{
@@ -140,7 +152,7 @@ namespace core
 
 			struct query_cc
 			{
-				data_flow* owner;
+				data_flow* owner; 
 				entity_filter filter;
 				std::string n;
 
@@ -173,7 +185,9 @@ namespace core
 				uint32_t timestamp = 0);
 
 			template<class F>
-			kernel maintain(F&& f);
+			command record_command(F&& f);
+
+			void commit(std::vector<command>&& f);
 		};
 
 		template<class T>
