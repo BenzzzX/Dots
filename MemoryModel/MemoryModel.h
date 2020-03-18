@@ -58,6 +58,7 @@ namespace core
 				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* timestamps(chunk* c) noexcept;
 				inline uint16_t index(index_t type) noexcept;
+				bool match_filter(const entity_filter& filter);
 
 				inline entity_type get_type();
 
@@ -220,18 +221,20 @@ namespace core
 			void cast(entity* es, int32_t count, const entity_type& type);
 			void cast(const entity_filter& filter, const entity_type& type);
 			//update
-			void* get_component_rw(entity, index_t type);
+			void* get_owned_rw(entity, index_t type);
 
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
 			chunk_iterator query(const entity_filter& type);
 			query_iterator query_cached(const entity_filter& type);
 			entity_filter cache_query(const entity_filter& type);
-			const void* get_component_ro(entity, index_t type);
+			const void* get_component_ro(entity, index_t type) const;
+			const void* get_owned_ro(entity, index_t type) const;
+			const void* get_shared_ro(entity, index_t type) const;
 			bool has_component(entity, index_t type) const;
 			bool exist(entity) const;
-			const void* get_array_ro(chunk* c, index_t type) const noexcept;
-			void* get_array_rw(chunk* c, index_t type) noexcept;
+			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
+			void* get_owned_rw(chunk* c, index_t type) noexcept;
 			const entity* get_entities(chunk* c) noexcept;
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
 			entity_type get_type(entity) const noexcept;

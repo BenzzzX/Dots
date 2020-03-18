@@ -5,6 +5,30 @@
 
 namespace core
 {
+	template<size_t A, size_t B, class T = uint32_t>
+	struct handle
+	{
+		using underlying_type = T;
+		static_assert(A + B == sizeof(T) * 8);
+		T id : A;
+		T version : B;
+		operator T() { return *reinterpret_cast<T*>(this); }
+		constexpr handle() = default;
+		constexpr handle(T t) { *reinterpret_cast<T*>(this) = t; }
+		constexpr handle(T i, T v) { id = i; version = v; }
+
+		bool operator==(const handle& e) const
+		{
+			return id == e.id && version == e.version;
+		}
+	};
+
+	struct entity : handle<20, 12>
+	{
+		using handle::handle;
+		static entity Invalid;
+	};
+
 	namespace database
 	{
 		using index_t = uint32_t;

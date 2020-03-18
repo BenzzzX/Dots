@@ -455,6 +455,12 @@ uint16_t context::archetype::index(index_t type) noexcept
 		return uint16_t(-1);
 }
 
+bool context::archetype::match_filter(const entity_filter& filter)
+{
+	//TODO
+	return false;
+}
+
 entity_type context::archetype::get_type()
 {
 	index_t* ts = types();
@@ -496,7 +502,7 @@ entity_filter clone_filter(const entity_filter& f, char* data)
 	};
 	auto writemeta = [&](const metaset& t, metaset& r)
 	{
-		r.data = data; r.length = t.length;
+		r.data = (entity*)data; r.length = t.length;
 		memcpy(data, t.data, t.length * sizeof(entity));
 		data += t.length * sizeof(entity);
 	};
@@ -907,11 +913,7 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 	forloop(i, 0, tlength)
 		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
 	s->stream(&mlength, sizeof(uint16_t));
-	forloop(i, 0, mlength)
-	{
-		metakey key = { type.types[tlength - mlength + i], type.metatypes[i] };
-		s->streammeta(&key);
-	}
+	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
 
 context::archetype* context::deserialize_archetype(serializer_i* s)
@@ -1443,7 +1445,23 @@ void context::cast(const entity_filter& filter, const entity_type& type)
 		cast(*s, type);
 }
 
-const void* context::get_component_ro(entity e, index_t type)
+const void* context::get_component_ro(entity e, index_t type) const
+{
+	const auto& data = ents.datas[e.id];
+	chunk* c = data.c; archetype* g = c->type;
+	uint16_t id = g->index(type);
+	if (id == -1)
+	{
+		entity* metas = g->metatypes();
+		forloop(i, 0, g->metaCount)
+			if (const void* shared = get_component_ro(metas[i], type))
+				return shared;
+		return nullptr;
+	}
+	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
+}
+
+const void* context::get_owned_ro(entity, index_t type) const
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
@@ -1452,7 +1470,18 @@ const void* context::get_component_ro(entity e, index_t type)
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-void* context::get_component_rw(entity e, index_t type)
+const void* context::get_shared_ro(entity, index_t type) const
+{
+	const auto& data = ents.datas[e.id];
+	chunk* c = data.c; archetype* g = c->type;
+	entity* metas = g->metatypes();
+	forloop(i, 0, g->metaCount)
+		if (const void* shared = get_component_ro(metas[i], type))
+			return shared;
+	return nullptr;
+}
+
+void* context::get_owned_rw(entity e, index_t type)
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
@@ -1462,14 +1491,14 @@ void* context::get_component_rw(entity e, index_t type)
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_array_ro(chunk* c, index_t t) const noexcept
+const void* context::get_owned_ro(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;
 	return c->data() + c->type->offsets()[id];
 }
 
-void* context::get_array_rw(chunk* c, index_t t) noexcept
+void* context::get_owned_rw(chunk* c, index_t t) noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;

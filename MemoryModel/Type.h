@@ -8,29 +8,6 @@
 #include "Set.h"
 namespace core
 {
-	template<size_t A, size_t B, class T = uint32_t>
-	struct handle
-	{
-		using underlying_type = T;
-		static_assert(A + B == sizeof(T) * 8);
-		T id : A;
-		T version : B;
-		operator T() { return *reinterpret_cast<T*>(this); }
-		constexpr handle() = default;
-		constexpr handle(T t) { *reinterpret_cast<T*>(this) = t; }
-		constexpr handle(T i, T v) { id = i; version = v; }
-
-		bool operator==(const handle& e) const
-		{
-			return id == e.id && version == e.version;
-		}
-	};
-
-	struct entity : handle<20, 12>
-	{
-		using handle::handle;
-		static entity Invalid;
-	};
 
 	namespace database
 	{
@@ -53,30 +30,11 @@ namespace core
 			constexpr operator index_t() const { return id; }
 		};
 
-		struct metakey
-		{
-			index_t type;
-			index_t metatype;
-			bool operator==(const metakey& other) const
-			{
-				return type == other.type && metatype == other.metatype;
-			}
-
-			struct hash
-			{
-				size_t operator()(const metakey& key) const
-				{
-					return (size_t(key.type) << 16) & key.metatype;
-				}
-			};
-		};
-
 		extern uint32_t metaTimestamp;
 
 		struct serializer_i
 		{
 			virtual void stream(const void* data, uint32_t bytes) = 0;
-			virtual void streammeta(metakey* metatype) = 0;
 			virtual bool is_serialize() = 0;
 		};
 
@@ -206,14 +164,14 @@ namespace core
 			static entity_type merge(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
 			{
 				typeset ts = typeset::merge(lhs.types, rhs.types, dst);
-				metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, dst);
+				metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, metaDst);
 				return { ts, ms };
 			}
 
 			static entity_type substract(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
 			{
 				typeset ts = typeset::substract(lhs.types, rhs.types, dst);
-				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, dst);
+				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, metaDst);
 				return { ts, ms };
 			}
 		};
