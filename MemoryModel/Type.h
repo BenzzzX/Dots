@@ -38,20 +38,17 @@ namespace core
 		{
 			index_t id;
 
-			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 4;
+			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 2;
 			static constexpr index_t mask = (index_t(2) << offset) - 1;
 		public:
 			constexpr index_t index() const noexcept { return id & mask; }
-			constexpr bool is_buffer() const noexcept { return (id >> (offset + 1)) & 1; }
-			constexpr bool is_tag() const noexcept { return (id >> (offset + 2)) & 1; }
-			constexpr bool is_meta() const noexcept { return (id >> (offset + 3)) & 1; }
+			constexpr bool is_buffer() const noexcept { return (id >> (offset)) & 1; }
+			constexpr bool is_tag() const noexcept { return (id >> (offset + 1)) & 1; }
 
 			constexpr tagged_index(index_t value = 0) noexcept :id(value) { }
-			constexpr tagged_index(index_t a, bool b, bool c, bool d, bool e) noexcept
+			constexpr tagged_index(index_t a, bool b, bool c) noexcept
 				: id(a | ((index_t)b << offset) |
-					((index_t)c << (offset + 1)) |
-					((index_t)d << (offset + 2)) |
-					((index_t)e << (offset + 3))) { }
+					((index_t)c << (offset + 1))) { }
 
 			constexpr operator index_t() const { return id; }
 		};
@@ -111,9 +108,7 @@ namespace core
 
 		struct component_desc
 		{
-			bool isManaged = false;
 			bool isElement = false;
-			bool isMeta = false; 
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
@@ -126,11 +121,11 @@ namespace core
 		};
 
 		index_t register_type(component_desc desc);
-		void set_meta_release_function(std::function<void(metakey)> func);
 
 		extern index_t disable_id;
 		extern index_t cleanup_id;
 		extern index_t group_id;
+		extern index_t meta_id;
 
 		struct buffer
 		{
@@ -208,44 +203,19 @@ namespace core
 				}
 			};
 
-			bool valid_for_entity() const
-			{
-				if (types.length == 0)
-					return false;
-				return memcmp(metatypes.metaData, types.data + types.length - metatypes.length, metatypes.length) == 0;
-			}
-
-			static const index_t* get_meta(typeset ts)
-			{
-				return std::find_if(ts.data, ts.data + ts.length, [](index_t v) { return ((tagged_index)v).is_meta(); });
-			}
-
-			static entity_type merge(const entity_type& lhs, const entity_type& rhs, index_t* dst, index_t* metaDst)
+			static entity_type merge(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
 			{
 				typeset ts = typeset::merge(lhs.types, rhs.types, dst);
-				const index_t* meta = get_meta(ts);
-				if (meta != ts.data + ts.length)
-				{
-					metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, meta, metaDst);
-					return { ts, ms };
-				}
-				else
-					return { ts, {{nullptr, 0}, nullptr} };
+				metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, dst);
+				return { ts, ms };
 			}
 
-			static entity_type substract(const entity_type& lhs, const typeset& rhs, index_t* dst, index_t* metaDst)
+			static entity_type substract(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
 			{
-				typeset ts = typeset::substract(lhs.types, rhs, dst);
-				const index_t* meta = get_meta(ts);
-				if (meta != ts.data + ts.length)
-				{
-					metaset ms = metaset::substract(lhs.metatypes, rhs, meta, metaDst);
-					return { ts, ms };
-				}
-				else
-					return { ts, {{nullptr, 0}, nullptr} };
+				typeset ts = typeset::substract(lhs.types, rhs.types, dst);
+				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, dst);
+				return { ts, ms };
 			}
-
 		};
 
 		struct entity_filter
