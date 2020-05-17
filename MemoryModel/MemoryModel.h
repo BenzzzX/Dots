@@ -143,6 +143,12 @@ namespace core
 				query_iterator iter();
 			};
 
+			struct structural_change
+			{
+				void* extend;
+				void* shrink;
+			};
+
 			using queries_t = std::unordered_map<entity_filter, query_cache, entity_filter::hash>;
 
 			query_cache& get_query_cache(const entity_filter& f);
@@ -181,7 +187,7 @@ namespace core
 			void release_reference(archetype* g);
 
 			static void serialize_archetype(archetype* g, serializer_i* s);
-			archetype* deserialize_archetype(serializer_i* s);
+			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
 
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
@@ -189,7 +195,7 @@ namespace core
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);
-			entity deserialize_single(serializer_i* s);
+			entity deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
 
@@ -240,18 +246,22 @@ namespace core
 			entity_type get_type(entity) const noexcept;
 
 			//as prefab
+			void gather_reference(entity, std::pmr::vector<entity>& entities);
 			void serialize(serializer_i* s, entity);
-			void deserialize(serializer_i* s, entity*, uint32_t times = 1);
+			void deserialize(serializer_i* s, patcher_i* patcher, entity*, uint32_t times = 1);
 
 			//multi context
 			void move_context(context& src);
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
-			void serialize(serializer_i* s);
-			void deserialize(serializer_i* s, entity* ret);
+			void create_snapshot(serializer_i* s);
+			void load_snapshot(serializer_i* s);
+			void append_snapshot(serializer_i* s, entity* ret);
+			void clear();
 
 
 			uint32_t *typeTimestamps;
+			index_t typeCapacity;
 			uint32_t timestamp;
 		};
 
@@ -278,7 +288,6 @@ namespace core
 			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
-			static void deserialize(chunk_slice s, serializer_i* stream);
 			void link(chunk*) noexcept;
 			void unlink() noexcept;
 			char* data() { return (char*)(this + 1); }

@@ -420,10 +420,6 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		else //move
 		{
 			memcpy(d, s, dstSizes[dstI] * count);
-#ifndef NOINITIALIZE
-			forloop(j, 0, count)
-				new(j * srcSizes[srcI] + s) buffer{ srcSizes[dstI] - sizeof(buffer) };
-#endif
 			dstI++; srcI++;
 		}
 	}
@@ -913,10 +909,11 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 	forloop(i, 0, tlength)
 		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
 	s->stream(&mlength, sizeof(uint16_t));
-	s->stream(type.metatypes.data, mlength * sizeof(entity));
+	stack_array(entity, metatypes, mlength);
+	s->stream(metatypes, mlength * sizeof(entity));
 }
 
-context::archetype* context::deserialize_archetype(serializer_i* s)
+context::archetype* context::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 {
 	uint16_t tlength;
 	stack_array(index_t, types, tlength);
@@ -933,9 +930,10 @@ context::archetype* context::deserialize_archetype(serializer_i* s)
 	s->stream(&mlength, sizeof(uint16_t));
 	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength);
-	//TODO patch
+	forloop(i, 0, mlength)
+		metatypes[i] = patcher->patch(metatypes[i]);
 	std::sort(types, types + tlength);
-
+	std::sort(metatypes, metatypes + mlength);
 	entity_type type = { {types, tlength}, {metatypes, mlength} };
 	return get_archetype(type);
 }
@@ -960,7 +958,7 @@ std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i
 	uint16_t start = c->count;
 	resize_chunk(c, start + count);
 	chunk_slice slice = { c, start, count };
-	chunk::deserialize(slice, s);
+	chunk::serialize(slice, s);
 	return slice;
 }
 
@@ -974,6 +972,7 @@ struct linear_patcher : patcher_i
 
 void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
+	//should we patch meta?
 	struct patcher : patcher_i
 	{
 		entity* source;
@@ -1113,11 +1112,12 @@ void context::structural_change(archetype* g, chunk* c, int32_t count)
 		g->timestamps(c)[i] = timestamp;
 }
 
-entity context::deserialize_single(serializer_i* s)
+entity context::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
-	auto *g = deserialize_archetype(s);
+	auto *g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
 	ents.new_entities(*slice);
+	chunk::patch(*slice, patcher);
 	return slice->c->get_entities()[slice->start];
 }
 
@@ -1205,6 +1205,7 @@ void context::cast_slice(chunk_slice src, archetype* g)
 }
 
 context::context(index_t typeCapacity)
+	:typeCapacity(typeCapacity)
 {
 	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
@@ -1461,7 +1462,7 @@ const void* context::get_component_ro(entity e, index_t type) const
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_owned_ro(entity, index_t type) const
+const void* context::get_owned_ro(entity e, index_t type) const
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
@@ -1470,7 +1471,7 @@ const void* context::get_owned_ro(entity, index_t type) const
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_shared_ro(entity, index_t type) const
+const void* context::get_shared_ro(entity e, index_t type) const
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
@@ -1524,6 +1525,66 @@ entity_type context::get_type(entity e) const noexcept
 	return data.c->type->get_type();
 }
 
+void context::gather_reference(entity e, std::pmr::vector<entity>& entities)
+{
+	auto group_data = (buffer*)get_component_ro(e, group_id);
+	if (group_data == nullptr)
+	{
+		struct gather : patcher_i
+		{
+			entity source;
+			std::pmr::vector<entity>* ents;
+			entity patch(entity e) override
+			{
+				if(e!=source)
+					ents->push_back(e);
+				return e;
+			}
+		} p;
+		p.source = e;
+		p.ents = &entities;
+		auto& data = ents.datas[e.id];
+		auto g = data.c->type;
+		auto mt = g->metatypes();
+		forloop(i, 0, g->metaCount)
+			p.patch(mt[i]);
+		chunk::patch({ data.c, data.i, 1 }, & p);
+	}
+	else
+	{
+		uint32_t size = group_data->size / sizeof(entity);
+		stack_array(entity, members, size);
+		memcpy(members, group_data->data(), group_data->size);
+		struct gather : patcher_i
+		{
+			entity* source;
+			uint32_t count;
+			std::pmr::vector<entity>* ents;
+			entity patch(entity e) override
+			{
+				forloop(i, 0, count)
+					if (e == source[i])
+						return;
+				ents->push_back(e);
+				return e;
+			}
+		} p;
+		p.source = members;
+		p.count = size;
+		p.ents = &entities;
+		forloop(i, 0, size)
+		{
+			e = members[i];
+			auto& data = ents.datas[e.id]; 
+			auto g = data.c->type;
+			auto mt = g->metatypes();
+			forloop(i, 0, g->metaCount)
+				p.patch(mt[i]);
+			chunk::patch({ data.c, data.i, 1 }, &p);
+		}
+	}
+}
+
 void context::serialize(serializer_i* s, entity src)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
@@ -1544,9 +1605,9 @@ void context::serialize(serializer_i* s, entity src)
 	}
 }
 
-void context::deserialize(serializer_i* s, entity* ret, uint32_t times)
+void context::deserialize(serializer_i* s, patcher_i* patcher, entity* ret, uint32_t times)
 {
-	entity src = deserialize_single(s);
+	entity src = deserialize_single(s, patcher);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (ret != nullptr)
 		ret[0] = src;
@@ -1562,7 +1623,7 @@ void context::deserialize(serializer_i* s, entity* ret, uint32_t times)
 		members[0] = src;
 		forloop(i, 1, size)
 		{
-			members[i] = deserialize_single(s);
+			members[i] = deserialize_single(s, patcher);
 		}
 		if (times > 1)
 			instantiate_prefab(members, size, ret + 1, times - 1);
@@ -1627,7 +1688,7 @@ struct Data
 */
 
 
-void context::serialize(serializer_i* s)
+void context::create_snapshot(serializer_i* s)
 {
 	const uint32_t start = 0;
 	s->stream(&start, sizeof(uint32_t));
@@ -1670,12 +1731,18 @@ void context::serialize(serializer_i* s)
 		::free(bitset);
 }
 
+void context::load_snapshot(serializer_i* s)
+{
+	clear();
+	append_snapshot(s, nullptr);
+}
+
 entity linear_patcher::patch(entity e)
 {
 	patch_entity(e, start, target, count);
 }
 
-void context::deserialize(serializer_i* s, entity* ret)
+void context::append_snapshot(serializer_i* s, entity* ret)
 {
 	uint32_t start, count;
 	s->stream(&start, sizeof(uint32_t));
@@ -1715,7 +1782,7 @@ void context::deserialize(serializer_i* s, entity* ret)
 	patcher.count = count;
 
 	//todo: multithread?
-	for(archetype* g = deserialize_archetype(s); g!=nullptr; g = deserialize_archetype(s))
+	for(archetype* g = deserialize_archetype(s, &patcher); g!=nullptr; g = deserialize_archetype(s, &patcher))
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
 
@@ -1723,6 +1790,29 @@ void context::deserialize(serializer_i* s, entity* ret)
 		::free(patch);
 	if (needFreeB)
 		::free(bitset);
+}
+
+void context::clear()
+{
+	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+	for (auto& g : archetypes)
+	{
+		chunk* c = g.second->firstChunk;
+		while (c != nullptr)
+		{
+			chunk* next = c->next;
+			chunk::destruct({ c,0,c->count });
+			if (poolSize < kChunkPoolCapacity)
+				chunkPool[poolSize++] = c;
+			else
+				::free(c);
+			c = next;
+		}
+		release_reference(g.second);
+		free(g.second);
+	}
+	queries.clear();
+	archetypes.clear();
 }
 
 bool context::has_component(entity e, index_t t) const
