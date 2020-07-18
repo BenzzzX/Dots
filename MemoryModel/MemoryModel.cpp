@@ -1448,6 +1448,8 @@ void context::cast(const entity_filter& filter, const entity_type& type)
 
 const void* context::get_component_ro(entity e, index_t type) const
 {
+	if (!exist(e))
+		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
@@ -1455,8 +1457,10 @@ const void* context::get_component_ro(entity e, index_t type) const
 	{
 		entity* metas = g->metatypes();
 		forloop(i, 0, g->metaCount)
+		{
 			if (const void* shared = get_component_ro(metas[i], type))
 				return shared;
+		}
 		return nullptr;
 	}
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
@@ -1464,6 +1468,8 @@ const void* context::get_component_ro(entity e, index_t type) const
 
 const void* context::get_owned_ro(entity e, index_t type) const
 {
+	if (!exist(e))
+		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
@@ -1473,17 +1479,24 @@ const void* context::get_owned_ro(entity e, index_t type) const
 
 const void* context::get_shared_ro(entity e, index_t type) const
 {
+	if (!exist(e))
+		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	entity* metas = g->metatypes();
 	forloop(i, 0, g->metaCount)
+	{
 		if (const void* shared = get_component_ro(metas[i], type))
 			return shared;
+	}
+		
 	return nullptr;
 }
 
 void* context::get_owned_rw(entity e, index_t type)
 {
+	if (!exist(e))
+		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
@@ -1497,6 +1510,19 @@ const void* context::get_owned_ro(chunk* c, index_t t) const noexcept
 	uint16_t id = c->type->index(t);
 	if (id == -1) return nullptr;
 	return c->data() + c->type->offsets()[id];
+}
+
+const void* context::get_shared_ro(chunk* c, index_t type) const noexcept
+{
+	archetype* g = c->type;
+	entity* metas = g->metatypes();
+	forloop(i, 0, g->metaCount)
+	{
+		if (const void* shared = get_component_ro(metas[i], type))
+			return shared;
+	}
+
+	return nullptr;
 }
 
 void* context::get_owned_rw(chunk* c, index_t t) noexcept
@@ -1813,6 +1839,24 @@ void context::clear()
 	}
 	queries.clear();
 	archetypes.clear();
+}
+
+void context::gc_meta()
+{
+	for (auto& gi : archetypes)
+	{
+		auto g = gi.second;
+		auto mt = g->metatypes();
+		forloop(i, 0, g->metaCount)
+		{
+			if (!exist(mt[i]))
+			{
+				if (i + 1 != g->metaCount)
+					std::swap(mt[i], mt[g->metaCount - 1]);
+				g->metaCount--;
+			}
+		}
+	}
 }
 
 bool context::has_component(entity e, index_t t) const

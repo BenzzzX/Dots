@@ -234,12 +234,13 @@ namespace core
 			chunk_iterator query(const entity_filter& type);
 			query_iterator query_cached(const entity_filter& type);
 			entity_filter cache_query(const entity_filter& type);
-			const void* get_component_ro(entity, index_t type) const;
-			const void* get_owned_ro(entity, index_t type) const;
-			const void* get_shared_ro(entity, index_t type) const;
-			bool has_component(entity, index_t type) const;
-			bool exist(entity) const;
+			const void* get_component_ro(entity, index_t type) const noexcept;
+			const void* get_owned_ro(entity, index_t type) const noexcept;
+			const void* get_shared_ro(entity, index_t type) const noexcept;
+			bool has_component(entity, index_t type) const noexcept;
+			bool exist(entity) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
+			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
 			const entity* get_entities(chunk* c) noexcept;
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
@@ -257,8 +258,10 @@ namespace core
 			void create_snapshot(serializer_i* s);
 			void load_snapshot(serializer_i* s);
 			void append_snapshot(serializer_i* s, entity* ret);
-			void clear();
 
+			//clear
+			void clear();
+			void gc_meta();
 
 			uint32_t *typeTimestamps;
 			index_t typeCapacity;
