@@ -58,7 +58,7 @@ namespace core
 				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* timestamps(chunk* c) noexcept;
 				inline uint16_t index(index_t type) noexcept;
-				bool match_filter(const entity_filter& filter);
+				inline mask get_mask(const entity_type& subtype) noexcept;
 
 				inline entity_type get_type();
 
@@ -199,7 +199,6 @@ namespace core
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
 
-			static bool valid_group(archetype* g, bool includeClean, bool includeDisabled);
 			friend chunk;
 			friend batch_iterator;
 			friend chunk_iterator;

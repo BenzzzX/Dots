@@ -24,7 +24,8 @@ struct type_data
 
 index_t core::database::disable_id = 0;
 index_t core::database::cleanup_id = 1;
-index_t core::database::group_id = 1;
+index_t core::database::group_id = 2;
+index_t core::database::mask_id = 3;
 
 struct metainfo
 {
@@ -59,6 +60,12 @@ struct global_data
 		desc.entityRefCount = 1;
 		desc.name = "group";
 		group_id = register_type(desc);
+		desc.size = sizeof(mask);
+		desc.hash = 3;
+		desc.isElement = false;
+		desc.name = "mask";
+		desc.entityRefCount = 0;
+		mask_id = register_type(desc);
 	}
 };
 
@@ -159,6 +166,13 @@ void chunk::construct(chunk_slice s) noexcept
 		char* src = srcData;
 		forloop(j, 0, s.count)
 			new(j * sizes[i] + src) buffer{ sizes[i] - sizeof(buffer) };
+	}
+
+	uint16_t maskId = type->index(mask_id);
+	if (maskId != -1)
+	{
+		auto i = maskId;
+		memset(srcData, -1, sizes[i] * s.count);
 	}
 }
 
@@ -437,6 +451,38 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 			new(j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
 		dstI++;
 	}
+
+	uint16_t srcMaskId = srcType->index(mask_id);
+	uint16_t dstMaskId = dstType->index(mask_id);
+	if (srcMaskId != -1 && dstMaskId != -1)
+	{
+		mask* s = (mask*)(src->data() + srcOffsets[srcMaskId] + srcSizes[srcMaskId] * srcIndex);
+		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
+		forloop(i, 0, count)
+		{
+			srcI = dstI = 0;
+			d[i].v = 0;
+			while (srcI < srcType->componentCount && dstI < dstType->componentCount)
+			{
+				auto st = to_valid_type(srcTypes[srcI]);
+				auto dt = to_valid_type(dstTypes[dstI]);
+				if (st < dt) //destruct 
+					;
+				else if (st > dt) //construct
+					d[i].v.set(dstI);
+				else //move
+					if(s[i].v.test(srcI))
+						d[i].v.set(dstI);
+			}
+			while (dstI < dstType->componentCount)
+				d[i].v.set(dstI);
+		}
+	}
+	else if (dstMaskId != -1)
+	{
+		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
+		memset(d, -1, dstSizes[dstMaskId] * count);
+	}
 }
 
 inline uint32_t* context::archetype::timestamps(chunk* c) noexcept { return (uint32_t*)(c->data() + kChunkBufferSize) - firstTag; }
@@ -451,10 +497,28 @@ uint16_t context::archetype::index(index_t type) noexcept
 		return uint16_t(-1);
 }
 
-bool context::archetype::match_filter(const entity_filter& filter)
+mask context::archetype::get_mask(const entity_type& subtype) noexcept
 {
-	//TODO
-	return false;
+	mask ret;
+	auto ta = get_type().types;
+	auto tb = subtype.types;
+	uint16_t i = 0, j = 0;
+	while (i < ta.length && j < tb.length)
+	{
+		if (ta[i] > tb[j])
+			j++;
+		else if (ta[i] < tb[j])
+		{
+			ret.v.reset();
+			break;
+		}
+		else
+		{
+			ret.v.set(i);
+			(j++, i++);
+		}
+	}
+	return ret;
 }
 
 entity_type context::archetype::get_type()
@@ -1861,6 +1925,8 @@ void context::gc_meta()
 
 bool context::has_component(entity e, index_t t) const
 {
+	if (!exist(e))
+		return false;
 	const auto& data = ents.datas[e.id];
 	return data.c->type->index(t) != -1;
 }
