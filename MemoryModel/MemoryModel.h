@@ -41,6 +41,7 @@ namespace core
 				uint32_t size;
 				bool disabled;
 				bool cleaning;
+				bool withMask;
 				bool withTracked;
 				bool zerosize;
 
@@ -236,7 +237,10 @@ namespace core
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
-			bool has_component(entity, index_t type) const noexcept;
+			bool has_component(entity, const entity_type& type) const noexcept;
+			void enable_component(entity, const entity_type& type) const noexcept;
+			void disable_component(entity, const entity_type& type) const noexcept;
+			bool is_component_enabled(entity, const entity_type& type) const noexcept;
 			bool exist(entity) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;

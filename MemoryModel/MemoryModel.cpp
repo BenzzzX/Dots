@@ -98,11 +98,15 @@ index_t database::register_type(component_desc desc)
 	gd.tracks.push_back((track_state)s);
 	gd.hash2type.insert({ desc.hash, id });
 
-	id = (uint16_t)gd.infos.size();
-	id = tagged_index{ id, desc.isElement, desc.size == 0 };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
-	gd.tracks.push_back(Copying);
-	gd.infos.push_back(i);
+	if (desc.need_copy)
+	{
+		id = (uint16_t)gd.infos.size();
+		id = tagged_index{ id, desc.isElement, desc.size == 0 };
+		type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
+		gd.tracks.push_back(Copying);
+		gd.infos.push_back(i);
+	}
+	
 	return id;
 }
 
@@ -695,6 +699,7 @@ context::archetype* context::get_archetype(const entity_type& key)
 	g->firstTag = firstTag;
 	g->cleaning = false;
 	g->disabled = false;
+	g->withMask = false;
 	g->withTracked = false;
 	g->zerosize = false;
 	g->size = 0;
@@ -707,6 +712,7 @@ context::archetype* context::get_archetype(const entity_type& key)
 
 	const uint16_t disableType = disable_id;
 	const uint16_t cleanupType = cleanup_id;
+	const uint16_t maskType = mask_id;
 	
 	uint16_t* sizes = g->sizes();
 	uint16_t* offsets = g->offsets();
@@ -720,6 +726,8 @@ context::archetype* context::get_archetype(const entity_type& key)
 			g->disabled = true;
 		else if (type == cleanupType)
 			g->cleaning = true;
+		else if (type == maskType)
+			g->withMask = true;
 		auto info = gd.infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.hash;
@@ -1923,12 +1931,58 @@ void context::gc_meta()
 	}
 }
 
-bool context::has_component(entity e, index_t t) const
+bool context::has_component(entity e, const entity_type& type) const
 {
 	if (!exist(e))
 		return false;
 	const auto& data = ents.datas[e.id];
-	return data.c->type->index(t) != -1;
+	auto et = data.c->type->get_type();
+	return et.types.all(type.types) && et.metatypes.all(type.metatypes);
+}
+
+void context::enable_component(entity e, const entity_type& type) const noexcept
+{
+	if (!exist(e))
+		return;
+	const auto& data = ents.datas[e.id];
+	chunk* c = data.c; archetype* g = c->type;
+	if (!g->withMask)
+		return;
+	mask mm = g->get_mask(type);
+	auto id = g->index(mask_id);
+	g->timestamps(c)[id] = timestamp;
+	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	m->v |= mm.v;
+}
+
+void context::disable_component(entity e, const entity_type& type) const noexcept
+{
+	if (!exist(e))
+		return;
+	const auto& data = ents.datas[e.id];
+	chunk* c = data.c; archetype* g = c->type;
+	if (!g->withMask)
+		return;
+	mask mm = g->get_mask(type);
+	auto id = g->index(mask_id);
+	g->timestamps(c)[id] = timestamp;
+	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	m->v &= ~mm.v;
+}
+
+bool context::is_component_enabled(entity e, const entity_type& type) const noexcept
+{
+	if (!exist(e))
+		return false;
+	const auto& data = ents.datas[e.id];
+	chunk* c = data.c; archetype* g = c->type;
+	if (!g->withMask)
+		return true;
+	mask mm = g->get_mask(type);
+	auto id = g->index(mask_id);
+	g->timestamps(c)[id] = timestamp;
+	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	return (m->v & mm.v) == mm.v;
 }
 
 bool context::exist(entity e) const

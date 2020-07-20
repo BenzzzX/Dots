@@ -73,13 +73,13 @@ namespace core
 		struct component_desc
 		{
 			bool isElement = false;
+			bool need_copy = false;
+			bool need_clean = false;
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			intptr_t* entityRefs = nullptr; 
 			uint16_t entityRefCount = 0;
-			bool need_copy = false;
-			bool need_clean = false;
 			component_vtable vtable;
 			const char* name = nullptr;
 		};
