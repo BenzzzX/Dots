@@ -108,31 +108,6 @@ namespace core
 				std::optional<chunk_slice> next();
 			};
 
-			struct chunk_iterator
-			{
-				context* cont;
-				chunk* currc;
-				archetypes_t::iterator currg;
-				entity_filter filter;
-				bool includeDisabled;
-				bool includeClean;
-				bool valid_group(archetype* g);
-				void fetch_next();
-				void next_archetype();
-				std::optional<chunk*> next();
-			};
-
-			struct query_cache;
-			struct query_iterator
-			{
-				chunk* currc;
-				query_cache* cache;
-				std::vector<archetype*>::iterator currg;
-				void fetch_next();
-				void next_archetype();
-				std::optional<chunk*> next();
-			};
-
 			struct query_cache
 			{
 				std::vector<char> data;
@@ -140,7 +115,6 @@ namespace core
 				bool includeClean;
 				entity_filter filter;
 				std::vector<archetype*> archetypes;
-				query_iterator iter();
 			};
 
 			using queries_t = std::unordered_map<entity_filter, query_cache, entity_filter::hash>;
@@ -196,7 +170,6 @@ namespace core
 			static bool valid_group(archetype* g, bool includeClean, bool includeDisabled);
 			friend chunk;
 			friend batch_iterator;
-			friend chunk_iterator;
 		public:
 			context(index_t typeCapacity = 4096u);
 			~context();
@@ -225,8 +198,6 @@ namespace core
 
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
-			chunk_iterator query(const entity_filter& type);
-			query_iterator query_cached(const entity_filter& type);
 			entity_filter cache_query(const entity_filter& type);
 			const void* get_component_ro(entity, index_t type) const;
 			const void* get_owned_ro(entity, index_t type) const;
@@ -235,6 +206,7 @@ namespace core
 			bool exist(entity) const;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
+			const void* get_shared_ro(archetype *g, index_t type) const;
 			const entity* get_entities(chunk* c) noexcept;
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
 			entity_type get_type(entity) const noexcept;

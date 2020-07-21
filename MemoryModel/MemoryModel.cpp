@@ -1262,46 +1262,6 @@ context::batch_iterator context::batch(entity* ents, uint32_t count)
 	return batch_iterator{ ents,count,this,0 };
 }
 
-context::chunk_iterator context::query(const entity_filter& filter)
-{
-	auto iter = archetypes.begin();
-	bool includeClean = false;
-	bool includeDisabled = false;
-	bool includeCopy = [&]
-	{
-		auto at = filter.all.types;
-		forloop(i, 0, at.length)
-		{
-			tagged_index type = at[i];
-			if (type == cleanup_id)
-				includeClean = true;
-			if (type == disable_id)
-				includeDisabled = true;
-			if (gd.tracks[type.index()] & Copying != 0)
-				return true;
-		}
-		return false;
-	}();
-	includeCopy |= includeClean;
-	includeDisabled |= includeCopy;
-
-	chunk_iterator i;
-	i.includeClean = includeClean;
-	i.includeDisabled = includeDisabled;
-	i.cont = this;
-	i.currg = iter;
-	i.filter = filter;
-	if (!archetypes.empty())
-		i.next_archetype();
-	return i;
-}
-
-context::query_iterator context::query_cached(const entity_filter& type)
-{
-	auto& cache = get_query_cache(type);
-	return cache.iter();
-}
-
 entity_filter context::cache_query(const entity_filter& type)
 {
 	auto& cache = get_query_cache(type);
@@ -1396,23 +1356,9 @@ void context::destroy(entity* es, int32_t count)
 		destroy(*s);
 }
 
-void context::destroy(const entity_filter& filter)
-{
-	auto iter = query(filter);
-	foriter(s, iter)
-		destroy(*s);
-}
-
 void context::extend(entity* es, int32_t count, const entity_type& type)
 {
 	auto iter = batch(es, count);
-	foriter(s, iter)
-		extend(*s, type);
-}
-
-void context::extend(const entity_filter& filter, const entity_type& type)
-{
-	auto iter = query(filter);
 	foriter(s, iter)
 		extend(*s, type);
 }
@@ -1424,23 +1370,9 @@ void context::shrink(entity* es, int32_t count, const entity_type& type)
 		shrink(*s, type);
 }
 
-void context::shrink(const entity_filter& filter, const entity_type& type)
-{
-	auto iter = query(filter);
-	foriter(s, iter)
-		shrink(*s, type);
-}
-
 void context::cast(entity* es, int32_t count, const entity_type& type)
 {
 	auto iter = batch(es, count);
-	foriter(s, iter)
-		cast(*s, type);
-}
-
-void context::cast(const entity_filter& filter, const entity_type& type)
-{
-	auto iter = query(filter);
 	foriter(s, iter)
 		cast(*s, type);
 }
@@ -1451,17 +1383,11 @@ const void* context::get_component_ro(entity e, index_t type) const
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
 	if (id == -1)
-	{
-		entity* metas = g->metatypes();
-		forloop(i, 0, g->metaCount)
-			if (const void* shared = get_component_ro(metas[i], type))
-				return shared;
-		return nullptr;
-	}
+		return get_shared_ro(g, type);
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_owned_ro(entity, index_t type) const
+const void* context::get_owned_ro(entity e, index_t type) const
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
@@ -1470,15 +1396,11 @@ const void* context::get_owned_ro(entity, index_t type) const
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_shared_ro(entity, index_t type) const
+const void* context::get_shared_ro(entity e, index_t type) const
 {
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
-	entity* metas = g->metatypes();
-	forloop(i, 0, g->metaCount)
-		if (const void* shared = get_component_ro(metas[i], type))
-			return shared;
-	return nullptr;
+	return get_shared_ro(g, type);
 }
 
 void* context::get_owned_rw(entity e, index_t type)
@@ -1504,6 +1426,15 @@ void* context::get_owned_rw(chunk* c, index_t t) noexcept
 	if (id == -1) return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
 	return c->data() + c->type->offsets()[id];
+}
+
+const void* context::get_shared_ro(archetype* g, index_t type) const
+{
+	entity* metas = g->metatypes();
+	forloop(i, 0, g->metaCount)
+		if (const void* shared = get_component_ro(metas[i], type))
+			return shared;
+	return nullptr;
 }
 
 const entity* context::get_entities(chunk* c) noexcept
@@ -1752,66 +1683,6 @@ std::optional<chunk_slice> context::batch_iterator::next()
 	return { s };
 }
 
-bool context::chunk_iterator::valid_group(archetype* g)
-{
-	if (includeClean < g->cleaning)
-		return false;
-	if (includeDisabled < g->disabled)
-		return false;
-	return filter.match(g->get_type());
-}
-
-void context::chunk_iterator::fetch_next()
-{
-	auto valid_chunk = [&]
-	{
-		return filter.match_chunk(currg->second->get_type(), currg->second->timestamps(currc));
-	};
-	
-	if (currc != nullptr)
-	{
-		do
-		{
-			currc = currc->next;
-		} while (!valid_chunk() && currc != nullptr);
-	}
-	if (currc == nullptr && currg != cont->archetypes.end())
-	{
-		++currg;
-		next_archetype();
-	}
-}
-
-void context::chunk_iterator::next_archetype()
-{
-	auto valid_chunk = [&]
-	{
-		return filter.match_chunk(currg->second->get_type(), currg->second->timestamps(currc));
-	};
-	while (currg != cont->archetypes.end() && valid_group(currg->second))
-	{
-		currc = currg->second->firstChunk;
-		while (!valid_chunk() && currc != nullptr)
-			currc = currc->next;
-		if (currc != nullptr)
-			return;
-		++currg;
-	}
-	currc = nullptr;
-}
-
-//careful! currc could be invalidated due to structural change
-std::optional<chunk*> context::chunk_iterator::next()
-{
-	std::optional<chunk*> ret;
-	if (currc != nullptr)
-	{
-		ret = currc;
-		fetch_next();
-	}
-	return ret;
-}
-
 context::entities::~entities()
 {
 	::free(datas);
@@ -1910,62 +1781,4 @@ std::optional<chunk_slice> context::alloc_iterator::next()
 	}
 	else
 		return {};
-}
-
-context::query_iterator context::query_cache::iter()
-{
-	query_iterator i;
-	i.currg = archetypes.begin();
-	i.next_archetype();
-	i.cache = this;
-	return i;
-}
-
-void context::query_iterator::fetch_next()
-{
-	auto valid_chunk = [&]
-	{
-		return cache->filter.match_chunk((*currg)->get_type(), (*currg)->timestamps(currc));
-	};
-	if (currc != nullptr)
-	{
-		do
-		{
-			currc = currc->next;
-		} while (!valid_chunk() && currc != nullptr);
-	}
-	if (currc == nullptr && currg != cache->archetypes.end())
-	{
-		++currg;
-		next_archetype();
-	}
-}
-
-void context::query_iterator::next_archetype()
-{
-	auto valid_chunk = [&]
-	{
-		return cache->filter.match_chunk((*currg)->get_type(), (*currg)->timestamps(currc));
-	};
-	while (currg != cache->archetypes.end())
-	{
-		currc = (*currg)->firstChunk;
-		while (!valid_chunk() && currc != nullptr)
-			currc = currc->next;
-		if (currc != nullptr)
-			return;
-		++currg;
-	}
-	currc = nullptr;
-}
-
-std::optional<chunk*> context::query_iterator::next()
-{
-	std::optional<chunk*> ret;
-	if (currc != nullptr)
-	{
-		ret = currc;
-		fetch_next();
-	}
-	return ret;
 }
