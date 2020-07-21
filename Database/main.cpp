@@ -1,50 +1,49 @@
-#include "Database.h"
+
 #include "Profiler.h"
 #include <iostream>
 #include <assert.h>
-struct test
-{
-	int v;
-	float f;
-};
+#include "main.h"
 
-struct test_track
-{
-	int v;
-};
-
-struct test_element
-{
-	int v;
-};
-
-struct test_tag {};
-
-using namespace core::database;
-
-uint16_t disable_id;
-uint16_t cleanup_id;
-uint16_t test_id;
-uint16_t test_track_id;
-uint16_t test_element_id;
-uint16_t test_tag_id;
-
-struct initialzie
-{
-	initialzie()
-	{
-		test_id = register_type({ false, false, false, 10, sizeof(test) });
-		test_track_id = register_type({ false, true, true, 11, sizeof(test_track) });
-		test_element_id = register_type({ true, false, false, 12, 128, sizeof(test_element) });
-		test_tag_id = register_type({ false, false, false, 13, 0 });
-	}
-};
 
 #define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
-using core::database::index_t;
 
-void TestComponent()
+
+int main()
+{ 
+	TestSystem::Install();
+	TestSystem::AllTests();
+	return 0;
+}
+
+void TransformSystem::Install()
+{
+}
+
+void TransformSystem::UpdateHierachy(context& ctx)
+{
+
+}
+
+void TransformSystem::UpdateLocalToX(context& ctx, index_t X, const archetype_filter& filter)
+{
+
+}
+
+void TransformSystem::SolveParentToWorld(context& ctx)
+{
+
+}
+
+void TestSystem::Install()
+{
+	test_id = register_type({ false, false, false, 10, sizeof(test) });
+	test_track_id = register_type({ false, true, true, 11, sizeof(test_track) });
+	test_element_id = register_type({ true, false, false, 12, 128, sizeof(test_element) });
+	test_tag_id = register_type({ false, false, false, 13, 0 });
+}
+
+void TestSystem::TestComponent()
 {
 	context ctx;
 	core::entity e;
@@ -63,7 +62,7 @@ void TestComponent()
 	ctx.destroy(&e, 1);
 }
 
-void TestLifeTime()
+void TestSystem::TestLifeTime()
 {
 	context ctx;
 	core::entity e;
@@ -104,7 +103,7 @@ void TestLifeTime()
 	assert(ctx.has_component(e2, type));
 }
 
-void TestElement()
+void TestSystem::TestElement()
 {
 	using core::database::buffer;
 	context ctx;
@@ -121,11 +120,11 @@ void TestElement()
 			buffers[c->start + i].push(&v, sizeof(test_element));
 	}
 	auto b = (buffer*)ctx.get_component_ro(e, test_element_id);
-	
+
 	assert(((test_element*)b->data())[0].v == 3);
 }
 
-void TestMeta()
+void TestSystem::TestMeta()
 {
 	context ctx;
 	core::entity metae;
@@ -169,7 +168,7 @@ void TestMeta()
 	}
 }
 
-void TestIteration()
+void TestSystem::TestIteration()
 {
 	context ctx;
 	core::entity es[100];
@@ -188,7 +187,7 @@ void TestIteration()
 	ctx.destroy(es + 33, 1);
 	int counter = 0;
 
-	auto titer = ctx.query({.all = type});
+	auto titer = ctx.query({ .all = type });
 	foriter(i, titer) //遍历 Archetype
 	{
 		auto citer = ctx.query(*i, {});
@@ -203,11 +202,11 @@ void TestIteration()
 	assert(counter == (5050 - 34));
 }
 
-void TestDisable()
+void TestSystem::TestDisable()
 {
 	context ctx;
 	core::entity es[100];
-	index_t t[] = { mask_id, test_id }; 
+	index_t t[] = { mask_id, test_id };
 	std::sort(t, t + 2);
 	entity_type type({ .types = {t,2} });
 	{
@@ -240,11 +239,11 @@ void TestDisable()
 				auto eiter = ctx.query(*j, { titer.get_mask() });
 				foriter(k, eiter) //遍历 Entity
 					if (tests[*k].v % 2)
-						masks[*k].disable(disableMask);
+						masks[*k] &= ~disableMask;
 			}
 		}
 	}
-	
+
 	{
 		int counter = 0;
 		auto titer = ctx.query({ .all = type });
@@ -289,8 +288,8 @@ void TestDisable()
 			auto citer = ctx.query(*i, {});
 			foriter(j, citer) //遍历 Chunk
 			{
-				auto eiter = ctx.query(*j, 
-					{ titer.get_mask().disable(disableMask) }); //关闭 test 的禁用检查
+				auto eiter = ctx.query(*j,
+					{ titer.get_mask() & ~disableMask }); //关闭 test 的禁用检查
 				foriter(k, eiter) //遍历 Entity
 					counter++;
 			}
@@ -298,11 +297,4 @@ void TestDisable()
 		assert(counter == 99); //所有都被匹配到
 	}
 
-}
-
-int main()
-{ 
-	initialzie _;
-	TestDisable();
-	return 0;
 }

@@ -467,7 +467,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		forloop(i, 0, count)
 		{
 			srcI = dstI = 0;
-			d[i].v = 0;
+			d[i].reset();
 			while (srcI < srcType->componentCount && dstI < dstType->componentCount)
 			{
 				auto st = to_valid_type(srcTypes[srcI]);
@@ -475,13 +475,13 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 				if (st < dt) //destruct 
 					;
 				else if (st > dt) //construct
-					d[i].v.set(dstI);
+					d[i].set(dstI);
 				else //move
-					if(s[i].v.test(srcI))
-						d[i].v.set(dstI);
+					if(s[i].test(srcI))
+						d[i].set(dstI);
 			}
 			while (dstI < dstType->componentCount)
-				d[i].v.set(dstI);
+				d[i].set(dstI);
 		}
 	}
 	else if (dstMaskId != InvalidIndex)
@@ -523,7 +523,7 @@ mask context::archetype::get_mask(const entity_type& subtype) noexcept
 		}
 		else
 		{
-			ret.v.set(i);
+			ret.set(i);
 			(j++, i++);
 		}
 	}
@@ -1903,8 +1903,8 @@ void context::enable_component(entity e, const entity_type& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
-	m->enable(mm);
+	auto& m = *(mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	m |= mm;
 }
 
 void context::disable_component(entity e, const entity_type& type) const noexcept
@@ -1918,8 +1918,8 @@ void context::disable_component(entity e, const entity_type& type) const noexcep
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
-	m->disable(mm);
+	auto& m = *(mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	m &= ~mm;
 }
 
 bool context::is_component_enabled(entity e, const entity_type& type) const noexcept
@@ -1933,8 +1933,8 @@ bool context::is_component_enabled(entity e, const entity_type& type) const noex
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
-	return (m->v & mm.v) == mm.v;
+	auto& m = *(mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
+	return (m & mm) == mm;
 }
 
 bool context::exist(entity e) const noexcept

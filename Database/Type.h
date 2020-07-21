@@ -51,14 +51,7 @@ namespace core
 			entity e;
 		};
 
-		struct mask
-		{
-			std::bitset<32> v;
-
-			mask& enable(mask m) { v |= m.v; return *this; }
-			mask& disable(mask m) { v &= ~m.v; return *this; }
-			bool is_enabled(mask m) { return (v & m.v) == m.v; }
-		};
+		using mask = std::bitset<32>;
 
 		struct component_vtable
 		{
