@@ -141,10 +141,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="MemoryModel.cpp" />
+    <ClCompile Include="Database.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="MemoryModel.h" />
+    <ClInclude Include="Database.h" />
     <ClInclude Include="Profiler.h" />
     <ClInclude Include="Set.h" />
     <ClInclude Include="Type.h" />
