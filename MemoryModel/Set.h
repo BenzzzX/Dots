@@ -16,10 +16,21 @@ namespace core
 		constexpr handle() = default;
 		constexpr handle(T t) { *reinterpret_cast<T*>(this) = t; }
 		constexpr handle(T i, T v) { id = i; version = v; }
+		constexpr bool is_transient() { return version == ((1 << B) - 1); }
 
 		bool operator==(const handle& e) const
 		{
 			return id == e.id && version == e.version;
+		}
+
+		bool operator>(const handle& e) const
+		{
+			return id > e.id || version > e.version;
+		}
+
+		bool operator<(const handle& e) const
+		{
+			return id < e.id || version < e.version;
 		}
 	};
 
@@ -117,6 +128,21 @@ namespace core
 				return  { dst, k };
 			}
 
+			static set intersect(const set& lhs, const set& rhs, T* dst)
+			{
+				uint16_t i = 0, j = 0, k = 0;
+				while (i < lhs.length && j < rhs.length)
+				{
+					if (lhs[i] > rhs[j])
+						j++;
+					else if (lhs[i] < rhs[j])
+						i++;
+					else
+						dst[k++] = lhs[(j++, i++)];
+				}
+				return  { dst, k };
+			}
+
 			bool any(const set& s) const
 			{
 				uint16_t i = 0, j = 0;
@@ -138,7 +164,7 @@ namespace core
 				while (i < length && j < s.length)
 				{
 					if (data[i] > s[j])
-						j++;
+						return false;
 					else if (data[i] < s[j])
 						i++;
 					else

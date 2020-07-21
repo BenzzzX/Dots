@@ -54,6 +54,10 @@ namespace core
 		struct mask
 		{
 			std::bitset<32> v;
+
+			mask& enable(mask m) { v |= m.v; return *this; }
+			mask& disable(mask m) { v &= ~m.v; return *this; }
+			bool is_enabled(mask m) { return (v & m.v) == m.v; }
 		};
 
 		struct component_vtable
@@ -182,18 +186,16 @@ namespace core
 			}
 		};
 
-		struct entity_filter
+		struct archetype_filter
 		{
 			entity_type all;
 			entity_type any;
 			entity_type none;
 
-			typeset changed;
-			size_t prevTimestamp;
 
 			struct hash
 			{
-				size_t operator()(const entity_filter& key) const
+				size_t operator()(const archetype_filter& key) const
 				{
 					size_t hash = hash_array(key.all.types.data, key.all.types.length);
 					hash = hash_array(key.all.metatypes.data, key.all.metatypes.length, hash);
@@ -201,38 +203,19 @@ namespace core
 					hash = hash_array(key.any.metatypes.data, key.any.metatypes.length, hash);
 					hash = hash_array(key.none.types.data, key.none.types.length, hash);
 					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
-					hash = hash_array(key.changed.data, key.changed.length, hash);
-					hash = hash_array(&key.prevTimestamp, 1, hash);
 					return hash;
 				}
 			};
 
-			bool operator==(const entity_filter& other) const
+			bool operator==(const archetype_filter& other) const
 			{
 				return all == other.all && any == other.any &&
 					none == other.any && all.metatypes == other.all.metatypes &&
-					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes &&
-					changed == other.changed && prevTimestamp == other.prevTimestamp;
-			}
-
-			bool match_chunk(const entity_type& t, uint32_t* timestamps) const
-			{
-				uint16_t i = 0, j = 0;
-				while (i < changed.length && j < t.types.length)
-				{
-					if (changed[i] > t.types[j])
-						j++;
-					else if (changed[i] < t.types[j])
-						i++;
-					else if (timestamps[j] >= prevTimestamp)
-						(j++, i++);
-				}
-				return i == changed.length;
+					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes;
 			}
 
 			bool match(const entity_type& t) const
 			{
-
 				if (!t.types.all(all.types))
 					return false;
 				if (any.types.length > 0 && !t.types.any(any.types))
@@ -248,6 +231,67 @@ namespace core
 					return false;
 
 				return true;
+			}
+		};
+
+		struct chunk_filter
+		{
+			typeset changed;
+			size_t prevTimestamp;
+
+			struct hash
+			{
+				size_t operator()(const chunk_filter& key) const
+				{
+					size_t hash = hash_array(key.changed.data, key.changed.length);
+					hash = hash_array(&key.prevTimestamp, 1, hash);
+					return hash;
+				}
+			};
+
+			bool operator==(const chunk_filter& other) const
+			{
+				return changed == other.changed && prevTimestamp == other.prevTimestamp;
+			}
+
+			bool match(const entity_type& t, uint32_t* timestamps) const
+			{
+				uint16_t i = 0, j = 0;
+				while (i < changed.length && j < t.types.length)
+				{
+					if (changed[i] > t.types[j])
+						j++;
+					else if (changed[i] < t.types[j])
+						return false;
+					else if (timestamps[j] >= prevTimestamp)
+						(j++, i++);
+					else
+						return false;
+				}
+				return i == changed.length;
+			}
+		};
+
+		struct entity_filter
+		{
+			mask enabled = mask{ (uint32_t)-1 };
+
+			struct hash
+			{
+				size_t operator()(const entity_filter& key) const
+				{
+					size_t hash = key.enabled.v.to_ullong();
+				}
+			};
+
+			bool operator==(const entity_filter& other) const
+			{
+				return enabled.v == other.enabled.v;
+			}
+
+			bool match(const mask& e) const
+			{
+				return (enabled.v & e.v) == enabled.v;
 			}
 		};
 	}

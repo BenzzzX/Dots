@@ -54,7 +54,7 @@ namespace core
 
 				inline char* data() noexcept { return (char*)(this + 1); };
 				inline index_t* types() noexcept { return (index_t*)data(); }
-				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount ); }
+				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount * sizeof(index_t) ); }
 				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t)); }
 				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* timestamps(chunk* c) noexcept;
@@ -70,8 +70,12 @@ namespace core
 			{
 				struct data
 				{
-					chunk* c;
-					uint32_t i;
+					union
+					{
+						chunk* c;
+						uint32_t nextFree;
+					};
+					uint16_t i;
 					uint32_t v;
 				} *datas = nullptr;
 				uint32_t free = 0;
@@ -111,22 +115,50 @@ namespace core
 
 			struct query_cache
 			{
-				std::vector<char> data;
+				struct mached_archetype
+				{
+					archetype* type;
+					mask matched;
+				};
+				std::unique_ptr<char[]> data;
 				bool includeDisabled;
 				bool includeClean;
-				entity_filter filter;
-				std::vector<archetype*> archetypes;
+				archetype_filter filter;
+				std::vector<mached_archetype> archetypes;
+				using iterator = std::vector<mached_archetype>::iterator;
 			};
 
-			struct structural_change
+			struct archetype_iterator
 			{
-				void* extend;
-				void* shrink;
+				query_cache::iterator curr;
+				query_cache::iterator iter;
+				query_cache::iterator end;
+				std::optional<archetype*> next();
+				mask get_mask() const;
 			};
 
-			using queries_t = std::unordered_map<entity_filter, query_cache, entity_filter::hash>;
+			struct chunk_iterator
+			{
+				chunk_filter filter;
+				archetype* type;
+				chunk* iter;
 
-			query_cache& get_query_cache(const entity_filter& f);
+				std::optional<chunk*> next();
+			};
+
+			struct entity_iterator
+			{
+				entity_filter filter;
+				uint16_t size;
+				mask* masks;
+				uint16_t index;
+
+				std::optional<uint16_t> next();
+			};
+
+			using queries_t = std::unordered_map<archetype_filter, query_cache, archetype_filter::hash>;
+
+			query_cache& get_query_cache(const archetype_filter& f);
 			void update_queries(archetype* g, bool add);
 
 			static constexpr size_t kChunkPoolCapacity = 8000;
@@ -173,6 +205,7 @@ namespace core
 			entity deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
+			archetype_filter cache_query(const archetype_filter& type);
 
 			friend chunk;
 			friend batch_iterator;
@@ -192,27 +225,27 @@ namespace core
 
 			//stuctural change
 			void destroy(entity* es, int32_t count);
-			void destroy(const entity_filter& filter);
 			void extend(entity* es, int32_t count, const entity_type& type);
-			void extend(const entity_filter& filter, const entity_type& type);
 			void shrink(entity* es, int32_t count, const entity_type& type);
-			void shrink(const entity_filter& filter, const entity_type& type);
 			void cast(entity* es, int32_t count, const entity_type& type);
-			void cast(const entity_filter& filter, const entity_type& type);
 			//update
-			void* get_owned_rw(entity, index_t type);
+			void* get_owned_rw(entity, index_t type) const noexcept;
+			void enable_component(entity, const entity_type& type) const noexcept;
+			void disable_component(entity, const entity_type& type) const noexcept;
 
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
-			entity_filter cache_query(const entity_filter& type);
+			archetype_iterator query(const archetype_filter& filter);
+			chunk_iterator query(archetype*, const chunk_filter& filter);
+			entity_iterator query(chunk*, const entity_filter& filter);
+
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
 			bool has_component(entity, const entity_type& type) const noexcept;
-			void enable_component(entity, const entity_type& type) const noexcept;
-			void disable_component(entity, const entity_type& type) const noexcept;
 			bool is_component_enabled(entity, const entity_type& type) const noexcept;
 			bool exist(entity) const noexcept;
+			const void* get_component_ro(chunk* c, index_t type) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;

@@ -5,11 +5,13 @@
 #define stack_array(type, name, size) \
 type* name = (type*)alloca((size) * sizeof(type))
 
-entity entity::Invalid{ -1 };
-uint32_t database::metaTimestamp;
 
 using namespace core;
 using namespace database;
+
+core::entity core::entity::Invalid{ (uint32_t)-1 };
+uint32_t database::metaTimestamp;
+constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
 struct type_data
 {
@@ -81,7 +83,7 @@ index_t database::register_type(component_desc desc)
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
 	{
-		rid = gd.entityRefs.size();
+		rid = (uint32_t)gd.entityRefs.size();
 		forloop(i, 0, desc.entityRefCount)
 			gd.entityRefs.push_back(desc.entityRefs[i]);
 	}
@@ -100,7 +102,7 @@ index_t database::register_type(component_desc desc)
 
 	if (desc.need_copy)
 	{
-		id = (uint16_t)gd.infos.size();
+		uint16_t id = (uint16_t)gd.infos.size();
 		id = tagged_index{ id, desc.isElement, desc.size == 0 };
 		type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
@@ -138,7 +140,7 @@ void chunk::unlink() noexcept
 uint32_t chunk::get_timestamp(index_t t) noexcept
 {
 	uint16_t id = type->index(t);
-	if (id == -1) return 0;
+	if (id == InvalidIndex) return 0;
 	return type->timestamps(this)[id];
 }
 
@@ -173,7 +175,7 @@ void chunk::construct(chunk_slice s) noexcept
 	}
 
 	uint16_t maskId = type->index(mask_id);
-	if (maskId != -1)
+	if (maskId != (uint16_t)-1)
 	{
 		auto i = maskId;
 		memset(srcData, -1, sizes[i] * s.count);
@@ -458,7 +460,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 
 	uint16_t srcMaskId = srcType->index(mask_id);
 	uint16_t dstMaskId = dstType->index(mask_id);
-	if (srcMaskId != -1 && dstMaskId != -1)
+	if (srcMaskId != InvalidIndex && dstMaskId != InvalidIndex)
 	{
 		mask* s = (mask*)(src->data() + srcOffsets[srcMaskId] + srcSizes[srcMaskId] * srcIndex);
 		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
@@ -482,7 +484,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 				d[i].v.set(dstI);
 		}
 	}
-	else if (dstMaskId != -1)
+	else if (dstMaskId != InvalidIndex)
 	{
 		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
 		memset(d, -1, dstSizes[dstMaskId] * count);
@@ -510,11 +512,14 @@ mask context::archetype::get_mask(const entity_type& subtype) noexcept
 	while (i < ta.length && j < tb.length)
 	{
 		if (ta[i] > tb[j])
+		{
 			j++;
+			//ret.v.reset();
+			//break;
+		}
 		else if (ta[i] < tb[j])
 		{
-			ret.v.reset();
-			break;
+			i++;
 		}
 		else
 		{
@@ -546,18 +551,17 @@ size_t context::archetype::calculate_size(uint16_t componentCount, uint16_t firs
 		sizeof(context::archetype);// +40;
 }
 
-uint16_t get_filter_size(const entity_filter& f)
+uint16_t get_filter_size(const archetype_filter& f)
 {
 	auto totalSize = f.all.types.length * sizeof(index_t) + f.all.metatypes.length * sizeof(entity) +
 		f.any.types.length * sizeof(index_t) + f.any.metatypes.length * sizeof(entity) +
-		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity) +
-		f.changed.length * sizeof(index_t);
-	return totalSize;
+		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity);
+	return (uint16_t)totalSize;
 }
 
-entity_filter clone_filter(const entity_filter& f, char* data)
+archetype_filter clone_filter(const archetype_filter& f, char* data)
 {
-	entity_filter f2;
+	archetype_filter f2;
 	auto write = [&](const typeset& t, typeset& r)
 	{
 		r.data = (index_t*)data; r.length = t.length;
@@ -570,18 +574,18 @@ entity_filter clone_filter(const entity_filter& f, char* data)
 		memcpy(data, t.data, t.length * sizeof(entity));
 		data += t.length * sizeof(entity);
 	};
-#define writeType(name) \
-		write(f.name.types, f2.name.types); writemeta(f.name.metatypes, f2.name.metatypes);
-	writeType(all);
-	writeType(any);
-	writeType(none);
-	write(f.changed, f2.changed);
-#undef writeType
-	f2.prevTimestamp = f.prevTimestamp;
+	auto writetype = [&](const entity_type& t, entity_type& r)
+	{
+		write(t.types, r.types);
+		writemeta(t.metatypes, r.metatypes);
+	};
+	writetype(f.all, f2.all);
+	writetype(f.any, f2.any);
+	writetype(f.none, f2.none);
 	return f2;
 }
 
-context::query_cache& context::get_query_cache(const entity_filter& f)
+context::query_cache& context::get_query_cache(const archetype_filter& f)
 {
 	auto iter = queries.find(f);
 	if (iter != queries.end())
@@ -603,7 +607,7 @@ context::query_cache& context::get_query_cache(const entity_filter& f)
 					includeClean = true;
 				if (type == disable_id)
 					includeDisabled = true;
-				if (gd.tracks[type.index()] & Copying != 0)
+				if ((gd.tracks[type.index()] & Copying) != 0)
 					return true;
 			}
 			return false;
@@ -620,14 +624,22 @@ context::query_cache& context::get_query_cache(const entity_filter& f)
 		};
 		for (auto i : archetypes)
 		{
-			if (valid_group(i.second))
-				cache.archetypes.push_back(i.second);
+			auto g = i.second;
+			if (valid_group(g))
+			{
+				auto type = g->get_type();
+				auto cc = f.all.types.length + f.any.types.length;
+				stack_array(index_t, cd, cc);
+				auto checking = typeset::merge(f.all.types, f.any.types, cd);
+				mask m = g->get_mask({ .types = checking });
+				cache.archetypes.push_back({ .type = g, .matched = m });
+			}
 		}
 		cache.includeClean = includeClean;
 		cache.includeDisabled = includeDisabled;
 		auto totalSize = get_filter_size(f);
-		cache.data.resize(totalSize);
-		char* data = cache.data.data();
+		cache.data.reset(new char[totalSize]);
+		char* data = cache.data.get();
 		cache.filter = clone_filter(f, data);
 		auto p = queries.insert({ cache.filter, std::move(cache) });
 		return p.first->second;
@@ -644,16 +656,22 @@ void context::update_queries(archetype* g, bool add)
 			return false;
 		return cache.filter.match(g->get_type());
 	};
-	for (auto i : queries)
+	for (auto& i : queries)
 	{
 		auto& cache = i.second;
 		if (match_cache(cache))
 		{
 			auto& gs = cache.archetypes;
 			if (add)
-				gs.erase(std::remove(gs.begin(), gs.end(), g), gs.end());
+			{
+				int i = 0;
+				for (; gs[i].type != g; ++i);
+				if (i != (gs.size() - 1))
+					std::swap(gs[i], gs[gs.size() - 1]);
+				gs.pop_back();
+			}
 			else
-				gs.push_back(g);
+				gs.push_back({ .type = g });
 		}
 	}
 }
@@ -734,7 +752,7 @@ context::archetype* context::get_archetype(const entity_type& key)
 		stableOrder[i] = i;
 		entitySize += info.size;
 
-		if (gd.tracks[type.index()] & NeedCC != 0)
+		if ((gd.tracks[type.index()] & NeedCC) != 0)
 			g->withTracked = true;
 	}
 	if (entitySize == sizeof(entity)) 
@@ -773,7 +791,7 @@ context::archetype* context::get_cleaning(archetype* g)
 	{
 		auto type = (tagged_index)types[i];
 		auto stage = gd.tracks[type.index()];
-		if(stage & NeedCleaning != 0)
+		if((stage & NeedCleaning) != 0)
 			dstTypes[k++] = type;
 	}
 	if (k == 1)
@@ -807,7 +825,7 @@ context::archetype* context::get_instatiation(archetype* g)
 	{
 		auto type = (tagged_index)types[i];
 		auto stage = gd.tracks[type.index()];
-		if (stage & Copying != 0)
+		if ((stage & NeedCopying) != 0)
 			dstTypes[i] = type + 1;
 		else
 			dstTypes[i] = type;
@@ -835,13 +853,13 @@ context::archetype* context::get_extending(archetype* g, const entity_type& ext)
 		return get_archetype(key);
 	else
 	{
-		int k = 0, mk = 0;
+		uint16_t k = 0, mk = 0;
 		stack_array(index_t, newTypesx, key.types.length);
 		auto can_zip = [&](int i)
 		{
 			auto type = (tagged_index)newTypes[i];
 			auto stage = gd.tracks[type.index()];
-			if ((stage & NeedCopying != 0) && (newTypes[i + 1] == type + 1))
+			if (((stage & NeedCopying) != 0) && (newTypes[i + 1] == type + 1))
 				return true;
 			return false;
 		};
@@ -854,7 +872,7 @@ context::archetype* context::get_extending(archetype* g, const entity_type& ext)
 		}
 		auto dstKey = entity_type
 		{
-			typeset {newTypesx, k},
+			{newTypesx, k},
 			key.metatypes
 		};
 		return get_archetype(dstKey);
@@ -875,13 +893,13 @@ context::archetype* context::get_shrinking(archetype* g, const entity_type& shr)
 	{
 		entity_type srcType = g->get_type();
 		stack_array(index_t, shrTypes, srcType.types.length * 2);
-		int k = 0;
+		uint16_t k = 0;
 		forloop(i, 0, shr.types.length)
 		{
 			auto type = (tagged_index)shr.types[i];
 			shrTypes[k++] = type;
 			auto stage = gd.tracks[type.index()];
-			if(stage & NeedCopying != 0)
+			if((stage & NeedCopying) != 0)
 				shrTypes[k++] = type + 1;
 		}
 		stack_array(index_t, newTypes, srcType.types.length);
@@ -987,7 +1005,8 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 
 context::archetype* context::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 {
-	uint16_t tlength;
+	uint16_t tlength; 
+	s->stream(&tlength, sizeof(uint16_t));
 	stack_array(index_t, types, tlength);
 	if (tlength == 0)
 		return nullptr;
@@ -1044,7 +1063,7 @@ struct linear_patcher : patcher_i
 
 void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
-	//should we patch meta?
+	//TODO: should we patch meta?
 	struct patcher : patcher_i
 	{
 		entity* source;
@@ -1054,7 +1073,7 @@ void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 		{
 			forloop(i, 0, count)
 				if (e == source[i])
-					return entity{ i,-1 };
+					return entity{ i,(uint32_t)-1 };
 			return keepExternal?e : entity::Invalid;
 		}
 	} p;
@@ -1074,10 +1093,10 @@ void context::prefab_to_group(entity* members, uint32_t size)
 	struct patcher : patcher_i
 	{
 		entity* source;
-		int32_t count;
+		uint32_t count;
 		entity patch(entity e) override
 		{
-			if (e.id > count || e.version != -1)
+			if (e.id > count || !e.is_transient())
 				return e;
 			else
 				return source[e.id];
@@ -1116,7 +1135,7 @@ void context::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32
 		void reset() override { base = curr; }
 		entity patch(entity e) override
 		{
-			if (e.id > count || e.version != -1)
+			if (e.id > count || !e.is_transient())
 				return e;
 			else
 				return curr[e.id];
@@ -1335,7 +1354,7 @@ context::batch_iterator context::batch(entity* ents, uint32_t count)
 	return batch_iterator{ ents,count,this,0 };
 }
 
-entity_filter context::cache_query(const entity_filter& type)
+archetype_filter context::cache_query(const archetype_filter& type)
 {
 	auto& cache = get_query_cache(type);
 	return cache.filter;
@@ -1345,7 +1364,7 @@ void context::destroy(chunk_slice s)
 {
 	archetype* g = s.c->type;
 	uint16_t id = g->index(group_id);
-	if (id != -1)
+	if (id != InvalidIndex)
 	{
 		uint16_t* sizes = g->sizes();
 		char* src = (s.c->data() + g->offsets()[id]);
@@ -1377,8 +1396,11 @@ void context::shrink(chunk_slice s, const entity_type& type)
 {
 
 	archetype* g = get_shrinking(s.c->type, type);
-	if(g == nullptr)
+	if (g == nullptr)
+	{
+		ents.free_entities(s);
 		free_slice(s);
+	}
 	else
 		cast(s, g);
 }
@@ -1450,30 +1472,30 @@ void context::cast(entity* es, int32_t count, const entity_type& type)
 		cast(*s, type);
 }
 
-const void* context::get_component_ro(entity e, index_t type) const
+const void* context::get_component_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
-	if (id == -1)
+	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_owned_ro(entity e, index_t type) const
+const void* context::get_owned_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
-	if (id == -1) return nullptr;
+	if (id == InvalidIndex) return nullptr;
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_shared_ro(entity e, index_t type) const
+const void* context::get_shared_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1482,42 +1504,45 @@ const void* context::get_shared_ro(entity e, index_t type) const
 	return get_shared_ro(g, type);
 }
 
-void* context::get_owned_rw(entity e, index_t type)
+void* context::get_owned_rw(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	uint16_t id = g->index(type);
-	if (id == -1) return nullptr;
+	if (id == InvalidIndex) return nullptr;
 	g->timestamps(c)[id] = timestamp;
 	return c->data() + g->offsets()[id] + data.i * g->sizes()[id];
+}
+
+
+const void* context::get_component_ro(chunk* c, index_t t) const noexcept
+{
+	archetype* g = c->type;
+	uint16_t id = g->index(t);
+	if (id == InvalidIndex) 
+		return get_shared_ro(g, t);
+	return c->data() + c->type->offsets()[id];
 }
 
 const void* context::get_owned_ro(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
-	if (id == -1) return nullptr;
+	if (id == InvalidIndex) return nullptr;
 	return c->data() + c->type->offsets()[id];
 }
 
 const void* context::get_shared_ro(chunk* c, index_t type) const noexcept
 {
 	archetype* g = c->type;
-	entity* metas = g->metatypes();
-	forloop(i, 0, g->metaCount)
-	{
-		if (const void* shared = get_component_ro(metas[i], type))
-			return shared;
-	}
-
-	return nullptr;
+	return get_shared_ro(g, type);
 }
 
 void* context::get_owned_rw(chunk* c, index_t t) noexcept
 {
 	uint16_t id = c->type->index(t);
-	if (id == -1) return nullptr;
+	if (id == InvalidIndex) return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
 	return c->data() + c->type->offsets()[id];
 }
@@ -1539,7 +1564,7 @@ const entity* context::get_entities(chunk* c) noexcept
 uint16_t context::get_size(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
-	if (id == -1) return 0;
+	if (id == InvalidIndex) return 0;
 	return c->type->sizes()[id];
 }
 
@@ -1588,7 +1613,7 @@ void context::gather_reference(entity e, std::pmr::vector<entity>& entities)
 			{
 				forloop(i, 0, count)
 					if (e == source[i])
-						return;
+						return e;
 				ents->push_back(e);
 				return e;
 			}
@@ -1764,6 +1789,7 @@ void context::load_snapshot(serializer_i* s)
 entity linear_patcher::patch(entity e)
 {
 	patch_entity(e, start, target, count);
+	return e;
 }
 
 void context::append_snapshot(serializer_i* s, entity* ret)
@@ -1796,7 +1822,7 @@ void context::append_snapshot(serializer_i* s, entity* ret)
 	s->stream(bitset, size);
 
 	forloop(i, 0, count)
-		if (bitset[i / 4] & (1 << (i % 4)) != 0)
+		if ((bitset[i / 4] & (1 << (i % 4))) != 0)
 			patch[i] = ents.new_entity();
 		else
 			patch[i] = entity::Invalid;
@@ -1857,7 +1883,7 @@ void context::gc_meta()
 	}
 }
 
-bool context::has_component(entity e, const entity_type& type) const
+bool context::has_component(entity e, const entity_type& type) const noexcept
 {
 	if (!exist(e))
 		return false;
@@ -1878,7 +1904,7 @@ void context::enable_component(entity e, const entity_type& type) const noexcept
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
 	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
-	m->v |= mm.v;
+	m->enable(mm);
 }
 
 void context::disable_component(entity e, const entity_type& type) const noexcept
@@ -1893,7 +1919,7 @@ void context::disable_component(entity e, const entity_type& type) const noexcep
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
 	auto m = (mask*)(c->data() + g->offsets()[id] + data.i * g->sizes()[id]);
-	m->v &= ~mm.v;
+	m->disable(mm);
 }
 
 bool context::is_component_enabled(entity e, const entity_type& type) const noexcept
@@ -1911,10 +1937,11 @@ bool context::is_component_enabled(entity e, const entity_type& type) const noex
 	return (m->v & mm.v) == mm.v;
 }
 
-bool context::exist(entity e) const
+bool context::exist(entity e) const noexcept
 {
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
+
 
 std::optional<chunk_slice> context::batch_iterator::next()
 {
@@ -1976,7 +2003,7 @@ entity context::entities::new_entity()
 	else
 	{
 		uint32_t id = free;
-		free = datas[free].i;
+		free = datas[free].nextFree;
 		return { id, datas[id].v };
 	}
 }
@@ -1987,10 +2014,12 @@ void context::entities::free_entities(chunk_slice s)
 	forloop(i, 0, s.count - 1)
 	{
 		data& freeData = datas[toFree[i].id];
-		freeData = { nullptr, toFree[i + 1].id, freeData.v + 1 };
+		freeData = { nullptr, 0, freeData.v + 1 };
+		freeData.nextFree = toFree[i + 1].id;
 	}
 	data& freeData = datas[toFree[s.count - 1].id];
-	freeData = { nullptr, free, freeData.v + 1 };
+	freeData = { nullptr, 0, freeData.v + 1 };
+	freeData.nextFree = free;
 	free = toFree[0].id;
 	//shrink
 	while (size > 0 && datas[--size].c == nullptr);
@@ -2030,4 +2059,83 @@ std::optional<chunk_slice> context::alloc_iterator::next()
 	}
 	else
 		return {};
+}
+
+context::archetype_iterator context::query(const archetype_filter& filter)
+{
+	auto& cache = get_query_cache(filter);
+	archetype_iterator iter;
+	iter.iter = cache.archetypes.begin();
+	iter.end = cache.archetypes.end();
+	return iter;
+}
+
+context::chunk_iterator context::query(archetype* type , const chunk_filter& filter)
+{
+	chunk_iterator iter;
+	iter.type = type;
+	iter.iter = type->firstChunk;
+	iter.filter = filter;
+	return iter;
+}
+
+context::entity_iterator context::query(chunk* c, const entity_filter& filter)
+{
+	entity_iterator iter;
+	iter.filter = filter;
+	iter.index = 0;
+	iter.size = c->get_count();
+	iter.masks = (mask*)get_component_ro(c, mask_id);
+	return iter;
+}
+
+std::optional<context::archetype*> context::archetype_iterator::next()
+{
+	if (iter == end)
+		return {};
+	curr = iter;
+	iter++;
+	return curr->type;
+}
+
+mask core::database::context::archetype_iterator::get_mask() const
+{
+	return curr->matched;
+}
+
+std::optional<chunk*> context::chunk_iterator::next()
+{
+	while (iter != nullptr)
+	{
+		if (filter.match(type->get_type(), type->timestamps(iter)))
+		{
+			chunk* c = iter;
+			iter = c->next;
+			return c;
+		}
+		iter = iter->next;
+	}
+	return {};
+}
+
+std::optional<uint16_t> context::entity_iterator::next()
+{
+	if (masks == nullptr)
+	{
+		if (index < size)
+			return index++;
+		else return {};
+	}
+	while (index < size)
+	{
+		if (filter.match(masks[index]))
+		{
+			uint16_t i = index;
+			index++;
+			return i;
+		}
+		index++;
+	} 
+	
+	return {};
 }
