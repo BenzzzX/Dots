@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <vector>
+#include <bitset>
 #include "Set.h"
 namespace core
 {
@@ -50,6 +51,11 @@ namespace core
 			entity e;
 		};
 
+		struct mask
+		{
+			std::bitset<32> v;
+		};
+
 		struct component_vtable
 		{
 			void(*patch)(char* data, patcher_i* stream) = nullptr;
@@ -67,13 +73,13 @@ namespace core
 		struct component_desc
 		{
 			bool isElement = false;
+			bool need_copy = false;
+			bool need_clean = false;
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			intptr_t* entityRefs = nullptr; 
 			uint16_t entityRefCount = 0;
-			bool need_copy = false;
-			bool need_clean = false;
 			component_vtable vtable;
 			const char* name = nullptr;
 		};
@@ -83,7 +89,7 @@ namespace core
 		extern index_t disable_id;
 		extern index_t cleanup_id;
 		extern index_t group_id;
-		extern index_t meta_id;
+		extern index_t mask_id;
 
 		struct buffer
 		{

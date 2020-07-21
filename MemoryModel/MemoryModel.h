@@ -41,6 +41,7 @@ namespace core
 				uint32_t size;
 				bool disabled;
 				bool cleaning;
+				bool withMask;
 				bool withTracked;
 				bool zerosize;
 
@@ -58,7 +59,7 @@ namespace core
 				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
 				inline uint32_t* timestamps(chunk* c) noexcept;
 				inline uint16_t index(index_t type) noexcept;
-				bool match_filter(const entity_filter& filter);
+				inline mask get_mask(const entity_type& subtype) noexcept;
 
 				inline entity_type get_type();
 
@@ -117,6 +118,12 @@ namespace core
 				std::vector<archetype*> archetypes;
 			};
 
+			struct structural_change
+			{
+				void* extend;
+				void* shrink;
+			};
+
 			using queries_t = std::unordered_map<entity_filter, query_cache, entity_filter::hash>;
 
 			query_cache& get_query_cache(const entity_filter& f);
@@ -155,7 +162,7 @@ namespace core
 			void release_reference(archetype* g);
 
 			static void serialize_archetype(archetype* g, serializer_i* s);
-			archetype* deserialize_archetype(serializer_i* s);
+			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
 
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
@@ -163,11 +170,10 @@ namespace core
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(serializer_i* s, entity);
-			entity deserialize_single(serializer_i* s);
+			entity deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
 
-			static bool valid_group(archetype* g, bool includeClean, bool includeDisabled);
 			friend chunk;
 			friend batch_iterator;
 		public:
@@ -199,12 +205,16 @@ namespace core
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
 			entity_filter cache_query(const entity_filter& type);
-			const void* get_component_ro(entity, index_t type) const;
-			const void* get_owned_ro(entity, index_t type) const;
-			const void* get_shared_ro(entity, index_t type) const;
-			bool has_component(entity, index_t type) const;
-			bool exist(entity) const;
+			const void* get_component_ro(entity, index_t type) const noexcept;
+			const void* get_owned_ro(entity, index_t type) const noexcept;
+			const void* get_shared_ro(entity, index_t type) const noexcept;
+			bool has_component(entity, const entity_type& type) const noexcept;
+			void enable_component(entity, const entity_type& type) const noexcept;
+			void disable_component(entity, const entity_type& type) const noexcept;
+			bool is_component_enabled(entity, const entity_type& type) const noexcept;
+			bool exist(entity) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
+			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
 			const void* get_shared_ro(archetype *g, index_t type) const;
 			const entity* get_entities(chunk* c) noexcept;
@@ -212,18 +222,24 @@ namespace core
 			entity_type get_type(entity) const noexcept;
 
 			//as prefab
+			void gather_reference(entity, std::pmr::vector<entity>& entities);
 			void serialize(serializer_i* s, entity);
-			void deserialize(serializer_i* s, entity*, uint32_t times = 1);
+			void deserialize(serializer_i* s, patcher_i* patcher, entity*, uint32_t times = 1);
 
 			//multi context
 			void move_context(context& src);
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
-			void serialize(serializer_i* s);
-			void deserialize(serializer_i* s, entity* ret);
+			void create_snapshot(serializer_i* s);
+			void load_snapshot(serializer_i* s);
+			void append_snapshot(serializer_i* s, entity* ret);
 
+			//clear
+			void clear();
+			void gc_meta();
 
 			uint32_t *typeTimestamps;
+			index_t typeCapacity;
 			uint32_t timestamp;
 		};
 
@@ -250,7 +266,6 @@ namespace core
 			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
-			static void deserialize(chunk_slice s, serializer_i* stream);
 			void link(chunk*) noexcept;
 			void unlink() noexcept;
 			char* data() { return (char*)(this + 1); }
