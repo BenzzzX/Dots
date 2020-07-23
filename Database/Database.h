@@ -172,7 +172,7 @@ namespace core
 			void update_queries(archetype* g, bool add);
 
 			static constexpr size_t kFastBinCapacity = 800;
-			static constexpr size_t kSmallBinCapacity = 80;
+			static constexpr size_t kSmallBinCapacity = 200;
 			static constexpr size_t kLargeBinCapacity = 80;
 
 			std::array<chunk*, kFastBinCapacity> fastbin;
@@ -346,9 +346,9 @@ namespace core
 		};
 
 		//system overhead
-		static constexpr size_t kFastBinSize = 32 * 1024 - 256;
+		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
 		static constexpr size_t kSmallBinThreshold = 3;
 		static constexpr size_t kSmallBinSize = 1024 - 256;
-		static constexpr size_t kLargeBinSize = 64 * 1024 - 256;
+		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
 	};
 }
