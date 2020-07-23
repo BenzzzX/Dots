@@ -7,6 +7,10 @@
 #include <vector>
 #include <bitset>
 #include "Set.h"
+
+#define stack_array(type, name, size) \
+type* name = (type*)alloca((size) * sizeof(type))
+
 namespace core
 {
 
@@ -184,6 +188,8 @@ namespace core
 			entity_type all;
 			entity_type any;
 			entity_type none;
+			typeset shared;
+			typeset owned;
 
 
 			struct hash
@@ -196,6 +202,8 @@ namespace core
 					hash = hash_array(key.any.metatypes.data, key.any.metatypes.length, hash);
 					hash = hash_array(key.none.types.data, key.none.types.length, hash);
 					hash = hash_array(key.none.metatypes.data, key.none.metatypes.length, hash);
+					hash = hash_array(key.shared.data, key.shared.length, hash);
+					hash = hash_array(key.owned.data, key.owned.length, hash);
 					return hash;
 				}
 			};
@@ -204,16 +212,33 @@ namespace core
 			{
 				return all == other.all && any == other.any &&
 					none == other.any && all.metatypes == other.all.metatypes &&
-					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes;
+					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes&&
+					shared == other.shared && owned == other.owned;
 			}
 
-			bool match(const entity_type& t) const
+			bool match(const entity_type& t, const typeset& sharedT) const
 			{
-				if (!t.types.all(all.types))
+				//TODO: cache these things?
+				stack_array(index_t, _components, t.types.length + sharedT.length);
+				auto components = typeset::merge(t.types, sharedT, _components);
+
+				if (!components.all(all.types))
 					return false;
-				if (any.types.length > 0 && !t.types.any(any.types))
+				if (any.types.length > 0 && !components.any(any.types))
 					return false;
-				if (t.types.any(none.types))
+
+				stack_array(index_t, _nonOwned, none.types.length);
+				stack_array(index_t, _nonShared, none.types.length);
+				auto nonOwned = typeset::substract(none.types, shared, _nonOwned);
+				auto nonShared = typeset::substract(none.types, owned, _nonShared);
+				if (t.types.any(nonOwned))
+					return false;
+				if (sharedT.any(nonShared))
+					return false;
+
+				if (!t.types.all(owned))
+					return false;
+				if (!sharedT.all(shared))
 					return false;
 
 				if (!t.metatypes.all(all.metatypes))
@@ -273,20 +298,21 @@ namespace core
 			{
 				size_t operator()(const entity_filter& key) const
 				{
-					size_t hash = key.enabled.v.to_ullong();
+					size_t hash = key.enabled.to_ullong();
 				}
 			};
 
 			bool operator==(const entity_filter& other) const
 			{
-				return enabled.v == other.enabled.v;
+				return enabled == other.enabled;
 			}
 
 			bool match(const mask& e) const
 			{
-				return (enabled.v & e.v) == enabled.v;
+				return (enabled & e) == enabled;
 			}
 		};
 	}
 	
 }
+#undef stack_array

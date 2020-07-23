@@ -7,12 +7,18 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
+#undef small
 namespace core
 {
 	namespace database
 	{
 		class context;
 		struct chunk;
+
+		enum class chunk_type : uint8_t
+		{
+			fast,small,large
+		};
 
 		struct chunk_slice
 		{
@@ -25,46 +31,48 @@ namespace core
 				: c(c), start(s), count(count) {}
 		};
 
+		struct archetype
+		{
+			chunk* firstChunk;
+			chunk* lastChunk;
+			chunk* firstFree;
+			uint16_t componentCount;
+			uint16_t firstTag;
+			uint16_t metaCount;
+			uint16_t firstBuffer;
+			uint16_t chunkCount;
+			uint16_t chunkCapacity[3];
+			uint32_t timestamp;
+			uint32_t size;
+			bool disabled;
+			bool cleaning;
+			bool withMask;
+			bool withTracked;
+			bool zerosize;
+
+			/*
+			index_t types[componentCount];
+			uint16_t offsets[firstTag];
+			uint16_t sizes[firstTag];
+			index_t metatypes[componentCount - firstMeta];
+			*/
+
+			inline char* data() noexcept { return (char*)(this + 1); };
+			inline index_t* types() noexcept { return (index_t*)data(); }
+			inline uint16_t* offsets(chunk_type type) noexcept { return  (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t) * (int)type); }
+			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t) * 3); }
+			inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + firstTag * 4 * sizeof(uint16_t)); }
+			inline uint32_t* timestamps(chunk* c) noexcept;
+			inline uint16_t index(index_t type) noexcept;
+			inline mask get_mask(const typeset& subtype) noexcept;
+
+			inline entity_type get_type();
+
+			static size_t calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
+		};
+
 		class context
 		{
-			struct archetype
-			{
-				chunk* firstChunk;
-				chunk* lastChunk;
-				chunk* firstFree;
-				uint16_t componentCount;
-				uint16_t firstTag;
-				uint16_t metaCount;
-				uint16_t firstBuffer;
-				uint16_t chunkCapacity;
-				uint32_t timestamp;
-				uint32_t size;
-				bool disabled;
-				bool cleaning;
-				bool withMask;
-				bool withTracked;
-				bool zerosize;
-
-				/*
-				index_t types[componentCount];
-				uint16_t offsets[firstTag];
-				uint16_t sizes[firstTag];
-				index_t metatypes[componentCount - firstMeta];
-				*/
-
-				inline char* data() noexcept { return (char*)(this + 1); };
-				inline index_t* types() noexcept { return (index_t*)data(); }
-				inline uint16_t* offsets() noexcept { return  (uint16_t*)(data() + componentCount * sizeof(index_t) ); }
-				inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t)); }
-				inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + (firstTag + firstTag) * sizeof(uint16_t)); }
-				inline uint32_t* timestamps(chunk* c) noexcept;
-				inline uint16_t index(index_t type) noexcept;
-				inline mask get_mask(const entity_type& subtype) noexcept;
-
-				inline entity_type get_type();
-
-				static size_t calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
-			};
 
 			struct entities
 			{
@@ -161,10 +169,16 @@ namespace core
 			query_cache& get_query_cache(const archetype_filter& f);
 			void update_queries(archetype* g, bool add);
 
-			static constexpr size_t kChunkPoolCapacity = 8000;
+			static constexpr size_t kFastBinCapacity = 800;
+			static constexpr size_t kSmallBinCapacity = 80;
+			static constexpr size_t kLargeBinCapacity = 80;
 
-			std::array<chunk*, kChunkPoolCapacity> chunkPool;
-			uint16_t poolSize = 0;
+			std::array<chunk*, kFastBinCapacity> fastbin;
+			std::array<chunk*, kSmallBinCapacity> smallbin;
+			std::array<chunk*, kLargeBinCapacity> largebin;
+			uint16_t fastbinSize = 0;
+			uint16_t smallbinSize = 0;
+			uint16_t largebinSize = 0;
 			archetypes_t archetypes;
 			queries_t queries;
 			entities ents;
@@ -183,8 +197,10 @@ namespace core
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
 
-			chunk* new_chunk(archetype*);
+			chunk* malloc_chunk(chunk_type type);
+			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
+			void recycle_chunk(chunk*);
 			void resize_chunk(chunk*, uint16_t);
 
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
@@ -206,6 +222,8 @@ namespace core
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c, int32_t count);
 			archetype_filter cache_query(const archetype_filter& type);
+			void estimate_shared_size(uint16_t& size, archetype* t) const;
+			void get_shared_type(typeset& type, archetype* t, typeset& buffer) const;
 
 			friend chunk;
 			friend batch_iterator;
@@ -222,6 +240,9 @@ namespace core
 			void shrink(chunk_slice, const entity_type& type);
 			void cast(chunk_slice, const entity_type& type);
 			void cast(chunk_slice, archetype* g);
+			void extend(archetype*, const entity_type& type);
+			void shrink(archetype*, const entity_type& type);
+
 
 			//stuctural change
 			void destroy(entity* es, int32_t count);
@@ -230,8 +251,8 @@ namespace core
 			void cast(entity* es, int32_t count, const entity_type& type);
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
-			void enable_component(entity, const entity_type& type) const noexcept;
-			void disable_component(entity, const entity_type& type) const noexcept;
+			void enable_component(entity, const typeset& type) const noexcept;
+			void disable_component(entity, const typeset& type) const noexcept;
 
 			//query
 			batch_iterator batch(entity* ents, uint32_t count);
@@ -242,16 +263,24 @@ namespace core
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
-			bool has_component(entity, const entity_type& type) const noexcept;
-			bool is_component_enabled(entity, const entity_type& type) const noexcept;
+			bool is(entity, const entity_type& type) const noexcept;
+			bool share_component(entity, const typeset& type) const;
+			bool has_component(entity, const typeset& type) const noexcept;
+			bool own_component(entity, const typeset& type) const noexcept;
+			bool is_component_enabled(entity, const typeset& type) const noexcept;
 			bool exist(entity) const noexcept;
 			const void* get_component_ro(chunk* c, index_t type) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
 			const void* get_shared_ro(archetype *g, index_t type) const;
+			bool share_component(archetype* g, const typeset& type) const;
+			bool own_component(archetype* g, const typeset& type) const;
+			bool has_component(archetype* g, const typeset& type) const;
+			archetype* get_archetype(entity) const noexcept;
 			const entity* get_entities(chunk* c) noexcept;
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
+			//note: only owned
 			entity_type get_type(entity) const noexcept;
 
 			//as prefab
@@ -280,8 +309,9 @@ namespace core
 		{
 		private:
 			chunk *next, *prev;
-			context::archetype* type;
+			archetype* type;
 			uint16_t count;
+			chunk_type ct;
 			/*
 			entity entities[chunkCapacity];
 			T1 component1[chunkCapacity];
@@ -299,11 +329,13 @@ namespace core
 			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
+			size_t get_size();
 			void link(chunk*) noexcept;
 			void unlink() noexcept;
 			char* data() { return (char*)(this + 1); }
 			const char* data() const { return (char*)(this + 1); }
-			friend class context;
+			friend context; 
+			friend archetype;
 			friend context::entities;
 		public:
 			uint16_t get_count() { return count; }
@@ -312,7 +344,9 @@ namespace core
 		};
 
 		//system overhead
-		static constexpr size_t kChunkSize = 16 * 1024 - 256;
-		static constexpr size_t kChunkBufferSize = kChunkSize - sizeof(chunk);
+		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
+		static constexpr size_t kSmallBinThreshold = 3;
+		static constexpr size_t kSmallBinSize = 1024 - 256;
+		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
 	};
 }

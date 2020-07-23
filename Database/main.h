@@ -1,52 +1,30 @@
 #pragma once
 #include "Database.h"
 
-core::database::index_t disable_id;
-core::database::index_t cleanup_id;
-
 namespace TransformSystem
 {
 	using namespace core;
 	using namespace database;
 
-	struct vec3 { float v[3]; };
-	struct matrix4x4 { float v[4][4]; };
+	using transform = float;
+	using rotation = float;
+	using location = float;
 
 	index_t rotation_id;
 	index_t location_id;
-	index_t scale_id;
+	//index_t scale_id;
 	index_t local_to_world_id;
 	index_t local_to_parent_id;
 	index_t parent_id;
 	index_t child_id;
 
+	constexpr uint16_t child_size = sizeof(entity) * 4 + sizeof(buffer);
+
 	void Install();
 
-	void UpdateHierachy(context& ctx);
+	void Update(context& ctx);
 
-	void UpdateLocalToX(context& ctx, index_t X, const archetype_filter& filter);
-
-	void SolveParentToWorld(context& ctx);
-
-	void UpdateLocalToParent(context& ctx)
-	{
-		archetype_filter fTransformTree;
-		UpdateLocalToX(ctx, local_to_parent_id, fTransformTree);
-	}
-
-	void UpdateLocalToWorld(context& ctx)
-	{
-		archetype_filter fTransformRoot;
-		UpdateLocalToX(ctx, local_to_world_id, fTransformRoot);
-	}
-
-	void Update(context& ctx)
-	{
-		UpdateHierachy(ctx);
-		UpdateLocalToParent(ctx);
-		UpdateLocalToWorld(ctx);
-		SolveParentToWorld(ctx);
-	}
+	void SetParent(context& ctx, entity e, void* data, entity parent);
 }
 
 
@@ -91,7 +69,7 @@ namespace TestSystem
 
 	void TestDisable();
 
-	void AllTests()
+	void Update()
 	{
 		TestComponent();
 		TestElement();
