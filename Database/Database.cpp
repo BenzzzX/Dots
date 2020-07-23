@@ -2032,6 +2032,7 @@ void context::clear()
 
 void context::gc_meta()
 {
+	//fix me: maintain archetype map
 	for (auto& gi : archetypes)
 	{
 		auto g = gi.second;
