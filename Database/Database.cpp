@@ -147,7 +147,7 @@ uint32_t chunk::get_timestamp(index_t t) noexcept
 void chunk::move(chunk_slice dst, uint16_t srcIndex) noexcept
 {
 	chunk* src = dst.c;
-	uint16_t* offsets = src->type->offsets(src->ct);
+	uint32_t* offsets = src->type->offsets(src->ct);
 	uint16_t* sizes = src->type->sizes();
 	forloop(i, 0, src->type->firstTag)
 		memcpy(
@@ -161,7 +161,7 @@ void chunk::move(chunk_slice dst, uint16_t srcIndex) noexcept
 void chunk::construct(chunk_slice s) noexcept
 {
 	archetype* type = s.c->type;
-	uint16_t* offsets = type->offsets(s.c->ct);
+	uint32_t* offsets = type->offsets(s.c->ct);
 	uint16_t* sizes = type->sizes();
 #ifndef NOINITIALIZE
 	forloop(i, 0, type->firstBuffer)
@@ -185,7 +185,7 @@ void chunk::construct(chunk_slice s) noexcept
 void chunk::destruct(chunk_slice s) noexcept
 {
 	archetype* type = s.c->type;
-	uint16_t* offsets = type->offsets(s.c->ct);
+	uint32_t* offsets = type->offsets(s.c->ct);
 	uint16_t* sizes = type->sizes();
 	index_t* types = type->types();
 	forloop(i, type->firstBuffer, type->firstTag)
@@ -224,8 +224,8 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noex
 	archetype* type = src->type;
 	archetype *dstType = dst.c->type;
 	uint16_t dstI = 0;
-	uint16_t* offsets = type->offsets(src->ct);
-	uint16_t* dstOffsets = dstType->offsets(dst.c->ct);
+	uint32_t* offsets = type->offsets(src->ct);
+	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
 	uint16_t* sizes = type->sizes();
 	index_t* types = type->types();
 	forloop(i, 0, type->firstBuffer)
@@ -272,7 +272,7 @@ void depatch_entity(entity& e, const entity* src, const entity* target, uint32_t
 void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 {
 	archetype* g = s.c->type;
-	uint16_t* offsets = g->offsets(s.c->ct);
+	uint32_t* offsets = g->offsets(s.c->ct);
 	uint16_t* sizes = g->sizes();
 	tagged_index* types = (tagged_index*)g->types();
 	forloop(i, 0, g->firstBuffer)
@@ -355,10 +355,10 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
 	archetype* type = s.c->type;
-	uint16_t* offsets = type->offsets(s.c->ct);
+	uint32_t* offsets = type->offsets(s.c->ct);
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
-	stream->stream(&s.count, sizeof(uint16_t));
+	stream->stream(&s.count, sizeof(uint32_t));
 
 	forloop(i, 0, type->firstTag)
 	{
@@ -388,6 +388,7 @@ size_t chunk::get_size()
 	case chunk_type::large:
 		return kLargeBinSize;
 	}
+	return kFastBinSize;
 }
 
 void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
@@ -397,8 +398,8 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 	uint16_t dstI = 0;
 	uint16_t srcI = 0;
 	uint16_t count = dst.count;
-	uint16_t* srcOffsets = srcType->offsets(src->ct);
-	uint16_t* dstOffsets = dstType->offsets(dst.c->ct);
+	uint32_t* srcOffsets = srcType->offsets(src->ct);
+	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
 	uint16_t* srcSizes = srcType->sizes();
 	uint16_t* dstSizes = dstType->sizes();
 	index_t* srcTypes = srcType->types(); index_t* dstTypes = dstType->types();
@@ -504,7 +505,7 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 	}
 }
 
-inline uint32_t* archetype::timestamps(chunk* c) noexcept { return (uint32_t*)(c->data() + c->get_size()) - firstTag; }
+inline uint32_t* archetype::timestamps(chunk* c) noexcept { return (uint32_t*)((char*)c + c->get_size()) - firstTag; }
 
 uint16_t archetype::index(index_t type) noexcept
 {
@@ -559,7 +560,7 @@ size_t archetype::calculate_size(uint16_t componentCount, uint16_t firstTag, uin
 {
 	return sizeof(index_t)* componentCount +
 		sizeof(uint16_t) * firstTag +
-		sizeof(uint16_t) * firstTag * 3 +
+		sizeof(uint32_t) * firstTag * 3 +
 		sizeof(entity) * metaCount +
 		sizeof(archetype);// +40;
 }
@@ -750,6 +751,7 @@ archetype* context::get_archetype(const entity_type& key)
 	g->withMask = false;
 	g->withTracked = false;
 	g->zerosize = false;
+	g->chunkCount = 0;
 	g->size = 0;
 	g->timestamp = timestamp;
 	g->lastChunk = g->firstChunk = g->firstFree = nullptr;
@@ -783,6 +785,9 @@ archetype* context::get_archetype(const entity_type& key)
 
 		if ((gd.tracks[type.index()] & NeedCC) != 0)
 			g->withTracked = true;
+
+		if ((gd.tracks[type.index()] & Copying) != 0)
+			g->copying = true;
 	}
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
@@ -793,11 +798,11 @@ archetype* context::get_archetype(const entity_type& key)
 		});
 	forloop(i, 0, 3)
 	{
-		uint16_t* offsets = g->offsets((chunk_type)i);
-		g->chunkCapacity[i] = (Caps[i] - sizeof(uint16_t) * firstTag) / entitySize;
+		uint32_t* offsets = g->offsets((chunk_type)i);
+		g->chunkCapacity[i] = (uint32_t)(Caps[i] - sizeof(chunk) - sizeof(uint32_t) * firstTag) / entitySize;
 		if (g->chunkCapacity[i] == 0)
 			continue;
-		uint16_t offset = sizeof(entity) * g->chunkCapacity[i];
+		uint32_t offset = sizeof(entity) * g->chunkCapacity[i];
 		forloop(i, 0, firstTag)
 		{
 			uint16_t id = stableOrder[i];
@@ -886,7 +891,7 @@ archetype* context::get_extending(archetype* g, const entity_type& ext)
 	stack_array(index_t, newTypes, srcType.types.length + ext.types.length);
 	stack_array(entity, newMetaTypes, srcType.metatypes.length + ext.metatypes.length);
 	entity_type key = entity_type::merge(srcType, ext, newTypes, newMetaTypes);
-	if (!g->withTracked)
+	if (!g->copying)
 		return get_archetype(key);
 	else
 	{
@@ -918,7 +923,7 @@ archetype* context::get_extending(archetype* g, const entity_type& ext)
 
 archetype* context::get_shrinking(archetype* g, const entity_type& shr)
 {
-	if (!g->withTracked)
+	if (!g->copying && !g->cleaning)
 	{
 		entity_type srcType = g->get_type();
 		stack_array(index_t, newTypes, srcType.types.length);
@@ -983,7 +988,7 @@ chunk* context::new_chunk(archetype* g, uint32_t hint)
 	chunk* c = nullptr;
 	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[1])
 		c = malloc_chunk(chunk_type::small);
-	else if (hint > g->chunkCapacity[0] * 8)
+	else if (hint > g->chunkCapacity[0] * 8u)
 		c = malloc_chunk(chunk_type::large);
 	else
 		c = malloc_chunk(chunk_type::fast);
@@ -996,7 +1001,8 @@ chunk* context::new_chunk(archetype* g, uint32_t hint)
 
 void context::add_chunk(archetype* g, chunk* c)
 {
-	structural_change(g, c, c->count);
+	structural_change(g, c);
+	g->size += c->count;
 	c->type = g;
 	g->chunkCount++;
 	if (g->firstChunk == nullptr)
@@ -1020,7 +1026,8 @@ void context::add_chunk(archetype* g, chunk* c)
 
 void context::remove_chunk(archetype* g, chunk* c)
 {
-	structural_change(g, c, -c->count);
+	structural_change(g, c);
+	g->size -= c->count;
 	g->chunkCount--;
 	chunk* h = g->firstChunk;
 	if (c == g->firstFree) 
@@ -1099,8 +1106,8 @@ archetype* context::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 
 std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* s)
 {
-	uint16_t count;
-	s->stream(&count, sizeof(uint16_t));
+	uint32_t count;
+	s->stream(&count, sizeof(uint32_t));
 	if (count == 0)
 		return {};
 	chunk* c;
@@ -1109,7 +1116,7 @@ std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i
 		c = c->next;
 	if (c == nullptr)
 		c = new_chunk(g, count);
-	uint16_t start = c->count;
+	uint32_t start = c->count;
 	resize_chunk(c, start + count);
 	chunk_slice slice = { c, start, count };
 	chunk::serialize(slice, s);
@@ -1248,11 +1255,10 @@ void context::serialize_single(serializer_i* s, entity src)
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
-void context::structural_change(archetype* g, chunk* c, int32_t count)
+void context::structural_change(archetype* g, chunk* c)
 {
 	entity_type t = g->get_type();
 	
-	g->size += count;
 	if (g->timestamp != timestamp)
 	{
 		g->timestamp = timestamp;
@@ -1262,8 +1268,9 @@ void context::structural_change(archetype* g, chunk* c, int32_t count)
 			typeTimestamps[type.index()] = timestamp;
 		}
 	}
+	auto timestamps = g->timestamps(c);
 	forloop(i, 0, t.types.length)
-		g->timestamps(c)[i] = timestamp;
+		timestamps[i] = timestamp;
 }
 
 entity context::deserialize_single(serializer_i* s, patcher_i* patcher)
@@ -1326,7 +1333,7 @@ void context::recycle_chunk(chunk* c)
 	}
 }
 
-void context::resize_chunk(chunk* c, uint16_t count)
+void context::resize_chunk(chunk* c, uint32_t count)
 {
 	archetype* g = c->type;
 	if (count == 0)
@@ -1346,9 +1353,10 @@ chunk_slice context::allocate_slice(archetype* g, uint32_t count)
 	chunk* c = g->firstFree;
 	if (c == nullptr)
 		c = new_chunk(g, count);
-	structural_change(g, c, count);
-	uint16_t start = c->count;
-	uint16_t allocated = std::min(count, uint32_t(g->chunkCapacity - start));
+	structural_change(g, c);
+	g->size += count;
+	uint32_t start = c->count;
+	uint32_t allocated = std::min(count, g->chunkCapacity[(int)c->ct] - start);
 	resize_chunk(c, start + allocated);
 	return { c, start, allocated };
 }
@@ -1356,8 +1364,9 @@ chunk_slice context::allocate_slice(archetype* g, uint32_t count)
 void context::free_slice(chunk_slice s)
 {
 	archetype* g = s.c->type;
-	structural_change(g, s.c, -s.count);
-	uint16_t toMoveCount = std::min(s.count, uint16_t(s.c->count - s.start - s.count));
+	structural_change(g, s.c);
+	g->size -= s.count;
+	uint16_t toMoveCount = std::min(s.count, s.c->count - s.start - s.count);
 	if (toMoveCount > 0)
 	{
 		chunk_slice moveSlice{ s.c, s.start, toMoveCount };
@@ -1370,7 +1379,8 @@ void context::free_slice(chunk_slice s)
 void context::cast_slice(chunk_slice src, archetype* g) 
 {
 	archetype* srcG = src.c->type;
-	structural_change(srcG, src.c, -src.count);
+	structural_change(srcG, src.c);
+	g->size -= src.count;
 	uint16_t k = 0;
 	while (k < src.count)
 	{
@@ -2032,19 +2042,34 @@ void context::clear()
 
 void context::gc_meta()
 {
-	//fix me: maintain archetype map
 	for (auto& gi : archetypes)
 	{
 		auto g = gi.second;
 		auto mt = g->metatypes();
+		bool invalid = false;
 		forloop(i, 0, g->metaCount)
 		{
 			if (!exist(mt[i]))
 			{
-				if (i + 1 != g->metaCount)
-					std::swap(mt[i], mt[g->metaCount - 1]);
-				g->metaCount--;
+				invalid = true;
+				break;
 			}
+		}
+		if (invalid)
+		{
+			//note: remove from map before we edit the type
+			//or key will be broken
+			archetypes.erase(g->get_type());
+			forloop(i, 0, g->metaCount)
+			{
+				if (!exist(mt[i]))
+				{
+					if (i + 1 != g->metaCount)
+						std::swap(mt[i], mt[g->metaCount - 1]);
+					g->metaCount--;
+				}
+			}
+			archetypes.insert({ g->get_type(), g });
 		}
 	}
 }

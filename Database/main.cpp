@@ -11,6 +11,8 @@
 
 int main()
 { 
+	TestSystem::Install();
+	TestSystem::Update();
 	return 0;
 }
 
@@ -125,7 +127,7 @@ void TransformSystem::UpdateHierachy(context& ctx)
 					{
 						auto cs = (buffer*)(childs + child_size * k);
 						auto ents = (entity*)cs->data();
-						auto count = cs->size / sizeof(entity);
+						auto count = cs->size / (uint16_t)sizeof(entity);
 						ctx.shrink(ents, count, { .types = {_treeT, 2} });
 					}
 				}

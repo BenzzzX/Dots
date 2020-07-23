@@ -23,11 +23,11 @@ namespace core
 		struct chunk_slice
 		{
 			chunk* c;
-			uint16_t start;
-			uint16_t count;
+			uint32_t start;
+			uint32_t count;
 			bool full();
 			chunk_slice(chunk* c);
-			chunk_slice(chunk* c, uint16_t s, uint16_t count)
+			chunk_slice(chunk* c, uint32_t s, uint32_t count)
 				: c(c), start(s), count(count) {}
 		};
 
@@ -41,11 +41,13 @@ namespace core
 			uint16_t metaCount;
 			uint16_t firstBuffer;
 			uint16_t chunkCount;
-			uint16_t chunkCapacity[3];
+			//todo: use 32 bit capacity
+			uint32_t chunkCapacity[3];
 			uint32_t timestamp;
 			uint32_t size;
 			bool disabled;
 			bool cleaning;
+			bool copying;
 			bool withMask;
 			bool withTracked;
 			bool zerosize;
@@ -59,9 +61,9 @@ namespace core
 
 			inline char* data() noexcept { return (char*)(this + 1); };
 			inline index_t* types() noexcept { return (index_t*)data(); }
-			inline uint16_t* offsets(chunk_type type) noexcept { return  (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t) * (int)type); }
-			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint16_t) * 3); }
-			inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + firstTag * 4 * sizeof(uint16_t)); }
+			inline uint32_t* offsets(chunk_type type) noexcept { return  (uint32_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint32_t) * (int)type); }
+			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * 3 * sizeof(uint32_t)); }
+			inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + firstTag * 3 * sizeof(uint32_t) + firstTag * sizeof(uint16_t)); }
 			inline uint32_t* timestamps(chunk* c) noexcept;
 			inline uint16_t index(index_t type) noexcept;
 			inline mask get_mask(const typeset& subtype) noexcept;
@@ -201,7 +203,7 @@ namespace core
 			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
-			void resize_chunk(chunk*, uint16_t);
+			void resize_chunk(chunk*, uint32_t);
 
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
@@ -220,7 +222,7 @@ namespace core
 			void serialize_single(serializer_i* s, entity);
 			entity deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
-			void structural_change(archetype* g, chunk* c, int32_t count);
+			void structural_change(archetype* g, chunk* c);
 			archetype_filter cache_query(const archetype_filter& type);
 			void estimate_shared_size(uint16_t& size, archetype* t) const;
 			void get_shared_type(typeset& type, archetype* t, typeset& buffer) const;
@@ -310,7 +312,7 @@ namespace core
 		private:
 			chunk *next, *prev;
 			archetype* type;
-			uint16_t count;
+			uint32_t count;
 			chunk_type ct;
 			/*
 			entity entities[chunkCapacity];
@@ -344,9 +346,9 @@ namespace core
 		};
 
 		//system overhead
-		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
+		static constexpr size_t kFastBinSize = 32 * 1024 - 256;
 		static constexpr size_t kSmallBinThreshold = 3;
 		static constexpr size_t kSmallBinSize = 1024 - 256;
-		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
+		static constexpr size_t kLargeBinSize = 64 * 1024 - 256;
 	};
 }

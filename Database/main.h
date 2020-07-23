@@ -7,7 +7,7 @@ namespace TransformSystem
 	using namespace database;
 
 	using transform = float;
-	using rotation = float;
+	using rotation = int;
 	using location = float;
 
 	index_t rotation_id;
