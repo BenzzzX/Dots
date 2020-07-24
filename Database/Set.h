@@ -34,7 +34,7 @@ namespace core
 		}
 	};
 
-	struct entity : handle<20, 12>
+	struct entity : handle<24, 8>
 	{
 		using handle::handle;
 		static entity Invalid;

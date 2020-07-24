@@ -30,21 +30,7 @@ namespace TransformSystem
 
 	void SolvePTWRecursive(context& ctx, entity e, const transform& pltw);
 
-
-	transform mul(const rotation& r, const location& l)
-	{
-		return r * 100.f + l;
-	}
-
-	transform mul(const location& l, const rotation& r)
-	{
-		return mul(r,l);
-	}
-
-	transform mul(const transform& r, const transform& l)
-	{
-		return r + l;
-	}
+	float mul(float a, float b) { return a * b; }
 }
 
 void TransformSystem::Install()

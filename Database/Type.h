@@ -35,6 +35,20 @@ namespace core
 			constexpr operator index_t() const { return id; }
 		};
 
+		template<class... Ts>
+		struct soa
+		{
+			static constexpr int sizes[sizeof...(Ts)] = { sizeof(Ts)... };
+			uint16_t dims[sizeof...(Ts)];
+			uint32_t get_offset(int dim)
+			{
+				uint32_t size = 0;
+				for (int i = 0; i < dim; ++i)
+					size += dims[i] * sizes[i];
+				return size;
+			}
+		};
+
 		extern uint32_t metaTimestamp;
 
 		struct serializer_i
@@ -290,6 +304,8 @@ namespace core
 			}
 		};
 
+
+		//todo: should mask support none filter?
 		struct entity_filter
 		{
 			mask enabled = mask{ (uint32_t)-1 };

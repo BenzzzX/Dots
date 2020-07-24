@@ -41,7 +41,6 @@ namespace core
 			uint16_t metaCount;
 			uint16_t firstBuffer;
 			uint16_t chunkCount;
-			//todo: use 32 bit capacity
 			uint32_t chunkCapacity[3];
 			uint32_t timestamp;
 			uint32_t size;
@@ -54,23 +53,24 @@ namespace core
 
 			/*
 			index_t types[componentCount];
-			uint16_t offsets[firstTag];
+			uint32_t offsets[3][firstTag];
 			uint16_t sizes[firstTag];
-			index_t metatypes[componentCount - firstMeta];
+			entity metatypes[metaCount];
 			*/
-
+			using data_t = soa<index_t, uint32_t, uint32_t, uint32_t, uint16_t, entity>;
+			inline data_t accessor() noexcept { return { componentCount, firstTag, firstTag, firstTag, firstTag, metaCount }; }
 			inline char* data() noexcept { return (char*)(this + 1); };
 			inline index_t* types() noexcept { return (index_t*)data(); }
-			inline uint32_t* offsets(chunk_type type) noexcept { return  (uint32_t*)(data() + componentCount * sizeof(index_t) + firstTag * sizeof(uint32_t) * (int)type); }
-			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + componentCount * sizeof(index_t) + firstTag * 3 * sizeof(uint32_t)); }
-			inline entity* metatypes() noexcept { return (entity*)(data() + componentCount * sizeof(index_t) + firstTag * 3 * sizeof(uint32_t) + firstTag * sizeof(uint16_t)); }
+			inline uint32_t* offsets(chunk_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
+			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + accessor().get_offset(4)); }
+			inline entity* metatypes() noexcept { return (entity*)(data() + accessor().get_offset(5)); }
 			inline uint32_t* timestamps(chunk* c) noexcept;
 			inline uint16_t index(index_t type) noexcept;
 			inline mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type();
 
-			static size_t calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
+			static size_t alloc_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
 		};
 
 		class context
@@ -265,7 +265,7 @@ namespace core
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
-			bool is(entity, const entity_type& type) const noexcept;
+			bool is_a(entity, const entity_type& type) const noexcept;
 			bool share_component(entity, const typeset& type) const;
 			bool has_component(entity, const typeset& type) const noexcept;
 			bool own_component(entity, const typeset& type) const noexcept;

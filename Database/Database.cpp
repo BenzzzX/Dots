@@ -63,7 +63,7 @@ struct global_data
 		desc.name = "group";
 		group_id = register_type(desc);
 		desc.size = sizeof(mask);
-		desc.hash = 3;
+		desc.hash = std::numeric_limits<size_t>::max();
 		desc.isElement = false;
 		desc.name = "mask";
 		desc.entityRefCount = 0;
@@ -556,13 +556,10 @@ entity_type archetype::get_type()
 
 }
 
-size_t archetype::calculate_size(uint16_t componentCount, uint16_t firstTag, uint16_t metaCount)
+size_t archetype::alloc_size(uint16_t componentCount, uint16_t firstTag, uint16_t metaCount)
 {
-	return sizeof(index_t)* componentCount +
-		sizeof(uint16_t) * firstTag +
-		sizeof(uint32_t) * firstTag * 3 +
-		sizeof(entity) * metaCount +
-		sizeof(archetype);// +40;
+	data_t acc{ componentCount, firstTag, firstTag, firstTag, firstTag, metaCount };
+	return acc.get_offset(6) + sizeof(archetype);
 }
 
 uint16_t get_filter_size(const archetype_filter& f)
@@ -740,7 +737,7 @@ archetype* context::get_archetype(const entity_type& key)
 		if (type.is_buffer()) break;
 	}
 	firstBuffer = c;
-	void* data = malloc(archetype::calculate_size(count, firstTag, metaCount));
+	void* data = malloc(archetype::alloc_size(count, firstTag, metaCount));
 	archetype* g = (archetype*)data;
 	g->componentCount = count;
 	g->metaCount = metaCount;
@@ -2074,7 +2071,7 @@ void context::gc_meta()
 	}
 }
 
-bool context::is(entity e, const entity_type& type) const noexcept
+bool context::is_a(entity e, const entity_type& type) const noexcept
 {
 	if (!exist(e))
 		return false;
