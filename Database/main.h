@@ -1,6 +1,20 @@
 #pragma once
 #include "Database.h"
 
+
+using namespace core::database;
+
+struct View
+{
+	archetype_filter af;
+	chunk_filter cf;
+	entity_filter ef;
+	typeset write;
+	typeset read;
+	bool randomRW;
+
+};
+
 namespace TransformSystem
 {
 	using namespace core;

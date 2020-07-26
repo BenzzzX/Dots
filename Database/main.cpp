@@ -145,7 +145,7 @@ void TransformSystem::UpdateLocalToX(context& ctx, index_t X, const archetype_fi
 			auto trans = (location*)ctx.get_owned_ro(*j, location_id);
 			auto rots = (rotation*)ctx.get_owned_ro(*j, rotation_id);
 			auto ltxs = (transform*)ctx.get_owned_rw(*j, X);
-			auto eiter = ctx.query(*j, { titer.get_mask() });
+			auto eiter = ctx.query(*j);
 			foriter(k, eiter) //遍历 Entity
 				ltxs[*k] = mul(trans[*k], rots[*k]);
 		}
@@ -425,7 +425,7 @@ void TestSystem::TestDisable()
 				auto masks = (mask*)ctx.get_owned_ro(*j, mask_id);
 				//auto num = (*j)->get_count();
 				//forloop(k, 0, num) //原始遍历，不考虑mask
-				auto eiter = ctx.query(*j, { titer.get_mask() });
+				auto eiter = ctx.query(*j);
 				foriter(k, eiter) //遍历 Entity
 					if (tests[*k].v % 2)
 						masks[*k] &= ~disableMask;
@@ -459,7 +459,7 @@ void TestSystem::TestDisable()
 			auto citer = ctx.query(*i, {});
 			foriter(j, citer) //遍历 Chunk
 			{
-				auto eiter = ctx.query(*j, { titer.get_mask() });
+				auto eiter = ctx.query(*j);
 				foriter(k, eiter) //遍历 Entity
 					counter++;
 			}
@@ -473,12 +473,11 @@ void TestSystem::TestDisable()
 		auto titer = ctx.query({ .all = type });
 		foriter(i, titer) //遍历 Archetype
 		{
-			auto disableMask = (*i)->get_mask({ dt, 1 });
+			auto mask = titer.get_mask({ dt, 1 });
 			auto citer = ctx.query(*i, {});
 			foriter(j, citer) //遍历 Chunk
 			{
-				auto eiter = ctx.query(*j,
-					{ titer.get_mask() & ~disableMask }); //关闭 test 的禁用检查
+				auto eiter = ctx.query(*j, mask); //关闭 test 的禁用检查
 				foriter(k, eiter) //遍历 Entity
 					counter++;
 			}

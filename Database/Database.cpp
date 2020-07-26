@@ -2284,20 +2284,21 @@ context::archetype_iterator context::query(const archetype_filter& filter)
 
 context::chunk_iterator context::query(archetype* type , const chunk_filter& filter)
 {
-	chunk_iterator iter;
+	chunk_iterator iter{};
 	iter.type = type;
 	iter.iter = type->firstChunk;
 	iter.filter = filter;
 	return iter;
 }
 
-context::entity_iterator context::query(chunk* c, const entity_filter& filter)
+context::entity_iterator context::query(chunk* c, const mask& filter)
 {
 	entity_iterator iter;
 	iter.filter = filter;
 	iter.index = 0;
-	iter.size = c->get_count();
 	iter.masks = (mask*)get_component_ro(c, mask_id);
+	iter.size = c->get_size();
+
 	return iter;
 }
 
@@ -2310,9 +2311,14 @@ std::optional<archetype*> context::archetype_iterator::next()
 	return curr->type;
 }
 
-mask context::archetype_iterator::get_mask() const
+mask context::archetype_iterator::get_mask(const entity_filter& filter) const
 {
-	return curr->matched;
+	return curr->matched & ~(curr->type->get_mask(filter.disabeld));
+}
+
+archetype* context::archetype_iterator::get_archetype() const
+{
+	return curr->type;
 }
 
 std::optional<chunk*> context::chunk_iterator::next()
@@ -2332,7 +2338,7 @@ std::optional<chunk*> context::chunk_iterator::next()
 
 std::optional<uint16_t> context::entity_iterator::next()
 {
-	if (masks == nullptr)
+	if (masks == nullptr || filter.none())
 	{
 		if (index < size)
 			return index++;
@@ -2340,7 +2346,7 @@ std::optional<uint16_t> context::entity_iterator::next()
 	}
 	while (index < size)
 	{
-		if (filter.match(masks[index]))
+		if ((filter & masks[index]) == filter)
 		{
 			uint16_t i = index;
 			index++;

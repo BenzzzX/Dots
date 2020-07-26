@@ -308,24 +308,20 @@ namespace core
 		//todo: should mask support none filter?
 		struct entity_filter
 		{
-			mask enabled = mask{ (uint32_t)-1 };
+			typeset disabeld;
 
 			struct hash
 			{
 				size_t operator()(const entity_filter& key) const
 				{
-					size_t hash = key.enabled.to_ullong();
+					size_t hash = hash_array(key.disabeld.data, key.disabeld.length);
+					return hash;
 				}
 			};
 
 			bool operator==(const entity_filter& other) const
 			{
-				return enabled == other.enabled;
-			}
-
-			bool match(const mask& e) const
-			{
-				return (enabled & e) == enabled;
+				return disabeld == other.disabeld;
 			}
 		};
 	}

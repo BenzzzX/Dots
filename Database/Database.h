@@ -144,7 +144,8 @@ namespace core
 				query_cache::iterator iter;
 				query_cache::iterator end;
 				std::optional<archetype*> next();
-				mask get_mask() const;
+				mask get_mask(const entity_filter& filter) const;
+				archetype* get_archetype() const;
 			};
 
 			struct chunk_iterator
@@ -158,9 +159,9 @@ namespace core
 
 			struct entity_iterator
 			{
-				entity_filter filter;
+				mask filter;
 				uint16_t size;
-				mask* masks;
+				const mask const* masks;
 				uint16_t index;
 
 				std::optional<uint16_t> next();
@@ -260,7 +261,7 @@ namespace core
 			batch_iterator batch(entity* ents, uint32_t count);
 			archetype_iterator query(const archetype_filter& filter);
 			chunk_iterator query(archetype*, const chunk_filter& filter);
-			entity_iterator query(chunk*, const entity_filter& filter);
+			entity_iterator query(chunk*, const mask& filter = mask{ -1 });
 
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
