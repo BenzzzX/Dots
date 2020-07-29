@@ -12,8 +12,26 @@ namespace core
 {
 	namespace database
 	{
-		class context;
 		struct chunk;
+		class context;
+
+		//system overhead
+		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
+		static constexpr size_t kSmallBinThreshold = 3;
+		static constexpr size_t kSmallBinSize = 1024 - 256;
+		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
+
+		static constexpr size_t kFastBinCapacity = 800;
+		static constexpr size_t kSmallBinCapacity = 200;
+		static constexpr size_t kLargeBinCapacity = 80;
+
+		inline std::array<void*, kFastBinCapacity> fastbin;
+		inline std::array<void*, kSmallBinCapacity> smallbin;
+		inline std::array<void*, kLargeBinCapacity> largebin;
+		inline uint16_t fastbinSize = 0;
+		inline uint16_t smallbinSize = 0;
+		inline uint16_t largebinSize = 0;
+
 
 		enum class chunk_type : uint8_t
 		{
@@ -29,6 +47,11 @@ namespace core
 			chunk_slice(chunk* c);
 			chunk_slice(chunk* c, uint32_t s, uint32_t count)
 				: c(c), start(s), count(count) {}
+		};
+
+		struct stage
+		{
+
 		};
 
 		struct archetype
@@ -87,9 +110,24 @@ namespace core
 					};
 					uint16_t i;
 					uint32_t v;
-				} *datas = nullptr;
+				};
+				constexpr static size_t kDataPerChunk = kFastBinSize / sizeof(data);
+				using data_chunk = data[kDataPerChunk];
+				struct datas_t
+				{
+					data_chunk* chunks[kFastBinSize / sizeof(void*)];
+					data& operator[](uint32_t i)
+					{
+						return (*chunks[i / kDataPerChunk])[i % kDataPerChunk];
+					}
+					const data& operator[](uint32_t i) const
+					{
+						return (*chunks[i / kDataPerChunk])[i % kDataPerChunk];
+					}
+				} datas;
 				uint32_t free = 0;
 				uint32_t size = 0;
+				uint32_t chunkCount = 0;
 				uint32_t capacity = 0;
 				~entities();
 				void new_entities(chunk_slice slice);
@@ -161,7 +199,7 @@ namespace core
 			{
 				mask filter;
 				uint16_t size;
-				const mask const* masks;
+				const mask *const masks;
 				uint16_t index;
 
 				std::optional<uint16_t> next();
@@ -172,16 +210,7 @@ namespace core
 			query_cache& get_query_cache(const archetype_filter& f);
 			void update_queries(archetype* g, bool add);
 
-			static constexpr size_t kFastBinCapacity = 800;
-			static constexpr size_t kSmallBinCapacity = 200;
-			static constexpr size_t kLargeBinCapacity = 80;
-
-			std::array<chunk*, kFastBinCapacity> fastbin;
-			std::array<chunk*, kSmallBinCapacity> smallbin;
-			std::array<chunk*, kLargeBinCapacity> largebin;
-			uint16_t fastbinSize = 0;
-			uint16_t smallbinSize = 0;
-			uint16_t largebinSize = 0;
+			
 			archetypes_t archetypes;
 			queries_t queries;
 			entities ents;
@@ -246,12 +275,12 @@ namespace core
 			void extend(archetype*, const entity_type& type);
 			void shrink(archetype*, const entity_type& type);
 
-
 			//stuctural change
 			void destroy(entity* es, int32_t count);
 			void extend(entity* es, int32_t count, const entity_type& type);
 			void shrink(entity* es, int32_t count, const entity_type& type);
 			void cast(entity* es, int32_t count, const entity_type& type);
+
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
 			void enable_component(entity, const typeset& type) const noexcept;
@@ -261,7 +290,7 @@ namespace core
 			batch_iterator batch(entity* ents, uint32_t count);
 			archetype_iterator query(const archetype_filter& filter);
 			chunk_iterator query(archetype*, const chunk_filter& filter);
-			entity_iterator query(chunk*, const mask& filter = mask{ -1 });
+			entity_iterator query(chunk*, const mask& filter = mask{ (uint32_t)-1 });
 
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
@@ -346,10 +375,5 @@ namespace core
 			uint32_t get_timestamp(index_t type) noexcept;
 		};
 
-		//system overhead
-		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
-		static constexpr size_t kSmallBinThreshold = 3;
-		static constexpr size_t kSmallBinSize = 1024 - 256;
-		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
 	};
 }

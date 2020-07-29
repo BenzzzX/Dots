@@ -961,19 +961,19 @@ chunk* context::malloc_chunk(chunk_type type)
 		if (fastbinSize == 0)
 			c = (chunk*)malloc(kFastBinSize);
 		else
-			c = fastbin[--fastbinSize];
+			c = (chunk*)fastbin[--fastbinSize];
 		break;
 	case chunk_type::small:
 		if (smallbinSize == 0)
 			c = (chunk*)malloc(kSmallBinSize);
 		else
-			c = smallbin[--smallbinSize];
+			c = (chunk*)smallbin[--smallbinSize];
 		break;
 	case chunk_type::large:
 		if (largebinSize == 0)
 			c = (chunk*)malloc(kLargeBinSize);
 		else
-			c = largebin[--largebinSize];
+			c = (chunk*)largebin[--largebinSize];
 		break;
 	}
 	c->ct = type;
@@ -1406,18 +1406,12 @@ context::~context()
 		{
 			chunk* next = c->next;
 			chunk::destruct({ c,0,c->count });
-			free(c);
+			recycle_chunk(c);
 			c = next;
 		}
 		release_reference(g.second);
 		free(g.second);
 	}
-	forloop(i, 0, fastbinSize)
-		free(fastbin[i]);
-	forloop(i, 0, smallbinSize)
-		free(smallbin[i]);
-	forloop(i, 0, largebinSize)
-		free(largebin[i]);
 }
 
 context::alloc_iterator context::allocate(const entity_type& type, entity* ret, uint32_t count)
@@ -1527,19 +1521,25 @@ void context::shrink(chunk_slice s, const entity_type& type)
 
 bool static_castable(const entity_type& typeA, const entity_type& typeB)
 {
-	uint16_t srcI = 0, dstI = 0;
-	while (srcI < typeA.types.length && dstI < typeB.types.length)
+	int size = std::min(typeA.types.length, typeB.types.length);
+	int i = 0;
+	for(;i<size;++i)
 	{
-		tagged_index st = typeA.types[srcI];
-		tagged_index dt = typeB.types[dstI];
-		if (st.is_tag() || dt.is_tag())
+		tagged_index st = typeA.types[i];
+		tagged_index dt = typeB.types[i];
+		if (st.is_tag() && dt.is_tag())
 			return true;
 		if (to_valid_type(st) != to_valid_type(dt))
 			return false;
-		else if (st != dt)
-			return false;
 	}
-	return true;
+	if (typeA.types.length == typeB.types.length)
+		return true;
+	else if (i >= typeA.types.length)
+		return tagged_index(typeB.types[i]).is_tag();
+	else if (i >= typeB.types.length)
+		return tagged_index(typeA.types[i]).is_tag();
+	else
+		return false;
 }
 
 void context::cast(chunk_slice s, const entity_type& type)
@@ -1885,8 +1885,7 @@ void context::move_context(context& src)
 	src.archetypes.clear();
 
 	sents.size = sents.free = sents.capacity = 0;
-	::free(sents.datas);
-	sents.datas = nullptr;
+	sents.~entities();
 	::free(patch);
 }
 
@@ -2158,7 +2157,7 @@ bool context::exist(entity e) const noexcept
 std::optional<chunk_slice> context::batch_iterator::next()
 {
 	if (i >= count) return {};
-	const auto* datas = cont->ents.datas;
+	const auto& datas = cont->ents.datas;
 	const auto& start = datas[ents[i++].id];
 	chunk_slice s{ start.c, (uint16_t)start.i, 1 };
 	while (i < count)
@@ -2173,7 +2172,8 @@ std::optional<chunk_slice> context::batch_iterator::next()
 
 context::entities::~entities()
 {
-	::free(datas);
+	while (chunkCount!= 0)
+		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
 }
 
 void context::entities::new_entities(chunk_slice s)
@@ -2191,18 +2191,15 @@ void context::entities::new_entities(chunk_slice s)
 entity context::entities::new_prefab()
 {
 	uint32_t id;
-	if (size == capacity)
+	if (size == chunkCount * kDataPerChunk)
 	{
-		uint32_t newCap = capacity == 0 ? 5 : capacity * 2;
-		data* newDatas = (data*)malloc(sizeof(data) * newCap);
-		if (datas != nullptr)
-		{
-			memcpy(newDatas, datas, sizeof(data) * capacity);
-			::free(datas);
-		}
-		datas = newDatas;
-		memset(datas + capacity, 0, (newCap - capacity) * sizeof(data));
-		capacity = newCap;
+		data_chunk* newChunk;
+		if (fastbinSize > 0)
+			newChunk = (data_chunk*)fastbin[--fastbinSize];
+		else
+			newChunk = (data_chunk*)malloc(kFastBinSize);
+		memset(newChunk, 0, kFastBinSize);
+		datas.chunks[chunkCount++] = newChunk;
 	}
 	id = size++;
 	return { id, datas[id].v };
@@ -2236,6 +2233,8 @@ void context::entities::free_entities(chunk_slice s)
 	//shrink
 	while (size > 0 && datas[--size].c == nullptr);
 	size += (datas[size].c != nullptr);
+	if (chunkCount > 1 && size < (chunkCount - 1) * kDataPerChunk - 1)
+		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
 }
 
 void context::entities::move_entities(chunk_slice dst, const chunk* src, uint16_t srcIndex)
@@ -2293,11 +2292,12 @@ context::chunk_iterator context::query(archetype* type , const chunk_filter& fil
 
 context::entity_iterator context::query(chunk* c, const mask& filter)
 {
-	entity_iterator iter;
-	iter.filter = filter;
-	iter.index = 0;
-	iter.masks = (mask*)get_component_ro(c, mask_id);
-	iter.size = c->get_size();
+	entity_iterator iter{
+		.filter = filter,
+		.size = c->get_count(),
+		.masks = (mask*)get_component_ro(c, mask_id),
+		.index = 0,
+	};
 
 	return iter;
 }

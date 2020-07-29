@@ -425,7 +425,7 @@ void TestSystem::TestDisable()
 				auto masks = (mask*)ctx.get_owned_ro(*j, mask_id);
 				//auto num = (*j)->get_count();
 				//forloop(k, 0, num) //原始遍历，不考虑mask
-				auto eiter = ctx.query(*j);
+				auto eiter = ctx.query(*j, titer.get_mask({}));
 				foriter(k, eiter) //遍历 Entity
 					if (tests[*k].v % 2)
 						masks[*k] &= ~disableMask;
@@ -441,7 +441,7 @@ void TestSystem::TestDisable()
 			auto citer = ctx.query(*i, {});
 			foriter(j, citer) //遍历 Chunk
 			{
-				auto eiter = ctx.query(*j, {});
+				auto eiter = ctx.query(*j, titer.get_mask({}));
 				foriter(k, eiter) //遍历 Entity, 带禁用检查
 					counter++;
 			}
@@ -459,7 +459,7 @@ void TestSystem::TestDisable()
 			auto citer = ctx.query(*i, {});
 			foriter(j, citer) //遍历 Chunk
 			{
-				auto eiter = ctx.query(*j);
+				auto eiter = ctx.query(*j, titer.get_mask({}));
 				foriter(k, eiter) //遍历 Entity
 					counter++;
 			}

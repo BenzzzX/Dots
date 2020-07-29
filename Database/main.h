@@ -12,7 +12,6 @@ struct View
 	typeset write;
 	typeset read;
 	bool randomRW;
-
 };
 
 namespace TransformSystem
