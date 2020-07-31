@@ -13,7 +13,7 @@ namespace core
 	namespace database
 	{
 		struct chunk;
-		class context;
+		class world;
 
 		//system overhead
 		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
@@ -96,7 +96,7 @@ namespace core
 			static size_t alloc_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
 		};
 
-		class context
+		class world
 		{
 
 			struct entities
@@ -128,7 +128,6 @@ namespace core
 				uint32_t free = 0;
 				uint32_t size = 0;
 				uint32_t chunkCount = 0;
-				uint32_t capacity = 0;
 				~entities();
 				void new_entities(chunk_slice slice);
 				entity new_prefab();
@@ -144,7 +143,7 @@ namespace core
 			{
 				entity* ents;
 				uint32_t count;
-				context* cont;
+				world* cont;
 				uint32_t i;
 
 				std::optional<chunk_slice> next();
@@ -152,7 +151,7 @@ namespace core
 
 			struct alloc_iterator
 			{
-				context* cont;
+				world* cont;
 				archetype* g;
 				entity* ret;
 				uint32_t count;
@@ -260,8 +259,8 @@ namespace core
 			friend chunk;
 			friend batch_iterator;
 		public:
-			context(index_t typeCapacity = 4096u);
-			~context();
+			world(index_t typeCapacity = 4096u);
+			~world();
 			//create
 			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
 			void instantiate(entity src, entity* ret, uint32_t count = 1);
@@ -305,6 +304,9 @@ namespace core
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
+
+			const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
+			void* get_owned_rw_local(chunk* c, index_t type) noexcept;
 			const void* get_shared_ro(archetype *g, index_t type) const;
 			bool share_component(archetype* g, const typeset& type) const;
 			bool own_component(archetype* g, const typeset& type) const;
@@ -320,8 +322,8 @@ namespace core
 			void serialize(serializer_i* s, entity);
 			void deserialize(serializer_i* s, patcher_i* patcher, entity*, uint32_t times = 1);
 
-			//multi context
-			void move_context(context& src);
+			//multi world
+			void move_context(world& src);
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
 			void create_snapshot(serializer_i* s);
@@ -366,9 +368,9 @@ namespace core
 			void unlink() noexcept;
 			char* data() { return (char*)(this + 1); }
 			const char* data() const { return (char*)(this + 1); }
-			friend context; 
+			friend world; 
 			friend archetype;
-			friend context::entities;
+			friend world::entities;
 		public:
 			uint16_t get_count() { return count; }
 			const entity* get_entities() const { return (entity*)data(); }

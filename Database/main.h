@@ -1,17 +1,66 @@
 #pragma once
 #include "Database.h"
-
+#include <span>
 
 using namespace core::database;
 
-struct View
+struct parameter
+{
+	index_t type;
+	bool readonly = false;
+};
+
+struct kernel_view
 {
 	archetype_filter af;
 	chunk_filter cf;
 	entity_filter ef;
-	typeset write;
-	typeset read;
+	std::span<parameter> params;
+	//random access parameter
+	std::span<parameter> rap;
+	
 	bool randomRW;
+};
+
+struct transient_allocator
+{
+	static char data[10000];
+	static size_t ptr;
+	static char* alloc(size_t size);
+};
+
+struct kernel_context
+{
+	world* ctx;
+	kernel_view view;
+	uint16_t* localType;
+	mask localMask;
+	archetype* currArchetype;
+	chunk* currChunk;
+	uint32_t indexInChunk;
+	uint32_t indexInKernel;
+	core::entity currEntity;
+	void PhaseArchetype() {}
+	void PhaseChunk() {}
+	void PhaseEntity() {}
+};
+
+namespace codebase
+{
+	class pipeline
+	{
+		struct kernel_pool 
+		{
+
+		};
+
+		template<class T>
+		struct kernel
+		{
+			T* kernel_data;
+
+		};
+	};
 };
 
 namespace TransformSystem
@@ -39,9 +88,9 @@ namespace TransformSystem
 
 	void Install();
 
-	void Update(context& ctx);
+	void Update(world& ctx);
 
-	void SetParent(context& ctx, entity e, void* data, entity parent);
+	void SetParent(world& ctx, entity e, void* data, entity parent);
 }
 
 

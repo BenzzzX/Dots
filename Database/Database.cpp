@@ -596,7 +596,7 @@ archetype_filter clone_filter(const archetype_filter& f, char* data)
 	return f2;
 }
 
-context::query_cache& context::get_query_cache(const archetype_filter& f)
+world::query_cache& world::get_query_cache(const archetype_filter& f)
 {
 	auto iter = queries.find(f);
 	if (iter != queries.end())
@@ -667,7 +667,7 @@ context::query_cache& context::get_query_cache(const archetype_filter& f)
 	}
 }
 
-void context::update_queries(archetype* g, bool add)
+void world::update_queries(archetype* g, bool add)
 {
 	uint16_t size;
 	estimate_shared_size(size, g);
@@ -704,7 +704,7 @@ void context::update_queries(archetype* g, bool add)
 	}
 }
 
-void context::remove(chunk*& h, chunk*& t, chunk* c)
+void world::remove(chunk*& h, chunk*& t, chunk* c)
 {
 	if (c == t)
 		t = t->prev;
@@ -714,7 +714,7 @@ void context::remove(chunk*& h, chunk*& t, chunk* c)
 }
 
 
-archetype* context::get_archetype(const entity_type& key)
+archetype* world::get_archetype(const entity_type& key)
 {
 	auto iter = archetypes.find(key);
 	if (iter != archetypes.end())
@@ -814,7 +814,7 @@ archetype* context::get_archetype(const entity_type& key)
 	return g;
 }
 
-archetype* context::get_cleaning(archetype* g)
+archetype* world::get_cleaning(archetype* g)
 {
 	if (g->cleaning) return g;
 	else if (!g->withTracked) return nullptr;
@@ -845,12 +845,12 @@ archetype* context::get_cleaning(archetype* g)
 	return get_archetype(dstKey);
 }
 
-bool context::is_cleaned(const entity_type& type)
+bool world::is_cleaned(const entity_type& type)
 {
 	return type.types.length == 1;
 }
 
-archetype* context::get_instatiation(archetype* g)
+archetype* world::get_instatiation(archetype* g)
 {
 	if (g->cleaning) return nullptr;
 	else if (!g->withTracked) return g;
@@ -879,7 +879,7 @@ archetype* context::get_instatiation(archetype* g)
 	return get_archetype(dstKey);
 }
 
-archetype* context::get_extending(archetype* g, const entity_type& ext)
+archetype* world::get_extending(archetype* g, const entity_type& ext)
 {
 	if (g->cleaning)
 		return nullptr;
@@ -918,7 +918,7 @@ archetype* context::get_extending(archetype* g, const entity_type& ext)
 	}
 }
 
-archetype* context::get_shrinking(archetype* g, const entity_type& shr)
+archetype* world::get_shrinking(archetype* g, const entity_type& shr)
 {
 	if (!g->copying && !g->cleaning)
 	{
@@ -952,7 +952,7 @@ archetype* context::get_shrinking(archetype* g, const entity_type& shr)
 	}
 }
 
-chunk* context::malloc_chunk(chunk_type type)
+chunk* world::malloc_chunk(chunk_type type)
 {
 	chunk* c = nullptr;
 	switch (type)
@@ -980,7 +980,7 @@ chunk* context::malloc_chunk(chunk_type type)
 	return c;
 }
 
-chunk* context::new_chunk(archetype* g, uint32_t hint)
+chunk* world::new_chunk(archetype* g, uint32_t hint)
 {
 	chunk* c = nullptr;
 	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[1])
@@ -996,7 +996,7 @@ chunk* context::new_chunk(archetype* g, uint32_t hint)
 	return c;
 }
 
-void context::add_chunk(archetype* g, chunk* c)
+void world::add_chunk(archetype* g, chunk* c)
 {
 	structural_change(g, c);
 	g->size += c->count;
@@ -1021,7 +1021,7 @@ void context::add_chunk(archetype* g, chunk* c)
 	}
 }
 
-void context::remove_chunk(archetype* g, chunk* c)
+void world::remove_chunk(archetype* g, chunk* c)
 {
 	structural_change(g, c);
 	g->size -= c->count;
@@ -1040,7 +1040,7 @@ void context::remove_chunk(archetype* g, chunk* c)
 	}
 }
 
-void context::mark_free(archetype* g, chunk* c)
+void world::mark_free(archetype* g, chunk* c)
 {
 	remove(g->firstChunk, g->lastChunk, c);
 	g->lastChunk->link(c);
@@ -1049,7 +1049,7 @@ void context::mark_free(archetype* g, chunk* c)
 		g->firstFree = c;
 }
 
-void context::unmark_free(archetype* g, chunk* c)
+void world::unmark_free(archetype* g, chunk* c)
 {
 	remove(g->firstFree, g->lastChunk, c);
 	if (g->lastChunk == nullptr)
@@ -1058,12 +1058,12 @@ void context::unmark_free(archetype* g, chunk* c)
 		g->firstChunk->link(c);
 }
 
-void context::release_reference(archetype* g)
+void world::release_reference(archetype* g)
 {
 	//TODO
 }
 
-void context::serialize_archetype(archetype* g, serializer_i* s)
+void world::serialize_archetype(archetype* g, serializer_i* s)
 {
 	entity_type type = g->get_type();
 	uint16_t tlength = type.types.length, mlength = type.metatypes.length;
@@ -1075,7 +1075,7 @@ void context::serialize_archetype(archetype* g, serializer_i* s)
 	s->stream(metatypes, mlength * sizeof(entity));
 }
 
-archetype* context::deserialize_archetype(serializer_i* s, patcher_i* patcher)
+archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 {
 	uint16_t tlength; 
 	s->stream(&tlength, sizeof(uint16_t));
@@ -1101,7 +1101,7 @@ archetype* context::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> context::deserialize_slice(archetype* g, serializer_i* s)
+std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* s)
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
@@ -1128,7 +1128,7 @@ struct linear_patcher : patcher_i
 	entity patch(entity e) override;
 };
 
-void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
+void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
 	//TODO: should we patch meta?
 	struct patcher : patcher_i
@@ -1155,7 +1155,7 @@ void context::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 	}
 }
 
-void context::prefab_to_group(entity* members, uint32_t size)
+void world::prefab_to_group(entity* members, uint32_t size)
 {
 	struct patcher : patcher_i
 	{
@@ -1179,7 +1179,7 @@ void context::prefab_to_group(entity* members, uint32_t size)
 	}
 }
 
-void context::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count)
+void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count)
 {
 	std::vector<entity> allEnts{ size * count };
 	std::vector<chunk_slice> allSlices;
@@ -1219,7 +1219,7 @@ void context::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32
 	}
 }
 
-void context::instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* slices, int32_t stride)
+void world::instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* slices, int32_t stride)
 {
 	const auto& data = ents.datas[src.id];
 	archetype* g = get_instatiation(data.c->type);
@@ -1245,14 +1245,14 @@ void context::instantiate_single(entity src, entity* ret, uint32_t count, std::v
 	}
 }
 
-void context::serialize_single(serializer_i* s, entity src)
+void world::serialize_single(serializer_i* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
 	serialize_archetype(data.c->type, s);
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
-void context::structural_change(archetype* g, chunk* c)
+void world::structural_change(archetype* g, chunk* c)
 {
 	entity_type t = g->get_type();
 	
@@ -1270,7 +1270,7 @@ void context::structural_change(archetype* g, chunk* c)
 		timestamps[i] = timestamp;
 }
 
-entity context::deserialize_single(serializer_i* s, patcher_i* patcher)
+entity world::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
 	auto *g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
@@ -1279,7 +1279,7 @@ entity context::deserialize_single(serializer_i* s, patcher_i* patcher)
 	return slice->c->get_entities()[slice->start];
 }
 
-void context::destroy_single(chunk_slice s)
+void world::destroy_single(chunk_slice s)
 {
 	archetype* g = s.c->type;
 	if (g->cleaning)
@@ -1299,13 +1299,13 @@ void context::destroy_single(chunk_slice s)
 
 
 
-void context::destroy_chunk(archetype* g, chunk* c)
+void world::destroy_chunk(archetype* g, chunk* c)
 {
 	remove_chunk(g, c);
 	recycle_chunk(c);
 }
 
-void context::recycle_chunk(chunk* c)
+void world::recycle_chunk(chunk* c)
 {
 	switch (c->ct)
 	{
@@ -1330,7 +1330,7 @@ void context::recycle_chunk(chunk* c)
 	}
 }
 
-void context::resize_chunk(chunk* c, uint32_t count)
+void world::resize_chunk(chunk* c, uint32_t count)
 {
 	archetype* g = c->type;
 	if (count == 0)
@@ -1345,7 +1345,7 @@ void context::resize_chunk(chunk* c, uint32_t count)
 	}
 }
 
-chunk_slice context::allocate_slice(archetype* g, uint32_t count)
+chunk_slice world::allocate_slice(archetype* g, uint32_t count)
 {
 	chunk* c = g->firstFree;
 	if (c == nullptr)
@@ -1358,7 +1358,7 @@ chunk_slice context::allocate_slice(archetype* g, uint32_t count)
 	return { c, start, allocated };
 }
 
-void context::free_slice(chunk_slice s)
+void world::free_slice(chunk_slice s)
 {
 	archetype* g = s.c->type;
 	structural_change(g, s.c);
@@ -1373,7 +1373,7 @@ void context::free_slice(chunk_slice s)
 	resize_chunk(s.c, s.c->count - s.count);
 }
 
-void context::cast_slice(chunk_slice src, archetype* g) 
+void world::cast_slice(chunk_slice src, archetype* g) 
 {
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
@@ -1389,14 +1389,14 @@ void context::cast_slice(chunk_slice src, archetype* g)
 	free_slice(src);
 }
 
-context::context(index_t typeCapacity)
+world::world(index_t typeCapacity)
 	:typeCapacity(typeCapacity)
 {
 	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
 }
 
-context::~context()
+world::~world()
 {
 	free(typeTimestamps);
 	for (auto& g : archetypes)
@@ -1414,7 +1414,7 @@ context::~context()
 	}
 }
 
-context::alloc_iterator context::allocate(const entity_type& type, entity* ret, uint32_t count)
+world::alloc_iterator world::allocate(const entity_type& type, entity* ret, uint32_t count)
 {
 	alloc_iterator i;
 	i.ret = ret;
@@ -1425,7 +1425,7 @@ context::alloc_iterator context::allocate(const entity_type& type, entity* ret, 
 	return i;
 }
 
-void context::instantiate(entity src, entity* ret, uint32_t count)
+void world::instantiate(entity src, entity* ret, uint32_t count)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -1441,18 +1441,18 @@ void context::instantiate(entity src, entity* ret, uint32_t count)
 	}
 }
 
-context::batch_iterator context::batch(entity* ents, uint32_t count)
+world::batch_iterator world::batch(entity* ents, uint32_t count)
 {
 	return batch_iterator{ ents,count,this,0 };
 }
 
-archetype_filter context::cache_query(const archetype_filter& type)
+archetype_filter world::cache_query(const archetype_filter& type)
 {
 	auto& cache = get_query_cache(type);
 	return cache.filter;
 }
 
-void context::estimate_shared_size(uint16_t& size, archetype* t) const
+void world::estimate_shared_size(uint16_t& size, archetype* t) const
 {
 	entity* metas = t->metatypes();
 	forloop(i, 0, t->metaCount)
@@ -1463,7 +1463,7 @@ void context::estimate_shared_size(uint16_t& size, archetype* t) const
 	}
 }
 
-void context::get_shared_type(typeset& type, archetype* t, typeset& buffer) const
+void world::get_shared_type(typeset& type, archetype* t, typeset& buffer) const
 {
 	entity* metas = t->metatypes();
 	forloop(i, 0, t->metaCount)
@@ -1475,7 +1475,7 @@ void context::get_shared_type(typeset& type, archetype* t, typeset& buffer) cons
 	}
 }
 
-void context::destroy(chunk_slice s)
+void world::destroy(chunk_slice s)
 {
 	archetype* g = s.c->type;
 	uint16_t id = g->index(group_id);
@@ -1498,7 +1498,7 @@ void context::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
-void context::extend(chunk_slice s, const entity_type& type)
+void world::extend(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_extending(s.c->type, type);
 	if (g == nullptr)
@@ -1507,7 +1507,7 @@ void context::extend(chunk_slice s, const entity_type& type)
 		cast(s, g);
 }
 
-void context::shrink(chunk_slice s, const entity_type& type)
+void world::shrink(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_shrinking(s.c->type, type);
 	if (g == nullptr)
@@ -1542,13 +1542,13 @@ bool static_castable(const entity_type& typeA, const entity_type& typeB)
 		return false;
 }
 
-void context::cast(chunk_slice s, const entity_type& type)
+void world::cast(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_archetype(type);
 	cast(s, g);
 }
 
-void context::cast(chunk_slice s, archetype* g)
+void world::cast(chunk_slice s, archetype* g)
 {
 	archetype* srcG = s.c->type;
 	entity_type srcT = srcG->get_type();
@@ -1563,7 +1563,7 @@ void context::cast(chunk_slice s, archetype* g)
 		cast_slice(s, g);
 }
 
-void context::extend(archetype* t, const entity_type& type)
+void world::extend(archetype* t, const entity_type& type)
 {
 	archetype* g = get_extending(t, type);
 	if (g == nullptr)
@@ -1573,7 +1573,7 @@ void context::extend(archetype* t, const entity_type& type)
 			cast(c, g);
 }
 
-void context::shrink(archetype* t, const entity_type& type)
+void world::shrink(archetype* t, const entity_type& type)
 {
 	archetype* g = get_shrinking(t, type);
 	if (g == nullptr)
@@ -1588,35 +1588,35 @@ void context::shrink(archetype* t, const entity_type& type)
 }
 
 #define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
-void context::destroy(entity* es, int32_t count)
+void world::destroy(entity* es, int32_t count)
 {
 	auto iter = batch(es, count);
 	foriter(s, iter)
 		destroy(*s);
 }
 
-void context::extend(entity* es, int32_t count, const entity_type& type)
+void world::extend(entity* es, int32_t count, const entity_type& type)
 {
 	auto iter = batch(es, count);
 	foriter(s, iter)
 		extend(*s, type);
 }
 
-void context::shrink(entity* es, int32_t count, const entity_type& type)
+void world::shrink(entity* es, int32_t count, const entity_type& type)
 {
 	auto iter = batch(es, count);
 	foriter(s, iter)
 		shrink(*s, type);
 }
 
-void context::cast(entity* es, int32_t count, const entity_type& type)
+void world::cast(entity* es, int32_t count, const entity_type& type)
 {
 	auto iter = batch(es, count);
 	foriter(s, iter)
 		cast(*s, type);
 }
 
-const void* context::get_component_ro(entity e, index_t type) const noexcept
+const void* world::get_component_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1628,7 +1628,7 @@ const void* context::get_component_ro(entity e, index_t type) const noexcept
 	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_owned_ro(entity e, index_t type) const noexcept
+const void* world::get_owned_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1639,7 +1639,7 @@ const void* context::get_owned_ro(entity e, index_t type) const noexcept
 	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
 }
 
-const void* context::get_shared_ro(entity e, index_t type) const noexcept
+const void* world::get_shared_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1648,7 +1648,7 @@ const void* context::get_shared_ro(entity e, index_t type) const noexcept
 	return get_shared_ro(g, type);
 }
 
-void* context::get_owned_rw(entity e, index_t type) const noexcept
+void* world::get_owned_rw(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1661,7 +1661,7 @@ void* context::get_owned_rw(entity e, index_t type) const noexcept
 }
 
 
-const void* context::get_component_ro(chunk* c, index_t t) const noexcept
+const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 {
 	archetype* g = c->type;
 	uint16_t id = g->index(t);
@@ -1670,20 +1670,20 @@ const void* context::get_component_ro(chunk* c, index_t t) const noexcept
 	return c->data() + c->type->offsets(c->ct)[id];
 }
 
-const void* context::get_owned_ro(chunk* c, index_t t) const noexcept
+const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == InvalidIndex) return nullptr;
 	return c->data() + c->type->offsets(c->ct)[id];
 }
 
-const void* context::get_shared_ro(chunk* c, index_t type) const noexcept
+const void* world::get_shared_ro(chunk* c, index_t type) const noexcept
 {
 	archetype* g = c->type;
 	return get_shared_ro(g, type);
 }
 
-void* context::get_owned_rw(chunk* c, index_t t) noexcept
+void* world::get_owned_rw(chunk* c, index_t t) noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == InvalidIndex) return nullptr;
@@ -1691,7 +1691,17 @@ void* context::get_owned_rw(chunk* c, index_t t) noexcept
 	return c->data() + c->type->offsets(c->ct)[id];
 }
 
-const void* context::get_shared_ro(archetype* g, index_t type) const
+const void* world::get_owned_ro_local(chunk* c, index_t type) const noexcept
+{
+	return c->data() + c->type->offsets(c->ct)[type];
+}
+
+void* world::get_owned_rw_local(chunk* c, index_t type) noexcept
+{
+	return c->data() + c->type->offsets(c->ct)[type];
+}
+
+const void* world::get_shared_ro(archetype* g, index_t type) const
 {
 	entity* metas = g->metatypes();
 	forloop(i, 0, g->metaCount)
@@ -1700,7 +1710,7 @@ const void* context::get_shared_ro(archetype* g, index_t type) const
 	return nullptr;
 }
 
-bool context::share_component(archetype* g, const typeset& type) const
+bool world::share_component(archetype* g, const typeset& type) const
 {
 	entity* metas = g->metatypes();
 	forloop(i, 0, g->metaCount)
@@ -1709,12 +1719,12 @@ bool context::share_component(archetype* g, const typeset& type) const
 	return false;
 }
 
-bool context::own_component(archetype* g, const typeset& type) const
+bool world::own_component(archetype* g, const typeset& type) const
 {
 	return g->get_type().types.all(type);
 }
 
-bool context::has_component(archetype* g, const typeset& type) const
+bool world::has_component(archetype* g, const typeset& type) const
 {
 	if (own_component(g, type))
 		return true;
@@ -1722,7 +1732,7 @@ bool context::has_component(archetype* g, const typeset& type) const
 		return share_component(g, type);
 }
 
-archetype* context::get_archetype(entity e) const noexcept
+archetype* world::get_archetype(entity e) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -1730,25 +1740,25 @@ archetype* context::get_archetype(entity e) const noexcept
 	return data.c->type;
 }
 
-const entity* context::get_entities(chunk* c) noexcept
+const entity* world::get_entities(chunk* c) noexcept
 {
 	return c->get_entities();
 }
 
-uint16_t context::get_size(chunk* c, index_t t) const noexcept
+uint16_t world::get_size(chunk* c, index_t t) const noexcept
 {
 	uint16_t id = c->type->index(t);
 	if (id == InvalidIndex) return 0;
 	return c->type->sizes()[id];
 }
 
-entity_type context::get_type(entity e) const noexcept
+entity_type world::get_type(entity e) const noexcept
 {
 	const auto& data = ents.datas[e.id];
 	return data.c->type->get_type();
 }
 
-void context::gather_reference(entity e, std::pmr::vector<entity>& entities)
+void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
 {
 	auto group_data = (buffer*)get_component_ro(e, group_id);
 	if (group_data == nullptr)
@@ -1808,7 +1818,7 @@ void context::gather_reference(entity e, std::pmr::vector<entity>& entities)
 	}
 }
 
-void context::serialize(serializer_i* s, entity src)
+void world::serialize(serializer_i* s, entity src)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -1828,7 +1838,7 @@ void context::serialize(serializer_i* s, entity src)
 	}
 }
 
-void context::deserialize(serializer_i* s, patcher_i* patcher, entity* ret, uint32_t times)
+void world::deserialize(serializer_i* s, patcher_i* patcher, entity* ret, uint32_t times)
 {
 	entity src = deserialize_single(s, patcher);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
@@ -1854,7 +1864,7 @@ void context::deserialize(serializer_i* s, patcher_i* patcher, entity* ret, uint
 	}
 }
 
-void context::move_context(context& src)
+void world::move_context(world& src)
 {
 	auto& sents = src.ents;
 	uint32_t count = sents.size;
@@ -1884,12 +1894,11 @@ void context::move_context(context& src)
 	}
 	src.archetypes.clear();
 
-	sents.size = sents.free = sents.capacity = 0;
 	sents.~entities();
 	::free(patch);
 }
 
-void context::patch_chunk(chunk* c, patcher_i* patcher)
+void world::patch_chunk(chunk* c, patcher_i* patcher)
 {
 	entity* es = (entity*)c->data();
 	forloop(i, 0, c->count)
@@ -1910,7 +1919,7 @@ struct Data
 */
 
 
-void context::create_snapshot(serializer_i* s)
+void world::create_snapshot(serializer_i* s)
 {
 	const uint32_t start = 0;
 	s->stream(&start, sizeof(uint32_t));
@@ -1954,7 +1963,7 @@ void context::create_snapshot(serializer_i* s)
 		::free(bitset);
 }
 
-void context::load_snapshot(serializer_i* s)
+void world::load_snapshot(serializer_i* s)
 {
 	clear();
 	append_snapshot(s, nullptr);
@@ -1966,7 +1975,7 @@ entity linear_patcher::patch(entity e)
 	return e;
 }
 
-void context::append_snapshot(serializer_i* s, entity* ret)
+void world::append_snapshot(serializer_i* s, entity* ret)
 {
 	uint32_t start, count;
 	s->stream(&start, sizeof(uint32_t));
@@ -2016,7 +2025,7 @@ void context::append_snapshot(serializer_i* s, entity* ret)
 		::free(bitset);
 }
 
-void context::clear()
+void world::clear()
 {
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
 	for (auto& g : archetypes)
@@ -2036,7 +2045,7 @@ void context::clear()
 	archetypes.clear();
 }
 
-void context::gc_meta()
+void world::gc_meta()
 {
 	for (auto& gi : archetypes)
 	{
@@ -2070,7 +2079,7 @@ void context::gc_meta()
 	}
 }
 
-bool context::is_a(entity e, const entity_type& type) const noexcept
+bool world::is_a(entity e, const entity_type& type) const noexcept
 {
 	if (!exist(e))
 		return false;
@@ -2079,7 +2088,7 @@ bool context::is_a(entity e, const entity_type& type) const noexcept
 	return et.types.all(type.types) && et.metatypes.all(type.metatypes);
 }
 
-bool context::share_component(entity e, const typeset& type) const
+bool world::share_component(entity e, const typeset& type) const
 {
 	if (!exist(e))
 		return false;
@@ -2087,7 +2096,7 @@ bool context::share_component(entity e, const typeset& type) const
 	return share_component(data.c->type, type);
 }
 
-bool context::has_component(entity e, const typeset& type) const noexcept
+bool world::has_component(entity e, const typeset& type) const noexcept
 {
 	if (!exist(e))
 		return false;
@@ -2095,7 +2104,7 @@ bool context::has_component(entity e, const typeset& type) const noexcept
 	return has_component(data.c->type, type);
 }
 
-bool context::own_component(entity e, const typeset& type) const noexcept
+bool world::own_component(entity e, const typeset& type) const noexcept
 {
 	if (!exist(e))
 		return false;
@@ -2103,7 +2112,7 @@ bool context::own_component(entity e, const typeset& type) const noexcept
 	return own_component(data.c->type, type);
 }
 
-void context::enable_component(entity e, const typeset& type) const noexcept
+void world::enable_component(entity e, const typeset& type) const noexcept
 {
 	if (!exist(e))
 		return;
@@ -2118,7 +2127,7 @@ void context::enable_component(entity e, const typeset& type) const noexcept
 	m |= mm;
 }
 
-void context::disable_component(entity e, const typeset& type) const noexcept
+void world::disable_component(entity e, const typeset& type) const noexcept
 {
 	if (!exist(e))
 		return;
@@ -2133,7 +2142,7 @@ void context::disable_component(entity e, const typeset& type) const noexcept
 	m &= ~mm;
 }
 
-bool context::is_component_enabled(entity e, const typeset& type) const noexcept
+bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 {
 	if (!exist(e))
 		return false;
@@ -2148,13 +2157,13 @@ bool context::is_component_enabled(entity e, const typeset& type) const noexcept
 	return (m & mm) == mm;
 }
 
-bool context::exist(entity e) const noexcept
+bool world::exist(entity e) const noexcept
 {
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
 
 
-std::optional<chunk_slice> context::batch_iterator::next()
+std::optional<chunk_slice> world::batch_iterator::next()
 {
 	if (i >= count) return {};
 	const auto& datas = cont->ents.datas;
@@ -2170,13 +2179,14 @@ std::optional<chunk_slice> context::batch_iterator::next()
 	return { s };
 }
 
-context::entities::~entities()
+world::entities::~entities()
 {
+	size = free = 0;
 	while (chunkCount!= 0)
 		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
 }
 
-void context::entities::new_entities(chunk_slice s)
+void world::entities::new_entities(chunk_slice s)
 {
 	entity* dst = (entity*)s.c->data() + s.start;
 	forloop(i, 0, s.count)
@@ -2188,7 +2198,7 @@ void context::entities::new_entities(chunk_slice s)
 	}
 }
 
-entity context::entities::new_prefab()
+entity world::entities::new_prefab()
 {
 	uint32_t id;
 	if (size == chunkCount * kDataPerChunk)
@@ -2205,7 +2215,7 @@ entity context::entities::new_prefab()
 	return { id, datas[id].v };
 }
 
-entity context::entities::new_entity()
+entity world::entities::new_entity()
 {
 	if (free == 0)
 		return new_prefab();
@@ -2217,7 +2227,7 @@ entity context::entities::new_entity()
 	}
 }
 
-void context::entities::free_entities(chunk_slice s)
+void world::entities::free_entities(chunk_slice s)
 {
 	entity* toFree = (entity*)s.c->data() + s.start;
 	forloop(i, 0, s.count - 1)
@@ -2237,7 +2247,7 @@ void context::entities::free_entities(chunk_slice s)
 		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
 }
 
-void context::entities::move_entities(chunk_slice dst, const chunk* src, uint16_t srcIndex)
+void world::entities::move_entities(chunk_slice dst, const chunk* src, uint16_t srcIndex)
 {
 	const entity* toMove = (entity*)src->data() + srcIndex;
 	forloop(i, 0, dst.count)
@@ -2249,7 +2259,7 @@ void context::entities::move_entities(chunk_slice dst, const chunk* src, uint16_
 	memcpy((entity*)dst.c->data() + dst.start, toMove, dst.count * sizeof(entity));
 }
 
-void context::entities::fill_entities(chunk_slice dst, uint16_t srcIndex)
+void world::entities::fill_entities(chunk_slice dst, uint16_t srcIndex)
 {
 	const entity* toMove = (entity*)dst.c->data() + srcIndex;
 	forloop(i, 0, dst.count)
@@ -2257,7 +2267,7 @@ void context::entities::fill_entities(chunk_slice dst, uint16_t srcIndex)
 	memcpy((entity*)dst.c->data() + dst.start, toMove, dst.count * sizeof(entity));
 }
 
-std::optional<chunk_slice> context::alloc_iterator::next()
+std::optional<chunk_slice> world::alloc_iterator::next()
 {
 	if (k < count)
 	{
@@ -2272,7 +2282,7 @@ std::optional<chunk_slice> context::alloc_iterator::next()
 		return {};
 }
 
-context::archetype_iterator context::query(const archetype_filter& filter)
+world::archetype_iterator world::query(const archetype_filter& filter)
 {
 	auto& cache = get_query_cache(filter);
 	archetype_iterator iter;
@@ -2281,7 +2291,7 @@ context::archetype_iterator context::query(const archetype_filter& filter)
 	return iter;
 }
 
-context::chunk_iterator context::query(archetype* type , const chunk_filter& filter)
+world::chunk_iterator world::query(archetype* type , const chunk_filter& filter)
 {
 	chunk_iterator iter{};
 	iter.type = type;
@@ -2290,7 +2300,7 @@ context::chunk_iterator context::query(archetype* type , const chunk_filter& fil
 	return iter;
 }
 
-context::entity_iterator context::query(chunk* c, const mask& filter)
+world::entity_iterator world::query(chunk* c, const mask& filter)
 {
 	entity_iterator iter{
 		.filter = filter,
@@ -2302,7 +2312,7 @@ context::entity_iterator context::query(chunk* c, const mask& filter)
 	return iter;
 }
 
-std::optional<archetype*> context::archetype_iterator::next()
+std::optional<archetype*> world::archetype_iterator::next()
 {
 	if (iter == end)
 		return {};
@@ -2311,17 +2321,17 @@ std::optional<archetype*> context::archetype_iterator::next()
 	return curr->type;
 }
 
-mask context::archetype_iterator::get_mask(const entity_filter& filter) const
+mask world::archetype_iterator::get_mask(const entity_filter& filter) const
 {
 	return curr->matched & ~(curr->type->get_mask(filter.disabeld));
 }
 
-archetype* context::archetype_iterator::get_archetype() const
+archetype* world::archetype_iterator::get_archetype() const
 {
 	return curr->type;
 }
 
-std::optional<chunk*> context::chunk_iterator::next()
+std::optional<chunk*> world::chunk_iterator::next()
 {
 	while (iter != nullptr)
 	{
@@ -2336,7 +2346,7 @@ std::optional<chunk*> context::chunk_iterator::next()
 	return {};
 }
 
-std::optional<uint16_t> context::entity_iterator::next()
+std::optional<uint16_t> world::entity_iterator::next()
 {
 	if (masks == nullptr || filter.none())
 	{

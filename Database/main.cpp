@@ -18,17 +18,17 @@ int main()
 
 namespace TransformSystem
 {
-	void UpdateHierachy(context& ctx);
+	void UpdateHierachy(world& ctx);
 
-	void UpdateLocalToX(context& ctx, index_t X, const archetype_filter& filter);
+	void UpdateLocalToX(world& ctx, index_t X, const archetype_filter& filter);
 
-	void SolveParentToWorld(context& ctx);
+	void SolveParentToWorld(world& ctx);
 
-	void RemoveChild(context& ctx, entity e, entity child);
+	void RemoveChild(world& ctx, entity e, entity child);
 
-	void AddChild(context& ctx, entity e, entity child);
+	void AddChild(world& ctx, entity e, entity child);
 
-	void SolvePTWRecursive(context& ctx, entity e, const transform& pltw);
+	void SolvePTWRecursive(world& ctx, entity e, const transform& pltw);
 
 	float mul(float a, float b) { return a * b; }
 }
@@ -45,7 +45,7 @@ void TransformSystem::Install()
 	child_id = register_type({ true, false, true, 19, child_size, sizeof(entity) });
 }
 
-void TransformSystem::SetParent(context& ctx, entity e, void* data, entity inParent)
+void TransformSystem::SetParent(world& ctx, entity e, void* data, entity inParent)
 {
 	if (data == nullptr)
 		data = ctx.get_owned_rw(e, parent_id);
@@ -56,7 +56,7 @@ void TransformSystem::SetParent(context& ctx, entity e, void* data, entity inPar
 	AddChild(ctx, parent, e);
 }
 
-void TransformSystem::RemoveChild(context& ctx, entity e, entity child)
+void TransformSystem::RemoveChild(world& ctx, entity e, entity child)
 {
 	auto cs = (buffer*)ctx.get_owned_ro(e, child_id);
 	if (cs == nullptr)
@@ -70,7 +70,7 @@ void TransformSystem::RemoveChild(context& ctx, entity e, entity child)
 	cs->pop(sizeof(entity));
 }
 
-void TransformSystem::AddChild(context& ctx, entity e, entity child)
+void TransformSystem::AddChild(world& ctx, entity e, entity child)
 {
 	auto cs = (buffer*)ctx.get_owned_ro(e, child_id);
 	if (cs == nullptr)
@@ -78,7 +78,7 @@ void TransformSystem::AddChild(context& ctx, entity e, entity child)
 	cs->push(&child, sizeof(entity));
 }
 
-void TransformSystem::UpdateHierachy(context& ctx)
+void TransformSystem::UpdateHierachy(world& ctx)
 {
 	index_t _cleanT[] = { cleanup_id };
 	index_t _toCleanT[] = { parent_id, child_id };
@@ -134,7 +134,7 @@ void TransformSystem::UpdateHierachy(context& ctx)
 	//需不需要检查 Parent 和 Child 的合法性？
 }
 
-void TransformSystem::UpdateLocalToX(context& ctx, index_t X, const archetype_filter& filter)
+void TransformSystem::UpdateLocalToX(world& ctx, index_t X, const archetype_filter& filter)
 {
 	auto titer = ctx.query(filter);
 	foriter(i, titer) //遍历 Archetype
@@ -153,7 +153,7 @@ void TransformSystem::UpdateLocalToX(context& ctx, index_t X, const archetype_fi
 }
 
 
-void TransformSystem::SolvePTWRecursive(context& ctx, entity e, const transform& pltw)
+void TransformSystem::SolvePTWRecursive(world& ctx, entity e, const transform& pltw)
 {
 	auto ltw = (transform*)ctx.get_owned_rw(e, local_to_world_id);
 	auto ltp = (transform*)ctx.get_owned_ro(e, local_to_parent_id);
@@ -172,7 +172,7 @@ void TransformSystem::SolvePTWRecursive(context& ctx, entity e, const transform&
 }
 
 
-void TransformSystem::SolveParentToWorld(context& ctx)
+void TransformSystem::SolveParentToWorld(world& ctx)
 {
 	index_t _rootT[] = { local_to_world_id, child_id };
 	index_t _treeT[] = { parent_id };
@@ -202,7 +202,7 @@ void TransformSystem::SolveParentToWorld(context& ctx)
 	}
 }
 
-void TransformSystem::Update(context& ctx)
+void TransformSystem::Update(world& ctx)
 {
 	//维护层级结构
 	UpdateHierachy(ctx); 
@@ -234,7 +234,7 @@ void TestSystem::Install()
 
 void TestSystem::TestComponent()
 {
-	context ctx;
+	world ctx;
 	core::entity e;
 
 	index_t t[] = { test_id };
@@ -253,7 +253,7 @@ void TestSystem::TestComponent()
 
 void TestSystem::TestLifeTime()
 {
-	context ctx;
+	world ctx;
 	core::entity e;
 	core::entity e2;
 
@@ -295,7 +295,7 @@ void TestSystem::TestLifeTime()
 void TestSystem::TestElement()
 {
 	using core::database::buffer;
-	context ctx;
+	world ctx;
 	core::entity e;
 
 	index_t t[] = { test_element_id };
@@ -315,7 +315,7 @@ void TestSystem::TestElement()
 
 void TestSystem::TestMeta()
 {
-	context ctx;
+	world ctx;
 	core::entity metae;
 	core::entity e;
 
@@ -359,7 +359,7 @@ void TestSystem::TestMeta()
 
 void TestSystem::TestIteration()
 {
-	context ctx;
+	world ctx;
 	core::entity es[100];
 	index_t t[] = { test_id };
 	entity_type type({ .types = {t,1} });
@@ -393,7 +393,7 @@ void TestSystem::TestIteration()
 
 void TestSystem::TestDisable()
 {
-	context ctx;
+	world ctx;
 	core::entity es[100];
 	index_t t[] = { mask_id, test_id };
 	std::sort(t, t + 2);
