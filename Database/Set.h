@@ -43,6 +43,7 @@ namespace core
 	namespace database
 	{
 		using index_t = uint32_t;
+		using tsize_t = uint16_t;
 #if _WIN64
 		constexpr size_t _FNV_offset_basis = 14695981039346656037ULL;
 		constexpr size_t _FNV_prime = 1099511628211ULL;
@@ -75,7 +76,7 @@ namespace core
 		struct set
 		{
 			const T* data = nullptr;
-			uint16_t length = 0;
+			tsize_t length = 0;
 
 			const T& operator[](uint32_t i) const noexcept { return data[i]; }
 
@@ -94,7 +95,7 @@ namespace core
 
 			static set merge(const set& lhs, const set& rhs, T* dst)
 			{
-				uint16_t i = 0, j = 0, k = 0;
+				tsize_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])
@@ -113,7 +114,7 @@ namespace core
 
 			static set substract(const set& lhs, const set& rhs, T* dst)
 			{
-				uint16_t i = 0, j = 0, k = 0;
+				tsize_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])
@@ -130,7 +131,7 @@ namespace core
 
 			static set intersect(const set& lhs, const set& rhs, T* dst)
 			{
-				uint16_t i = 0, j = 0, k = 0;
+				tsize_t i = 0, j = 0, k = 0;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])
@@ -145,7 +146,7 @@ namespace core
 
 			bool any(const set& s) const
 			{
-				uint16_t i = 0, j = 0;
+				tsize_t i = 0, j = 0;
 				while (i < length && j < s.length)
 				{
 					if (data[i] > s[j])
@@ -160,7 +161,7 @@ namespace core
 
 			bool all(const set& s) const
 			{
-				uint16_t i = 0, j = 0;
+				tsize_t i = 0, j = 0;
 				while (i < length && j < s.length)
 				{
 					if (data[i] > s[j])

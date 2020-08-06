@@ -40,7 +40,7 @@ struct global_data
 	std::vector<type_data> infos;
 	std::vector<track_state> tracks;
 	std::vector<intptr_t> entityRefs;
-	std::unordered_map<size_t, uint16_t> hash2type;
+	std::unordered_map<size_t, size_t> hash2type;
 	
 	global_data()
 	{
@@ -88,7 +88,7 @@ index_t database::register_type(component_desc desc)
 			gd.entityRefs.push_back(desc.entityRefs[i]);
 	}
 	
-	uint16_t id = (uint16_t)gd.infos.size();
+	size_t id = gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
@@ -102,7 +102,7 @@ index_t database::register_type(component_desc desc)
 
 	if (desc.need_copy)
 	{
-		uint16_t id = (uint16_t)gd.infos.size();
+		size_t id = gd.infos.size();
 		id = tagged_index{ id, desc.isElement, desc.size == 0 };
 		type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
@@ -139,12 +139,12 @@ void chunk::unlink() noexcept
 
 uint32_t chunk::get_timestamp(index_t t) noexcept
 {
-	uint16_t id = type->index(t);
+	tsize_t id = type->index(t);
 	if (id == InvalidIndex) return 0;
 	return type->timestamps(this)[id];
 }
 
-void chunk::move(chunk_slice dst, uint16_t srcIndex) noexcept
+void chunk::move(chunk_slice dst, tsize_t srcIndex) noexcept
 {
 	chunk* src = dst.c;
 	uint32_t* offsets = src->type->offsets(src->ct);
@@ -174,8 +174,8 @@ void chunk::construct(chunk_slice s) noexcept
 			new(j * sizes[i] + src) buffer{ sizes[i] - sizeof(buffer) };
 	}
 
-	uint16_t maskId = type->index(mask_id);
-	if (maskId != (uint16_t)-1)
+	tsize_t maskId = type->index(mask_id);
+	if (maskId != (tsize_t)-1)
 	{
 		auto i = maskId;
 		memset(srcData, -1, sizes[i] * s.count);
@@ -219,11 +219,11 @@ tagged_index to_valid_type(tagged_index t)
 #undef srcData
 #define dstData (dst.c->data() + offsets[i] + sizes[i] * dst.start)
 #define srcData (src->data() + offsets[i] + sizes[i] * srcIndex)
-void chunk::duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept
+void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept
 {
 	archetype* type = src->type;
 	archetype *dstType = dst.c->type;
-	uint16_t dstI = 0;
+	tsize_t dstI = 0;
 	uint32_t* offsets = type->offsets(src->ct);
 	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
 	uint16_t* sizes = type->sizes();
@@ -381,23 +381,23 @@ size_t chunk::get_size()
 {
 	switch (ct)
 	{
-	case chunk_type::fast:
+	case chunk_alloc_type::fast:
 		return kFastBinSize;
-	case chunk_type::small:
+	case chunk_alloc_type::small:
 		return kSmallBinSize;
-	case chunk_type::large:
+	case chunk_alloc_type::large:
 		return kLargeBinSize;
 	}
 	return kFastBinSize;
 }
 
-void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
+void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept
 {
 	archetype* srcType = src->type;
 	archetype* dstType = dst.c->type;
-	uint16_t dstI = 0;
-	uint16_t srcI = 0;
-	uint16_t count = dst.count;
+	tsize_t dstI = 0;
+	tsize_t srcI = 0;
+	uint32_t count = dst.count;
 	uint32_t* srcOffsets = srcType->offsets(src->ct);
 	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
 	uint16_t* srcSizes = srcType->sizes();
@@ -472,8 +472,8 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 		dstI++;
 	}
 
-	uint16_t srcMaskId = srcType->index(mask_id);
-	uint16_t dstMaskId = dstType->index(mask_id);
+	tsize_t srcMaskId = srcType->index(mask_id);
+	tsize_t dstMaskId = dstType->index(mask_id);
 	if (srcMaskId != InvalidIndex && dstMaskId != InvalidIndex)
 	{
 		mask* s = (mask*)(src->data() + srcOffsets[srcMaskId] + srcSizes[srcMaskId] * srcIndex);
@@ -507,14 +507,14 @@ void chunk::cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept
 
 inline uint32_t* archetype::timestamps(chunk* c) noexcept { return (uint32_t*)((char*)c + c->get_size()) - firstTag; }
 
-uint16_t archetype::index(index_t type) noexcept
+tsize_t archetype::index(index_t type) noexcept
 {
 	index_t* ts = types();
 	index_t* result = std::lower_bound(ts, ts + componentCount, type);
 	if (result != ts + componentCount && *result == type)
-		return uint16_t(result - ts);
+		return tsize_t(result - ts);
 	else
-		return uint16_t(-1);
+		return tsize_t(-1);
 }
 
 mask archetype::get_mask(const typeset& subtype) noexcept
@@ -522,7 +522,7 @@ mask archetype::get_mask(const typeset& subtype) noexcept
 	mask ret;
 	auto ta = get_type().types;
 	auto tb = subtype;
-	uint16_t i = 0, j = 0;
+	tsize_t i = 0, j = 0;
 	while (i < ta.length && j < tb.length)
 	{
 		if (ta[i] > tb[j])
@@ -556,18 +556,18 @@ entity_type archetype::get_type()
 
 }
 
-size_t archetype::alloc_size(uint16_t componentCount, uint16_t firstTag, uint16_t metaCount)
+size_t archetype::alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t metaCount)
 {
 	data_t acc{ componentCount, firstTag, firstTag, firstTag, firstTag, metaCount };
 	return acc.get_offset(6) + sizeof(archetype);
 }
 
-uint16_t get_filter_size(const archetype_filter& f)
+size_t get_filter_size(const archetype_filter& f)
 {
 	auto totalSize = f.all.types.length * sizeof(index_t) + f.all.metatypes.length * sizeof(entity) +
 		f.any.types.length * sizeof(index_t) + f.any.metatypes.length * sizeof(entity) +
 		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity);
-	return (uint16_t)totalSize;
+	return totalSize;
 }
 
 archetype_filter clone_filter(const archetype_filter& f, char* data)
@@ -633,7 +633,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 				return false;
 
 
-			uint16_t size;
+			tsize_t size;
 			estimate_shared_size(size, g);
 			stack_array(index_t, _type, size);
 			stack_array(index_t, _buffer, size);
@@ -669,7 +669,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 
 void world::update_queries(archetype* g, bool add)
 {
-	uint16_t size;
+	tsize_t size;
 	estimate_shared_size(size, g);
 	stack_array(index_t, _type, size);
 	stack_array(index_t, _buffer, size);
@@ -720,11 +720,11 @@ archetype* world::get_archetype(const entity_type& key)
 	if (iter != archetypes.end())
 		return iter->second;
 
-	const uint16_t count = key.types.length;
-	uint16_t firstTag = 0;
-	uint16_t firstBuffer = 0;
-	uint16_t metaCount = key.metatypes.length;
-	uint16_t c = 0;
+	const tsize_t count = key.types.length;
+	tsize_t firstTag = 0;
+	tsize_t firstBuffer = 0;
+	tsize_t metaCount = key.metatypes.length;
+	tsize_t c = 0;
 	for (c = 0; c < count; c++)
 	{
 		auto type = (tagged_index)key.types[c];
@@ -757,13 +757,13 @@ archetype* world::get_archetype(const entity_type& key)
 	memcpy(types, key.types.data, count * sizeof(index_t));
 	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
 
-	const uint16_t disableType = disable_id;
-	const uint16_t cleanupType = cleanup_id;
-	const uint16_t maskType = mask_id;
+	const index_t disableType = disable_id;
+	const index_t cleanupType = cleanup_id;
+	const index_t maskType = mask_id;
 
 	uint16_t* sizes = g->sizes();
 	stack_array(size_t, hash, firstTag);
-	stack_array(uint16_t, stableOrder, firstTag);
+	stack_array(tsize_t, stableOrder, firstTag);
 	uint16_t entitySize = sizeof(entity);
 	forloop(i, 0, firstTag)
 	{
@@ -789,20 +789,20 @@ archetype* world::get_archetype(const entity_type& key)
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
 	size_t Caps[] = {kFastBinSize, kSmallBinSize, kLargeBinSize};
-	std::sort(stableOrder, stableOrder + firstTag, [&](uint16_t lhs, uint16_t rhs)
+	std::sort(stableOrder, stableOrder + firstTag, [&](tsize_t lhs, tsize_t rhs)
 		{
 			return hash[lhs] < hash[rhs];
 		});
 	forloop(i, 0, 3)
 	{
-		uint32_t* offsets = g->offsets((chunk_type)i);
+		uint32_t* offsets = g->offsets((chunk_alloc_type)i);
 		g->chunkCapacity[i] = (uint32_t)(Caps[i] - sizeof(chunk) - sizeof(uint32_t) * firstTag) / entitySize;
 		if (g->chunkCapacity[i] == 0)
 			continue;
 		uint32_t offset = sizeof(entity) * g->chunkCapacity[i];
 		forloop(i, 0, firstTag)
 		{
-			uint16_t id = stableOrder[i];
+			tsize_t id = stableOrder[i];
 			offsets[id] = offset;
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
@@ -819,8 +819,8 @@ archetype* world::get_cleaning(archetype* g)
 	if (g->cleaning) return g;
 	else if (!g->withTracked) return nullptr;
 
-	uint16_t k = 0, count = g->componentCount;
-	const uint16_t cleanupType = cleanup_id;
+	tsize_t k = 0, count = g->componentCount;
+	const index_t cleanupType = cleanup_id;
 	index_t* types = g->types();
 	entity* metatypes = g->metatypes();
 
@@ -855,7 +855,7 @@ archetype* world::get_instatiation(archetype* g)
 	if (g->cleaning) return nullptr;
 	else if (!g->withTracked) return g;
 
-	uint16_t count = g->componentCount;
+	tsize_t count = g->componentCount;
 	index_t* types = g->types();
 	entity* metatypes = g->metatypes();
 
@@ -892,7 +892,7 @@ archetype* world::get_extending(archetype* g, const entity_type& ext)
 		return get_archetype(key);
 	else
 	{
-		uint16_t k = 0, mk = 0;
+		tsize_t k = 0, mk = 0;
 		stack_array(index_t, newTypesx, key.types.length);
 		auto can_zip = [&](int i)
 		{
@@ -932,7 +932,7 @@ archetype* world::get_shrinking(archetype* g, const entity_type& shr)
 	{
 		entity_type srcType = g->get_type();
 		stack_array(index_t, shrTypes, srcType.types.length * 2);
-		uint16_t k = 0;
+		tsize_t k = 0;
 		forloop(i, 0, shr.types.length)
 		{
 			auto type = (tagged_index)shr.types[i];
@@ -952,24 +952,24 @@ archetype* world::get_shrinking(archetype* g, const entity_type& shr)
 	}
 }
 
-chunk* world::malloc_chunk(chunk_type type)
+chunk* world::malloc_chunk(chunk_alloc_type type)
 {
 	chunk* c = nullptr;
 	switch (type)
 	{
-	case chunk_type::fast:
+	case chunk_alloc_type::fast:
 		if (fastbinSize == 0)
 			c = (chunk*)malloc(kFastBinSize);
 		else
 			c = (chunk*)fastbin[--fastbinSize];
 		break;
-	case chunk_type::small:
+	case chunk_alloc_type::small:
 		if (smallbinSize == 0)
 			c = (chunk*)malloc(kSmallBinSize);
 		else
 			c = (chunk*)smallbin[--smallbinSize];
 		break;
-	case chunk_type::large:
+	case chunk_alloc_type::large:
 		if (largebinSize == 0)
 			c = (chunk*)malloc(kLargeBinSize);
 		else
@@ -984,11 +984,11 @@ chunk* world::new_chunk(archetype* g, uint32_t hint)
 {
 	chunk* c = nullptr;
 	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[1])
-		c = malloc_chunk(chunk_type::small);
+		c = malloc_chunk(chunk_alloc_type::small);
 	else if (hint > g->chunkCapacity[0] * 8u)
-		c = malloc_chunk(chunk_type::large);
+		c = malloc_chunk(chunk_alloc_type::large);
 	else
-		c = malloc_chunk(chunk_type::fast);
+		c = malloc_chunk(chunk_alloc_type::fast);
 	c->count = 0;
 	c->prev = c->next = nullptr;
 	add_chunk(g, c);
@@ -1066,19 +1066,19 @@ void world::release_reference(archetype* g)
 void world::serialize_archetype(archetype* g, serializer_i* s)
 {
 	entity_type type = g->get_type();
-	uint16_t tlength = type.types.length, mlength = type.metatypes.length;
-	s->stream(&tlength, sizeof(uint16_t));
+	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
+	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
 		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
-	s->stream(&mlength, sizeof(uint16_t));
+	s->stream(&mlength, sizeof(tsize_t));
 	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength * sizeof(entity));
 }
 
 archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 {
-	uint16_t tlength; 
-	s->stream(&tlength, sizeof(uint16_t));
+	tsize_t tlength;
+	s->stream(&tlength, sizeof(tsize_t));
 	stack_array(index_t, types, tlength);
 	if (tlength == 0)
 		return nullptr;
@@ -1089,8 +1089,8 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 		//TODO: check validation
 		types[i] = gd.hash2type[hash];
 	}
-	uint16_t mlength;
-	s->stream(&mlength, sizeof(uint16_t));
+	tsize_t mlength;
+	s->stream(&mlength, sizeof(tsize_t));
 	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength);
 	forloop(i, 0, mlength)
@@ -1309,19 +1309,19 @@ void world::recycle_chunk(chunk* c)
 {
 	switch (c->ct)
 	{
-	case chunk_type::fast:
+	case chunk_alloc_type::fast:
 		if (fastbinSize < kLargeBinCapacity)
 			fastbin[fastbinSize++] = c;
 		else
 			::free(c);
 		break;
-	case chunk_type::small:
+	case chunk_alloc_type::small:
 		if (smallbinSize < kSmallBinCapacity)
 			smallbin[smallbinSize++] = c;
 		else
 			::free(c);
 		break;
-	case chunk_type::large:
+	case chunk_alloc_type::large:
 		if (largebinSize < kLargeBinCapacity)
 			largebin[largebinSize++] = c;
 		else
@@ -1363,7 +1363,7 @@ void world::free_slice(chunk_slice s)
 	archetype* g = s.c->type;
 	structural_change(g, s.c);
 	g->size -= s.count;
-	uint16_t toMoveCount = std::min(s.count, s.c->count - s.start - s.count);
+	uint32_t toMoveCount = std::min(s.count, s.c->count - s.start - s.count);
 	if (toMoveCount > 0)
 	{
 		chunk_slice moveSlice{ s.c, s.start, toMoveCount };
@@ -1378,7 +1378,7 @@ void world::cast_slice(chunk_slice src, archetype* g)
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
 	g->size -= src.count;
-	uint16_t k = 0;
+	uint32_t k = 0;
 	while (k < src.count)
 	{
 		chunk_slice s = allocate_slice(g, src.count - k);
@@ -1452,7 +1452,7 @@ archetype_filter world::cache_query(const archetype_filter& type)
 	return cache.filter;
 }
 
-void world::estimate_shared_size(uint16_t& size, archetype* t) const
+void world::estimate_shared_size(tsize_t& size, archetype* t) const
 {
 	entity* metas = t->metatypes();
 	forloop(i, 0, t->metaCount)
@@ -1478,7 +1478,7 @@ void world::get_shared_type(typeset& type, archetype* t, typeset& buffer) const
 void world::destroy(chunk_slice s)
 {
 	archetype* g = s.c->type;
-	uint16_t id = g->index(group_id);
+	tsize_t id = g->index(group_id);
 	if (id != InvalidIndex)
 	{
 		uint16_t* sizes = g->sizes();
@@ -1622,7 +1622,7 @@ const void* world::get_component_ro(entity e, index_t type) const noexcept
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
-	uint16_t id = g->index(type);
+	tsize_t id = g->index(type);
 	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
 	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
@@ -1634,7 +1634,7 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
-	uint16_t id = g->index(type);
+	tsize_t id = g->index(type);
 	if (id == InvalidIndex) return nullptr;
 	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
 }
@@ -1654,7 +1654,7 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 		return nullptr;
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
-	uint16_t id = g->index(type);
+	tsize_t id = g->index(type);
 	if (id == InvalidIndex) return nullptr;
 	g->timestamps(c)[id] = timestamp;
 	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
@@ -1664,7 +1664,7 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 {
 	archetype* g = c->type;
-	uint16_t id = g->index(t);
+	tsize_t id = g->index(t);
 	if (id == InvalidIndex) 
 		return get_shared_ro(g, t);
 	return c->data() + c->type->offsets(c->ct)[id];
@@ -1672,7 +1672,7 @@ const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 
 const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
 {
-	uint16_t id = c->type->index(t);
+	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex) return nullptr;
 	return c->data() + c->type->offsets(c->ct)[id];
 }
@@ -1685,7 +1685,7 @@ const void* world::get_shared_ro(chunk* c, index_t type) const noexcept
 
 void* world::get_owned_rw(chunk* c, index_t t) noexcept
 {
-	uint16_t id = c->type->index(t);
+	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex) return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
 	return c->data() + c->type->offsets(c->ct)[id];
@@ -1747,7 +1747,7 @@ const entity* world::get_entities(chunk* c) noexcept
 
 uint16_t world::get_size(chunk* c, index_t t) const noexcept
 {
-	uint16_t id = c->type->index(t);
+	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex) return 0;
 	return c->type->sizes()[id];
 }
@@ -1955,9 +1955,9 @@ void world::create_snapshot(serializer_i* s)
 		for (chunk* c = g->firstChunk; c; c= c->next)
 			chunk::serialize({ c, 0, c->count }, s);
 
-		s->stream(0, sizeof(uint16_t));
+		s->stream(0, sizeof(tsize_t));
 	}
-	s->stream(0, sizeof(uint16_t));
+	s->stream(0, sizeof(tsize_t));
 
 	if(needFree)
 		::free(bitset);
@@ -2168,7 +2168,7 @@ std::optional<chunk_slice> world::batch_iterator::next()
 	if (i >= count) return {};
 	const auto& datas = cont->ents.datas;
 	const auto& start = datas[ents[i++].id];
-	chunk_slice s{ start.c, (uint16_t)start.i, 1 };
+	chunk_slice s{ start.c, start.i, 1 };
 	while (i < count)
 	{
 		const auto& curr = datas[ents[i].id];
@@ -2247,7 +2247,7 @@ void world::entities::free_entities(chunk_slice s)
 		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
 }
 
-void world::entities::move_entities(chunk_slice dst, const chunk* src, uint16_t srcIndex)
+void world::entities::move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex)
 {
 	const entity* toMove = (entity*)src->data() + srcIndex;
 	forloop(i, 0, dst.count)
@@ -2259,7 +2259,7 @@ void world::entities::move_entities(chunk_slice dst, const chunk* src, uint16_t 
 	memcpy((entity*)dst.c->data() + dst.start, toMove, dst.count * sizeof(entity));
 }
 
-void world::entities::fill_entities(chunk_slice dst, uint16_t srcIndex)
+void world::entities::fill_entities(chunk_slice dst, uint32_t srcIndex)
 {
 	const entity* toMove = (entity*)dst.c->data() + srcIndex;
 	forloop(i, 0, dst.count)
@@ -2346,7 +2346,7 @@ std::optional<chunk*> world::chunk_iterator::next()
 	return {};
 }
 
-std::optional<uint16_t> world::entity_iterator::next()
+std::optional<uint32_t> world::entity_iterator::next()
 {
 	if (masks == nullptr || filter.none())
 	{
@@ -2358,7 +2358,7 @@ std::optional<uint16_t> world::entity_iterator::next()
 	{
 		if ((filter & masks[index]) == filter)
 		{
-			uint16_t i = index;
+			uint32_t i = index;
 			index++;
 			return i;
 		}

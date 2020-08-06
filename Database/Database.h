@@ -28,12 +28,12 @@ namespace core
 		inline std::array<void*, kFastBinCapacity> fastbin;
 		inline std::array<void*, kSmallBinCapacity> smallbin;
 		inline std::array<void*, kLargeBinCapacity> largebin;
-		inline uint16_t fastbinSize = 0;
-		inline uint16_t smallbinSize = 0;
-		inline uint16_t largebinSize = 0;
+		inline size_t fastbinSize = 0;
+		inline size_t smallbinSize = 0;
+		inline size_t largebinSize = 0;
 
 
-		enum class chunk_type : uint8_t
+		enum class chunk_alloc_type : uint8_t
 		{
 			fast,small,large
 		};
@@ -59,10 +59,10 @@ namespace core
 			chunk* firstChunk;
 			chunk* lastChunk;
 			chunk* firstFree;
-			uint16_t componentCount;
-			uint16_t firstTag;
-			uint16_t metaCount;
-			uint16_t firstBuffer;
+			tsize_t componentCount;
+			tsize_t firstTag;
+			tsize_t metaCount;
+			tsize_t firstBuffer;
 			uint16_t chunkCount;
 			uint32_t chunkCapacity[3];
 			uint32_t timestamp;
@@ -84,16 +84,16 @@ namespace core
 			inline data_t accessor() noexcept { return { componentCount, firstTag, firstTag, firstTag, firstTag, metaCount }; }
 			inline char* data() noexcept { return (char*)(this + 1); };
 			inline index_t* types() noexcept { return (index_t*)data(); }
-			inline uint32_t* offsets(chunk_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
+			inline uint32_t* offsets(chunk_alloc_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
 			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + accessor().get_offset(4)); }
 			inline entity* metatypes() noexcept { return (entity*)(data() + accessor().get_offset(5)); }
 			inline uint32_t* timestamps(chunk* c) noexcept;
-			inline uint16_t index(index_t type) noexcept;
+			inline tsize_t index(index_t type) noexcept;
 			inline mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type();
 
-			static size_t alloc_size(uint16_t componentCount, uint16_t firstTag, uint16_t firstMeta);
+			static size_t alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t firstMeta);
 		};
 
 		class world
@@ -108,7 +108,7 @@ namespace core
 						chunk* c;
 						uint32_t nextFree;
 					};
-					uint16_t i;
+					uint32_t i;
 					uint32_t v;
 				};
 				constexpr static size_t kDataPerChunk = kFastBinSize / sizeof(data);
@@ -133,8 +133,8 @@ namespace core
 				entity new_prefab();
 				entity new_entity();
 				void free_entities(chunk_slice slice);
-				void move_entities(chunk_slice dst, const chunk* src, uint16_t srcIndex);
-				void fill_entities(chunk_slice dst, uint16_t srcIndex);
+				void move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex);
+				void fill_entities(chunk_slice dst, uint32_t srcIndex);
 			};
 
 			using archetypes_t = std::unordered_map<entity_type, archetype*, entity_type::hash>;
@@ -197,11 +197,11 @@ namespace core
 			struct entity_iterator
 			{
 				mask filter;
-				uint16_t size;
+				uint32_t size;
 				const mask *const masks;
-				uint16_t index;
+				uint32_t index;
 
-				std::optional<uint16_t> next();
+				std::optional<uint32_t> next();
 			};
 
 			using queries_t = std::unordered_map<archetype_filter, query_cache, archetype_filter::hash>;
@@ -228,7 +228,7 @@ namespace core
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
 
-			chunk* malloc_chunk(chunk_type type);
+			chunk* malloc_chunk(chunk_alloc_type type);
 			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
@@ -253,7 +253,7 @@ namespace core
 			void destroy_single(chunk_slice);
 			void structural_change(archetype* g, chunk* c);
 			archetype_filter cache_query(const archetype_filter& type);
-			void estimate_shared_size(uint16_t& size, archetype* t) const;
+			void estimate_shared_size(tsize_t& size, archetype* t) const;
 			void get_shared_type(typeset& type, archetype* t, typeset& buffer) const;
 
 			friend chunk;
@@ -345,7 +345,7 @@ namespace core
 			chunk *next, *prev;
 			archetype* type;
 			uint32_t count;
-			chunk_type ct;
+			chunk_alloc_type ct;
 			/*
 			entity entities[chunkCapacity];
 			T1 component1[chunkCapacity];
@@ -358,9 +358,9 @@ namespace core
 
 			static void construct(chunk_slice) noexcept;
 			static void destruct(chunk_slice) noexcept;
-			static void move(chunk_slice dst, uint16_t srcIndex) noexcept;
-			static void cast(chunk_slice dst, chunk* src, uint16_t srcIndex) noexcept;
-			static void duplicate(chunk_slice dst, const chunk* src, uint16_t srcIndex) noexcept;
+			static void move(chunk_slice dst, tsize_t srcIndex) noexcept;
+			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept;
+			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
 			static void serialize(chunk_slice s, serializer_i *stream);
 			size_t get_size();
@@ -372,7 +372,7 @@ namespace core
 			friend archetype;
 			friend world::entities;
 		public:
-			uint16_t get_count() { return count; }
+			uint32_t get_count() { return count; }
 			const entity* get_entities() const { return (entity*)data(); }
 			uint32_t get_timestamp(index_t type) noexcept;
 		};
