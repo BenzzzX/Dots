@@ -21,7 +21,7 @@ namespace core
 			index_t id;
 
 			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 2;
-			static constexpr index_t mask = (index_t(2) << offset) - 1;
+			static constexpr index_t mask = (index_t(1) << offset) - 1;
 		public:
 			constexpr index_t index() const noexcept { return id & mask; }
 			constexpr bool is_buffer() const noexcept { return (id >> (offset)) & 1; }

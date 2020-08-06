@@ -88,7 +88,7 @@ index_t database::register_type(component_desc desc)
 			gd.entityRefs.push_back(desc.entityRefs[i]);
 	}
 	
-	size_t id = gd.infos.size();
+	index_t id = (index_t)gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
@@ -102,7 +102,7 @@ index_t database::register_type(component_desc desc)
 
 	if (desc.need_copy)
 	{
-		size_t id = gd.infos.size();
+		index_t id = (index_t)gd.infos.size();
 		id = tagged_index{ id, desc.isElement, desc.size == 0 };
 		type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
@@ -765,7 +765,7 @@ archetype* world::get_archetype(const entity_type& key)
 	stack_array(size_t, hash, firstTag);
 	stack_array(tsize_t, stableOrder, firstTag);
 	uint16_t entitySize = sizeof(entity);
-	forloop(i, 0, firstTag)
+	forloop(i, 0, count)
 	{
 		auto type = (tagged_index)key.types[i];
 		if (type == disableType)
@@ -774,17 +774,19 @@ archetype* world::get_archetype(const entity_type& key)
 			g->cleaning = true;
 		else if (type == maskType)
 			g->withMask = true;
+		if ((gd.tracks[type.index()] & NeedCC) != 0)
+			g->withTracked = true;
+		if ((gd.tracks[type.index()] & Copying) != 0)
+			g->copying = true;
+	}
+	forloop(i, 0, firstTag)
+	{
+		auto type = (tagged_index)key.types[i];
 		auto info = gd.infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.hash;
 		stableOrder[i] = i;
 		entitySize += info.size;
-
-		if ((gd.tracks[type.index()] & NeedCC) != 0)
-			g->withTracked = true;
-
-		if ((gd.tracks[type.index()] & Copying) != 0)
-			g->copying = true;
 	}
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
@@ -833,6 +835,7 @@ archetype* world::get_cleaning(archetype* g)
 		if((stage & NeedCleaning) != 0)
 			dstTypes[k++] = type;
 	}
+	std::sort(dstTypes, dstTypes + k);
 	if (k == 1)
 		return nullptr;
 
@@ -1087,7 +1090,7 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 		size_t hash;
 		s->stream(&hash, sizeof(size_t));
 		//TODO: check validation
-		types[i] = gd.hash2type[hash];
+		types[i] = (index_t)gd.hash2type[hash];
 	}
 	tsize_t mlength;
 	s->stream(&mlength, sizeof(tsize_t));
