@@ -73,7 +73,9 @@ struct global_data
 
 	void* stack_alloc(size_t size)
 	{
-		return stackbuffer + allocatedStack;
+		auto result = stackbuffer + allocatedStack;
+		allocatedStack += size;
+		return result;
 	}
 
 	void stack_free(size_t size)
@@ -136,7 +138,7 @@ struct global_data
 static global_data gd;
 
 #define stack_array(type, name, size) \
-stack_object __so_##name(size); \
+stack_object __so_##name((size)*sizeof(type)); \
 type* name = (type*)__so_##name.self;
 
 struct stack_object
@@ -715,7 +717,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 				return false;
 
 
-			tsize_t size;
+			tsize_t size = 0;
 			estimate_shared_size(size, g);
 			stack_array(index_t, _type, size);
 			stack_array(index_t, _buffer, size);
@@ -751,7 +753,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 
 void world::update_queries(archetype* g, bool add)
 {
-	tsize_t size;
+	tsize_t size = 0;
 	estimate_shared_size(size, g);
 	stack_array(index_t, _type, size);
 	stack_array(index_t, _buffer, size);
