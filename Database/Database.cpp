@@ -2,11 +2,6 @@
 
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 
-constexpr size_t StackArraySize = 100;
-
-#define stack_array(type, name, size) \
-type name[StackArraySize];
-
 
 using namespace core;
 using namespace database;
@@ -31,18 +26,22 @@ index_t core::database::cleanup_id = 1;
 index_t core::database::group_id = 2;
 index_t core::database::mask_id = 3;
 
-struct metainfo
-{
-	uint32_t refCount = 0;
-	uint32_t timestamp = 0;
-};
-
 struct global_data
 {
 	std::vector<type_data> infos;
 	std::vector<track_state> tracks;
 	std::vector<intptr_t> entityRefs;
 	std::unordered_map<size_t, size_t> hash2type;
+
+	std::array<void*, kFastBinCapacity> fastbin;
+	std::array<void*, kSmallBinCapacity> smallbin;
+	std::array<void*, kLargeBinCapacity> largebin;
+	size_t fastbinSize = 0;
+	size_t smallbinSize = 0;
+	size_t largebinSize = 0;
+
+	char stackbuffer[10000];
+	size_t allocatedStack = 0;
 	
 	global_data()
 	{
@@ -71,9 +70,89 @@ struct global_data
 		desc.entityRefCount = 0;
 		mask_id = register_type(desc);
 	}
+
+	void* stack_alloc(size_t size)
+	{
+		return stackbuffer + allocatedStack;
+	}
+
+	void stack_free(size_t size)
+	{
+		allocatedStack -= size;
+	}
+
+	void free(alloc_type type, void* data)
+	{
+		switch (type)
+		{
+		case alloc_type::fastbin:
+			if (fastbinSize < kLargeBinCapacity)
+				fastbin[fastbinSize++] = data;
+			else
+				::free(data);
+			break;
+		case alloc_type::smallbin:
+			if (smallbinSize < kSmallBinCapacity)
+				smallbin[smallbinSize++] = data;
+			else
+				::free(data);
+			break;
+		case alloc_type::largebin:
+			if (largebinSize < kLargeBinCapacity)
+				largebin[largebinSize++] = data;
+			else
+				::free(data);
+			break;
+		}
+	}
+
+	void* malloc(alloc_type type)
+	{
+		switch (type)
+		{
+		case alloc_type::fastbin:
+			if (fastbinSize == 0)
+				return ::malloc(kFastBinSize);
+			else
+				return fastbin[--fastbinSize];
+			break;
+		case alloc_type::smallbin:
+			if (smallbinSize == 0)
+				return ::malloc(kSmallBinSize);
+			else
+				return smallbin[--smallbinSize];
+			break;
+		case alloc_type::largebin:
+			if (largebinSize == 0)
+				return ::malloc(kLargeBinSize);
+			else
+				return largebin[--largebinSize];
+			break;
+		}
+		return nullptr;
+	}
 };
 
 static global_data gd;
+
+#define stack_array(type, name, size) \
+stack_object __so_##name(size); \
+type* name = (type*)__so_##name.self;
+
+struct stack_object
+{
+	size_t size;
+	void* self;
+	stack_object(size_t size)
+		: size(size), self(nullptr)
+	{
+		self = gd.stack_alloc(size);
+	}
+	~stack_object()
+	{
+		gd.stack_free(size);
+	}
+};
 
 component_vtable& set_vtable(index_t m)
 {
@@ -271,7 +350,8 @@ void depatch_entity(entity& e, const entity* src, const entity* target, uint32_t
 		}
 }
 
-void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
+//todo: will compiler inline patcher?
+void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 {
 	archetype* g = s.c->type;
 	uint32_t* offsets = g->offsets(s.c->ct);
@@ -354,7 +434,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 }
 
 //TODO: handle transient data?
-void chunk::serialize(chunk_slice s, serializer_i* stream)
+void chunk::serialize(chunk_slice s, i_serializer* stream)
 {
 	archetype* type = s.c->type;
 	uint32_t* offsets = type->offsets(s.c->ct);
@@ -383,14 +463,14 @@ size_t chunk::get_size()
 {
 	switch (ct)
 	{
-	case chunk_alloc_type::fast:
+	case alloc_type::fastbin:
 		return kFastBinSize;
-	case chunk_alloc_type::small:
+	case alloc_type::smallbin:
 		return kSmallBinSize;
-	case chunk_alloc_type::large:
+	case alloc_type::largebin:
 		return kLargeBinSize;
 	}
-	return kFastBinSize;
+	return 0;
 }
 
 void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept
@@ -799,7 +879,7 @@ archetype* world::get_archetype(const entity_type& key)
 		});
 	forloop(i, 0, 3)
 	{
-		uint32_t* offsets = g->offsets((chunk_alloc_type)i);
+		uint32_t* offsets = g->offsets((alloc_type)i);
 		g->chunkCapacity[i] = (uint32_t)(Caps[i] - sizeof(chunk) - sizeof(uint32_t) * firstTag) / entitySize;
 		if (g->chunkCapacity[i] == 0)
 			continue;
@@ -957,30 +1037,9 @@ archetype* world::get_shrinking(archetype* g, const entity_type& shr)
 	}
 }
 
-chunk* world::malloc_chunk(chunk_alloc_type type)
+chunk* world::malloc_chunk(alloc_type type)
 {
-	chunk* c = nullptr;
-	switch (type)
-	{
-	case chunk_alloc_type::fast:
-		if (fastbinSize == 0)
-			c = (chunk*)malloc(kFastBinSize);
-		else
-			c = (chunk*)fastbin[--fastbinSize];
-		break;
-	case chunk_alloc_type::small:
-		if (smallbinSize == 0)
-			c = (chunk*)malloc(kSmallBinSize);
-		else
-			c = (chunk*)smallbin[--smallbinSize];
-		break;
-	case chunk_alloc_type::large:
-		if (largebinSize == 0)
-			c = (chunk*)malloc(kLargeBinSize);
-		else
-			c = (chunk*)largebin[--largebinSize];
-		break;
-	}
+	chunk* c = (chunk*)gd.malloc(type);
 	c->ct = type;
 	return c;
 }
@@ -989,11 +1048,11 @@ chunk* world::new_chunk(archetype* g, uint32_t hint)
 {
 	chunk* c = nullptr;
 	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[1])
-		c = malloc_chunk(chunk_alloc_type::small);
+		c = malloc_chunk(alloc_type::smallbin);
 	else if (hint > g->chunkCapacity[0] * 8u)
-		c = malloc_chunk(chunk_alloc_type::large);
+		c = malloc_chunk(alloc_type::largebin);
 	else
-		c = malloc_chunk(chunk_alloc_type::fast);
+		c = malloc_chunk(alloc_type::fastbin);
 	c->count = 0;
 	c->prev = c->next = nullptr;
 	add_chunk(g, c);
@@ -1068,7 +1127,7 @@ void world::release_reference(archetype* g)
 	//TODO
 }
 
-void world::serialize_archetype(archetype* g, serializer_i* s)
+void world::serialize_archetype(archetype* g, i_serializer* s)
 {
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
@@ -1080,7 +1139,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	s->stream(metatypes, mlength * sizeof(entity));
 }
 
-archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
+archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
 {
 	tsize_t tlength;
 	s->stream(&tlength, sizeof(tsize_t));
@@ -1106,7 +1165,7 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* s)
+std::optional<chunk_slice> world::deserialize_slice(archetype* g, i_serializer* s)
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
@@ -1125,7 +1184,7 @@ std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* 
 	return slice;
 }
 
-struct linear_patcher : patcher_i
+struct linear_patcher final : i_patcher
 {
 	uint32_t start;
 	entity* target;
@@ -1136,7 +1195,7 @@ struct linear_patcher : patcher_i
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
 	//TODO: should we patch meta?
-	struct patcher : patcher_i
+	struct patcher final : i_patcher
 	{
 		entity* source;
 		uint32_t count;
@@ -1162,7 +1221,7 @@ void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 
 void world::prefab_to_group(entity* members, uint32_t size)
 {
-	struct patcher : patcher_i
+	struct patcher final : i_patcher
 	{
 		entity* source;
 		uint32_t count;
@@ -1198,7 +1257,7 @@ void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t
 	if (ret != nullptr)
 		memcpy(ret, allEnts.data(), sizeof(entity) * count);
 
-	struct patcher : patcher_i
+	struct patcher final : i_patcher
 	{
 		entity* base;
 		entity* curr;
@@ -1250,7 +1309,7 @@ void world::instantiate_single(entity src, entity* ret, uint32_t count, std::vec
 	}
 }
 
-void world::serialize_single(serializer_i* s, entity src)
+void world::serialize_single(i_serializer* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
 	serialize_archetype(data.c->type, s);
@@ -1275,7 +1334,7 @@ void world::structural_change(archetype* g, chunk* c)
 		timestamps[i] = timestamp;
 }
 
-entity world::deserialize_single(serializer_i* s, patcher_i* patcher)
+entity world::deserialize_single(i_serializer* s, i_patcher* patcher)
 {
 	auto *g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
@@ -1312,27 +1371,7 @@ void world::destroy_chunk(archetype* g, chunk* c)
 
 void world::recycle_chunk(chunk* c)
 {
-	switch (c->ct)
-	{
-	case chunk_alloc_type::fast:
-		if (fastbinSize < kLargeBinCapacity)
-			fastbin[fastbinSize++] = c;
-		else
-			::free(c);
-		break;
-	case chunk_alloc_type::small:
-		if (smallbinSize < kSmallBinCapacity)
-			smallbin[smallbinSize++] = c;
-		else
-			::free(c);
-		break;
-	case chunk_alloc_type::large:
-		if (largebinSize < kLargeBinCapacity)
-			largebin[largebinSize++] = c;
-		else
-			::free(c);
-		break;
-	}
+	gd.free(c->ct, c);
 }
 
 void world::resize_chunk(chunk* c, uint32_t count)
@@ -1768,7 +1807,7 @@ void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
 	auto group_data = (buffer*)get_component_ro(e, group_id);
 	if (group_data == nullptr)
 	{
-		struct gather : patcher_i
+		struct gather final : i_patcher
 		{
 			entity source;
 			std::pmr::vector<entity>* ents;
@@ -1786,14 +1825,14 @@ void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
 		auto mt = g->metatypes();
 		forloop(i, 0, g->metaCount)
 			p.patch(mt[i]);
-		chunk::patch({ data.c, data.i, 1 }, & p);
+		chunk::patch({ data.c, data.i, 1 }, &p);
 	}
 	else
 	{
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
 		memcpy(members, group_data->data(), group_data->size);
-		struct gather : patcher_i
+		struct gather final : i_patcher
 		{
 			entity* source;
 			uint32_t count;
@@ -1823,7 +1862,7 @@ void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
 	}
 }
 
-void world::serialize(serializer_i* s, entity src)
+void world::serialize(i_serializer* s, entity src)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -1843,7 +1882,7 @@ void world::serialize(serializer_i* s, entity src)
 	}
 }
 
-void world::deserialize(serializer_i* s, patcher_i* patcher, entity* ret, uint32_t times)
+void world::deserialize(i_serializer* s, i_patcher* patcher, entity* ret, uint32_t times)
 {
 	entity src = deserialize_single(s, patcher);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
@@ -1903,7 +1942,7 @@ void world::move_context(world& src)
 	::free(patch);
 }
 
-void world::patch_chunk(chunk* c, patcher_i* patcher)
+void world::patch_chunk(chunk* c, i_patcher* patcher)
 {
 	entity* es = (entity*)c->data();
 	forloop(i, 0, c->count)
@@ -1924,7 +1963,7 @@ struct Data
 */
 
 
-void world::create_snapshot(serializer_i* s)
+void world::create_snapshot(i_serializer* s)
 {
 	const uint32_t start = 0;
 	s->stream(&start, sizeof(uint32_t));
@@ -1951,7 +1990,7 @@ void world::create_snapshot(serializer_i* s)
 		}
 	s->stream(bitset, size);
 
-	//todo: pack chunk into large chunk
+	//todo: pack chunk into largebin chunk
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
@@ -1968,7 +2007,7 @@ void world::create_snapshot(serializer_i* s)
 		::free(bitset);
 }
 
-void world::load_snapshot(serializer_i* s)
+void world::load_snapshot(i_serializer* s)
 {
 	clear();
 	append_snapshot(s, nullptr);
@@ -1980,7 +2019,7 @@ entity linear_patcher::patch(entity e)
 	return e;
 }
 
-void world::append_snapshot(serializer_i* s, entity* ret)
+void world::append_snapshot(i_serializer* s, entity* ret)
 {
 	uint32_t start, count;
 	s->stream(&start, sizeof(uint32_t));
@@ -2187,8 +2226,9 @@ std::optional<chunk_slice> world::batch_iterator::next()
 world::entities::~entities()
 {
 	size = free = 0;
-	while (chunkCount!= 0)
-		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
+
+	while (chunkCount != 0)
+		gd.free(alloc_type::fastbin, datas.chunks[--chunkCount]);
 }
 
 void world::entities::new_entities(chunk_slice s)
@@ -2208,11 +2248,7 @@ entity world::entities::new_prefab()
 	uint32_t id;
 	if (size == chunkCount * kDataPerChunk)
 	{
-		data_chunk* newChunk;
-		if (fastbinSize > 0)
-			newChunk = (data_chunk*)fastbin[--fastbinSize];
-		else
-			newChunk = (data_chunk*)malloc(kFastBinSize);
+		data_chunk* newChunk = (data_chunk*)gd.malloc(alloc_type::fastbin);
 		memset(newChunk, 0, kFastBinSize);
 		datas.chunks[chunkCount++] = newChunk;
 	}
@@ -2249,7 +2285,7 @@ void world::entities::free_entities(chunk_slice s)
 	while (size > 0 && datas[--size].c == nullptr);
 	size += (datas[size].c != nullptr);
 	if (chunkCount > 1 && size < (chunkCount - 1) * kDataPerChunk - 1)
-		fastbin[fastbinSize++] = datas.chunks[--chunkCount];
+		gd.free(alloc_type::fastbin, datas.chunks[--chunkCount]);
 }
 
 void world::entities::move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex)
@@ -2371,4 +2407,41 @@ std::optional<uint32_t> world::entity_iterator::next()
 	} 
 	
 	return {};
+}
+
+
+
+bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
+{
+	//TODO: cache these things?
+	stack_array(index_t, _components, t.types.length + sharedT.length);
+	auto components = typeset::merge(t.types, sharedT, _components);
+
+	if (!components.all(all.types))
+		return false;
+	if (any.types.length > 0 && !components.any(any.types))
+		return false;
+
+	stack_array(index_t, _nonOwned, none.types.length);
+	stack_array(index_t, _nonShared, none.types.length);
+	auto nonOwned = typeset::substract(none.types, shared, _nonOwned);
+	auto nonShared = typeset::substract(none.types, owned, _nonShared);
+	if (t.types.any(nonOwned))
+		return false;
+	if (sharedT.any(nonShared))
+		return false;
+
+	if (!t.types.all(owned))
+		return false;
+	if (!sharedT.all(shared))
+		return false;
+
+	if (!t.metatypes.all(all.metatypes))
+		return false;
+	if (any.metatypes.length > 0 && !t.metatypes.any(any.metatypes))
+		return false;
+	if (t.metatypes.any(none.metatypes))
+		return false;
+
+	return true;
 }

@@ -7,7 +7,7 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
-#undef small
+
 namespace core
 {
 	namespace database
@@ -17,7 +17,7 @@ namespace core
 
 		//system overhead
 		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
-		static constexpr size_t kSmallBinThreshold = 3;
+		static constexpr size_t kSmallBinThreshold = 100;
 		static constexpr size_t kSmallBinSize = 1024 - 256;
 		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
 
@@ -25,17 +25,9 @@ namespace core
 		static constexpr size_t kSmallBinCapacity = 200;
 		static constexpr size_t kLargeBinCapacity = 80;
 
-		inline std::array<void*, kFastBinCapacity> fastbin;
-		inline std::array<void*, kSmallBinCapacity> smallbin;
-		inline std::array<void*, kLargeBinCapacity> largebin;
-		inline size_t fastbinSize = 0;
-		inline size_t smallbinSize = 0;
-		inline size_t largebinSize = 0;
-
-
-		enum class chunk_alloc_type : uint8_t
+		enum class alloc_type : uint8_t
 		{
-			fast,small,large
+			fastbin,smallbin,largebin
 		};
 
 		struct chunk_slice
@@ -84,7 +76,7 @@ namespace core
 			inline data_t accessor() noexcept { return { componentCount, firstTag, firstTag, firstTag, firstTag, metaCount }; }
 			inline char* data() noexcept { return (char*)(this + 1); };
 			inline index_t* types() noexcept { return (index_t*)data(); }
-			inline uint32_t* offsets(chunk_alloc_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
+			inline uint32_t* offsets(alloc_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
 			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + accessor().get_offset(4)); }
 			inline entity* metatypes() noexcept { return (entity*)(data() + accessor().get_offset(5)); }
 			inline uint32_t* timestamps(chunk* c) noexcept;
@@ -232,7 +224,7 @@ namespace core
 			void remove_chunk(archetype* g, chunk* c);
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
-			chunk* malloc_chunk(chunk_alloc_type type);
+			chunk* malloc_chunk(alloc_type type);
 			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
@@ -246,17 +238,17 @@ namespace core
 			void release_reference(archetype* g);
 
 			//serialize behavior
-			static void serialize_archetype(archetype* g, serializer_i* s);
-			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
-			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
+			static void serialize_archetype(archetype* g, i_serializer* s);
+			archetype* deserialize_archetype(i_serializer* s, i_patcher* patcher);
+			std::optional<chunk_slice> deserialize_slice(archetype* g, i_serializer* s);
 
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
 			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
-			void serialize_single(serializer_i* s, entity);
-			entity deserialize_single(serializer_i* s, patcher_i* patcher);
+			void serialize_single(i_serializer* s, entity);
+			entity deserialize_single(i_serializer* s, i_patcher* patcher);
 			void destroy_single(chunk_slice);
 
 			//ownership utils
@@ -326,17 +318,17 @@ namespace core
 
 			//entity/group serialize
 			void gather_reference(entity, std::pmr::vector<entity>& entities);
-			void serialize(serializer_i* s, entity);
-			void deserialize(serializer_i* s, patcher_i* patcher, entity*, uint32_t times = 1);
+			void serialize(i_serializer* s, entity);
+			void deserialize(i_serializer* s, i_patcher* patcher, entity*, uint32_t times = 1);
 
 			//multi world
 			void move_context(world& src);
-			void patch_chunk(chunk* c, patcher_i* patcher);
+			void patch_chunk(chunk* c, i_patcher* patcher);
 
 			//world serialize
-			void create_snapshot(serializer_i* s);
-			void load_snapshot(serializer_i* s);
-			void append_snapshot(serializer_i* s, entity* ret);
+			void create_snapshot(i_serializer* s);
+			void load_snapshot(i_serializer* s);
+			void append_snapshot(i_serializer* s, entity* ret);
 
 			//clear
 			void clear();
@@ -352,7 +344,7 @@ namespace core
 			chunk *next, *prev;
 			archetype* type;
 			uint32_t count;
-			chunk_alloc_type ct;
+			alloc_type ct;
 			/*
 			entity entities[chunkCapacity];
 			T1 component1[chunkCapacity];
@@ -368,8 +360,8 @@ namespace core
 			static void move(chunk_slice dst, tsize_t srcIndex) noexcept;
 			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
-			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
-			static void serialize(chunk_slice s, serializer_i *stream);
+			static void patch(chunk_slice s, i_patcher* patcher) noexcept;
+			static void serialize(chunk_slice s, i_serializer *stream);
 			size_t get_size();
 			void link(chunk*) noexcept;
 			void unlink() noexcept;

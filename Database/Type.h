@@ -8,9 +8,6 @@
 #include <bitset>
 #include "Set.h"
 
-#define stack_array(type, name, size) \
-type* name = (type*)alloca((size) * sizeof(type))
-
 namespace core
 {
 
@@ -51,13 +48,13 @@ namespace core
 
 		extern uint32_t metaTimestamp;
 
-		struct serializer_i
+		struct i_serializer
 		{
 			virtual void stream(const void* data, uint32_t bytes) = 0;
 			virtual bool is_serialize() = 0;
 		};
 
-		struct patcher_i
+		struct i_patcher
 		{
 			virtual entity patch(entity e) = 0;
 			virtual void move() {}
@@ -73,7 +70,7 @@ namespace core
 
 		struct component_vtable
 		{
-			void(*patch)(char* data, patcher_i* stream) = nullptr;
+			void(*patch)(char* data, i_patcher* stream) = nullptr;
 		};
 
 		enum track_state : uint8_t
@@ -230,40 +227,7 @@ namespace core
 					shared == other.shared && owned == other.owned;
 			}
 
-			bool match(const entity_type& t, const typeset& sharedT) const
-			{
-				//TODO: cache these things?
-				stack_array(index_t, _components, t.types.length + sharedT.length);
-				auto components = typeset::merge(t.types, sharedT, _components);
-
-				if (!components.all(all.types))
-					return false;
-				if (any.types.length > 0 && !components.any(any.types))
-					return false;
-
-				stack_array(index_t, _nonOwned, none.types.length);
-				stack_array(index_t, _nonShared, none.types.length);
-				auto nonOwned = typeset::substract(none.types, shared, _nonOwned);
-				auto nonShared = typeset::substract(none.types, owned, _nonShared);
-				if (t.types.any(nonOwned))
-					return false;
-				if (sharedT.any(nonShared))
-					return false;
-
-				if (!t.types.all(owned))
-					return false;
-				if (!sharedT.all(shared))
-					return false;
-
-				if (!t.metatypes.all(all.metatypes))
-					return false;
-				if (any.metatypes.length > 0 && !t.metatypes.any(any.metatypes))
-					return false;
-				if (t.metatypes.any(none.metatypes))
-					return false;
-
-				return true;
-			}
+			bool match(const entity_type& t, const typeset& sharedT) const;
 		};
 
 		struct chunk_filter
