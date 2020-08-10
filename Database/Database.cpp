@@ -2,8 +2,10 @@
 
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 
+constexpr size_t StackArraySize = 100;
+
 #define stack_array(type, name, size) \
-type* name = (type*)alloca((size) * sizeof(type))
+type name[StackArraySize];
 
 
 using namespace core;

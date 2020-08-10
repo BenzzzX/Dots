@@ -98,7 +98,7 @@ namespace core
 
 		class world
 		{
-
+			//entity allocator
 			struct entities
 			{
 				struct data
@@ -137,8 +137,7 @@ namespace core
 				void fill_entities(chunk_slice dst, uint32_t srcIndex);
 			};
 
-			using archetypes_t = std::unordered_map<entity_type, archetype*, entity_type::hash>;
-
+			//iterators
 			struct batch_iterator
 			{
 				entity* ents;
@@ -205,45 +204,53 @@ namespace core
 			};
 
 			using queries_t = std::unordered_map<archetype_filter, query_cache, archetype_filter::hash>;
+			using archetypes_t = std::unordered_map<entity_type, archetype*, entity_type::hash>;
 
-			query_cache& get_query_cache(const archetype_filter& f);
-			void update_queries(archetype* g, bool add);
-
-			
 			archetypes_t archetypes;
 			queries_t queries;
 			entities ents;
+			uint32_t* typeTimestamps;
+			index_t typeCapacity;
 
-			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
+			//query behavior
+			query_cache& get_query_cache(const archetype_filter& f);
+			void update_queries(archetype* g, bool add);
+			archetype_filter cache_query(const archetype_filter& type);
 
+			//archetype behavior, lifetime
 			archetype* get_archetype(const entity_type&);
 			archetype* get_cleaning(archetype*);
 			bool is_cleaned(const entity_type&);
 			archetype* get_instatiation(archetype*);
 			archetype* get_extending(archetype*, const entity_type&);
 			archetype* get_shrinking(archetype*, const entity_type&);
+			void structural_change(archetype* g, chunk* c);
 
+			//archetype-chunk behavior
+			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
 			void add_chunk(archetype* g, chunk* c);
 			void remove_chunk(archetype* g, chunk* c);
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
-
 			chunk* malloc_chunk(chunk_alloc_type type);
 			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
 			void resize_chunk(chunk*, uint32_t);
 
+			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
 			void cast_slice(chunk_slice, archetype*);
 
 			void release_reference(archetype* g);
 
+			//serialize behavior
 			static void serialize_archetype(archetype* g, serializer_i* s);
 			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
 
+			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
@@ -251,8 +258,8 @@ namespace core
 			void serialize_single(serializer_i* s, entity);
 			entity deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
-			void structural_change(archetype* g, chunk* c);
-			archetype_filter cache_query(const archetype_filter& type);
+
+			//ownership utils
 			void estimate_shared_size(tsize_t& size, archetype* t) const;
 			void get_shared_type(typeset& type, archetype* t, typeset& buffer) const;
 
@@ -286,11 +293,12 @@ namespace core
 			void disable_component(entity, const typeset& type) const noexcept;
 
 			//query
+			//iterators
 			batch_iterator batch(entity* ents, uint32_t count);
 			archetype_iterator query(const archetype_filter& filter);
 			chunk_iterator query(archetype*, const chunk_filter& filter);
 			entity_iterator query(chunk*, const mask& filter = mask{ (uint32_t)-1 });
-
+			//per entity
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
@@ -300,24 +308,23 @@ namespace core
 			bool own_component(entity, const typeset& type) const noexcept;
 			bool is_component_enabled(entity, const typeset& type) const noexcept;
 			bool exist(entity) const noexcept;
+			archetype* get_archetype(entity) const noexcept;
+			entity_type get_type(entity) const noexcept; //note: only owne
+			//per chunk or archetype
 			const void* get_component_ro(chunk* c, index_t type) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
-
 			const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw_local(chunk* c, index_t type) noexcept;
 			const void* get_shared_ro(archetype *g, index_t type) const;
 			bool share_component(archetype* g, const typeset& type) const;
 			bool own_component(archetype* g, const typeset& type) const;
 			bool has_component(archetype* g, const typeset& type) const;
-			archetype* get_archetype(entity) const noexcept;
 			const entity* get_entities(chunk* c) noexcept;
 			uint16_t get_size(chunk* c, index_t type) const noexcept;
-			//note: only owned
-			entity_type get_type(entity) const noexcept;
 
-			//as prefab
+			//entity/group serialize
 			void gather_reference(entity, std::pmr::vector<entity>& entities);
 			void serialize(serializer_i* s, entity);
 			void deserialize(serializer_i* s, patcher_i* patcher, entity*, uint32_t times = 1);
@@ -326,6 +333,7 @@ namespace core
 			void move_context(world& src);
 			void patch_chunk(chunk* c, patcher_i* patcher);
 
+			//world serialize
 			void create_snapshot(serializer_i* s);
 			void load_snapshot(serializer_i* s);
 			void append_snapshot(serializer_i* s, entity* ret);
@@ -334,8 +342,7 @@ namespace core
 			void clear();
 			void gc_meta();
 
-			uint32_t *typeTimestamps;
-			index_t typeCapacity;
+			//timestamp
 			uint32_t timestamp;
 		};
 
