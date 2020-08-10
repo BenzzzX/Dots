@@ -17,7 +17,7 @@ namespace core
 
 		//system overhead
 		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
-		static constexpr size_t kSmallBinThreshold = 100;
+		static constexpr size_t kSmallBinThreshold = 8;
 		static constexpr size_t kSmallBinSize = 1024 - 256;
 		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
 
@@ -229,6 +229,7 @@ namespace core
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
 			void resize_chunk(chunk*, uint32_t);
+			void merge_chunks(archetype*);
 
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);

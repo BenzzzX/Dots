@@ -156,6 +156,50 @@ struct stack_object
 	}
 };
 
+struct adaptive_object
+{
+	enum
+	{
+		Pool,
+		Heap,
+		Stack,
+	} type;
+
+	size_t size;
+	void* self;
+	adaptive_object(size_t size)
+		:size(size), self(nullptr)
+	{
+		if (gd.allocatedStack - size > 1024)
+		{
+			self = gd.stack_alloc(size);
+			type = Stack;
+		}
+		else if (size < kFastBinCapacity)
+		{
+			self = gd.malloc(alloc_type::fastbin);
+			type = Pool;
+		}
+		else
+		{
+			self = ::malloc(size);
+			type = Heap;
+		}
+	}
+	~adaptive_object()
+	{
+		switch (type)
+		{
+		case Pool:
+			gd.free(alloc_type::fastbin, self);
+		case Heap:
+			::free(self);
+		case Stack:
+			gd.stack_free(size);
+		}
+	}
+};
+
 component_vtable& set_vtable(index_t m)
 {
 	return gd.infos[m].vtable;
@@ -435,7 +479,7 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 	}
 }
 
-//TODO: handle transient data?
+//todo: handle transient data?
 void chunk::serialize(chunk_slice s, i_serializer* stream)
 {
 	archetype* type = s.c->type;
@@ -1247,24 +1291,28 @@ void world::prefab_to_group(entity* members, uint32_t size)
 
 void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count)
 {
-	std::vector<entity> allEnts{ size * count };
 	std::vector<chunk_slice> allSlices;
 	allSlices.reserve(count);
+
+	std::optional<adaptive_object> object;
+	if (ret == nullptr)
+	{
+		object.emplace(sizeof(entity) * size * count);
+		ret = (entity*)object->self;
+	}
 
 	forloop(i, 0, size)
 	{
 		auto e = src[i];
-		instantiate_single(e, &allEnts[i], count, &allSlices, size);
+		instantiate_single(e, &ret[i * count], count, &allSlices, size);
 	}
-	if (ret != nullptr)
-		memcpy(ret, allEnts.data(), sizeof(entity) * count);
 
 	struct patcher final : i_patcher
 	{
 		entity* base;
 		entity* curr;
 		uint32_t count;
-		void move() override { curr += 1; }
+		void move() override { curr += count; }
 		void reset() override { base = curr; }
 		entity patch(entity e) override
 		{
@@ -1279,7 +1327,7 @@ void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t
 	//todo: multithread?
 	for (auto& s : allSlices)
 	{
-		p.curr = p.base = &allEnts[(k % count) * size];
+		p.curr = p.base = &ret[(k % count) * size + (k / count)];
 		chunk::patch(s, &p);
 		k += s.count;
 	}
@@ -1389,6 +1437,11 @@ void world::resize_chunk(chunk* c, uint32_t count)
 			mark_free(g, c);
 		c->count = count;
 	}
+}
+
+void world::merge_chunks(archetype* g)
+{
+	//todo
 }
 
 chunk_slice world::allocate_slice(archetype* g, uint32_t count)
@@ -1964,7 +2017,6 @@ struct Data
 };
 */
 
-
 void world::create_snapshot(i_serializer* s)
 {
 	const uint32_t start = 0;
@@ -1973,22 +2025,16 @@ void world::create_snapshot(i_serializer* s)
 	
 	//hack: save entity validation instead of patch all data
 	//trade space for time
-	auto size = ents.size / 4 + 1;
-	bool needFree = false;
-	char* bitset;
-	if (size < 1024 * 4)
-		bitset = (char*)alloca(size);
-	else
-	{
-		needFree = true;
-		bitset = (char*)malloc(size);
-	}
+	auto size = ents.size / 8;
+	adaptive_object _ao_bitset(size);
+
+	char* bitset = (char*)_ao_bitset.self;
 	memset(bitset, 0, size);
 
 	forloop(i, 0, ents.size)
 		if (ents.datas[i].c != nullptr)
 		{
-			bitset[i/4] |= (1<<i%4);
+			bitset[i / 8] |= (1 << (i % 8));
 		}
 	s->stream(bitset, size);
 
@@ -2004,9 +2050,6 @@ void world::create_snapshot(i_serializer* s)
 		s->stream(0, sizeof(tsize_t));
 	}
 	s->stream(0, sizeof(tsize_t));
-
-	if(needFree)
-		::free(bitset);
 }
 
 void world::load_snapshot(i_serializer* s)
@@ -2026,32 +2069,17 @@ void world::append_snapshot(i_serializer* s, entity* ret)
 	uint32_t start, count;
 	s->stream(&start, sizeof(uint32_t));
 	s->stream(&count, sizeof(uint32_t));
-	auto size = count / 4 + 1;
+	auto size = count / 8;
+	adaptive_object _ao_bitset(size);
+	adaptive_object _ao_patch(count * sizeof(entity));
 
-	bool needFree = false, needFreeB = false;
-	entity* patch;
-	if (ret != nullptr)
-		patch = ret;
-	else if (count * sizeof(entity) <= 1024 * 4)
-		patch = (entity*)alloca(count * sizeof(entity));
-	else
-	{
-		needFree = true;
-		patch = (entity*)malloc(count * sizeof(entity));
-	}
+	entity* patch = (entity*)_ao_patch.self;
+	char* bitset = (char*)_ao_bitset.self;
 
-	char* bitset;
-	if (size < 1024 * 4)
-		bitset = (char*)alloca(size);
-	else
-	{
-		needFreeB = true;
-		bitset = (char*)malloc(size);
-	}
 	s->stream(bitset, size);
 
 	forloop(i, 0, count)
-		if ((bitset[i / 4] & (1 << (i % 4))) != 0)
+		if ((bitset[i / 8] & (1 << (i % 8))) != 0)
 			patch[i] = ents.new_entity();
 		else
 			patch[i] = entity::Invalid;
@@ -2064,11 +2092,6 @@ void world::append_snapshot(i_serializer* s, entity* ret)
 	for(archetype* g = deserialize_archetype(s, &patcher); g!=nullptr; g = deserialize_archetype(s, &patcher))
 		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
 			chunk::patch(*slice, &patcher);
-
-	if (needFree)
-		::free(patch);
-	if (needFreeB)
-		::free(bitset);
 }
 
 void world::clear()
