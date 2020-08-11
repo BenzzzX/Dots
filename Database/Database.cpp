@@ -920,6 +920,7 @@ archetype* world::get_archetype(const entity_type& key)
 	}
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
+	g->entitySize = entitySize;
 	size_t Caps[] = {kFastBinSize, kSmallBinSize, kLargeBinSize};
 	std::sort(stableOrder, stableOrder + firstTag, [&](tsize_t lhs, tsize_t rhs)
 		{
@@ -1443,7 +1444,13 @@ void world::resize_chunk(chunk* c, uint32_t count)
 
 void world::merge_chunks(archetype* g)
 {
-	//todo
+	auto totalSize = g->size * g->entitySize;
+	auto unsorted = g->firstChunk->next;
+	
+	auto iter = g->firstChunk;
+	auto toSort = unsorted;
+	
+
 }
 
 chunk_slice world::allocate_slice(archetype* g, uint32_t count)

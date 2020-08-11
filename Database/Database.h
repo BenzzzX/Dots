@@ -59,6 +59,7 @@ namespace core
 			uint32_t chunkCapacity[3];
 			uint32_t timestamp;
 			uint32_t size;
+			uint32_t entitySize;
 			bool disabled;
 			bool cleaning;
 			bool copying;
