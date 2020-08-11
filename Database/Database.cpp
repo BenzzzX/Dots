@@ -33,14 +33,14 @@ struct global_data
 	std::vector<intptr_t> entityRefs;
 	std::unordered_map<size_t, size_t> hash2type;
 
-	std::array<void*, kFastBinCapacity> fastbin;
-	std::array<void*, kSmallBinCapacity> smallbin;
-	std::array<void*, kLargeBinCapacity> largebin;
+	std::array<void*, kFastBinCapacity> fastbin{};
+	std::array<void*, kSmallBinCapacity> smallbin{};
+	std::array<void*, kLargeBinCapacity> largebin{};
 	size_t fastbinSize = 0;
 	size_t smallbinSize = 0;
 	size_t largebinSize = 0;
 
-	char stackbuffer[10000];
+	char* stackbuffer = nullptr;
 	size_t allocatedStack = 0;
 	
 	global_data()
@@ -69,6 +69,8 @@ struct global_data
 		desc.name = "mask";
 		desc.entityRefCount = 0;
 		mask_id = register_type(desc);
+
+		stackbuffer = (char*)::malloc(10000);
 	}
 
 	void* stack_alloc(size_t size)
