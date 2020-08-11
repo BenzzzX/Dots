@@ -27,7 +27,7 @@ namespace core
 
 		enum class alloc_type : uint8_t
 		{
-			fastbin,smallbin,largebin
+			smallbin, fastbin, largebin
 		};
 
 		struct chunk_slice
@@ -360,6 +360,7 @@ namespace core
 			static void construct(chunk_slice) noexcept;
 			static void destruct(chunk_slice) noexcept;
 			static void move(chunk_slice dst, tsize_t srcIndex) noexcept;
+			static void move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept;
 			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
 			static void patch(chunk_slice s, i_patcher* patcher) noexcept;

@@ -286,6 +286,19 @@ void chunk::move(chunk_slice dst, tsize_t srcIndex) noexcept
 		);
 }
 
+void chunk::move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept
+{
+	//assert(dst.c->type == src->type)
+	uint32_t* offsets = dst.c->type->offsets(dst.c->ct);
+	uint16_t* sizes = dst.c->type->sizes();
+	forloop(i, 0, dst.c->type->firstTag)
+		memcpy(
+			dst.c->data() + offsets[i] + sizes[i] * dst.start,
+			src->data() + offsets[i] + sizes[i] * srcIndex,
+			dst.count * sizes[i]
+		);
+}
+
 #define srcData (s.c->data() + offsets[i] + sizes[i] * s.start)
 void chunk::construct(chunk_slice s) noexcept
 {
@@ -921,7 +934,7 @@ archetype* world::get_archetype(const entity_type& key)
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
 	g->entitySize = entitySize;
-	size_t Caps[] = {kFastBinSize, kSmallBinSize, kLargeBinSize};
+	size_t Caps[] = {kSmallBinSize, kFastBinSize, kLargeBinSize};
 	std::sort(stableOrder, stableOrder + firstTag, [&](tsize_t lhs, tsize_t rhs)
 		{
 			return hash[lhs] < hash[rhs];
@@ -1090,20 +1103,20 @@ chunk* world::malloc_chunk(alloc_type type)
 {
 	chunk* c = (chunk*)gd.malloc(type);
 	c->ct = type;
+	c->count = 0;
+	c->prev = c->next = nullptr;
 	return c;
 }
 
 chunk* world::new_chunk(archetype* g, uint32_t hint)
 {
 	chunk* c = nullptr;
-	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[1])
+	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[(int)alloc_type::smallbin])
 		c = malloc_chunk(alloc_type::smallbin);
-	else if (hint > g->chunkCapacity[0] * 8u)
+	else if (hint > g->chunkCapacity[(int)alloc_type::fastbin] * 8u)
 		c = malloc_chunk(alloc_type::largebin);
 	else
 		c = malloc_chunk(alloc_type::fastbin);
-	c->count = 0;
-	c->prev = c->next = nullptr;
 	add_chunk(g, c);
 
 	return c;
@@ -1444,13 +1457,82 @@ void world::resize_chunk(chunk* c, uint32_t count)
 
 void world::merge_chunks(archetype* g)
 {
-	auto totalSize = g->size * g->entitySize;
-	auto unsorted = g->firstChunk->next;
-	
-	auto iter = g->firstChunk;
-	auto toSort = unsorted;
-	
+	//zero or one chunk
+	if (g->firstChunk == nullptr || g->firstChunk->next == nullptr)
+		return;
 
+	//sort by capacity and fill rate
+	auto unsorted = g->firstChunk->next;
+	chunk* toSort = unsorted;
+	while (unsorted != nullptr)
+	{
+		toSort = unsorted;
+		unsorted = unsorted->next;
+		auto iter = g->firstChunk;
+		while (iter != unsorted)
+		{
+			if ((int)iter->ct < (int)toSort->ct || iter->count < toSort->count)
+			{
+				toSort->unlink();
+				toSort->prev = iter->prev;
+				toSort->next = iter;
+				if (iter->prev != nullptr)
+				{
+					iter->prev->next = toSort;
+					iter->prev = toSort;
+				}
+				else
+				{
+					iter->prev = toSort;
+					g->firstChunk = toSort;
+				}
+				break;
+			}
+			iter = iter->next;
+		}
+	}
+	if(toSort != nullptr)
+		g->lastChunk = toSort;
+
+	//merge into large chunk if can
+	auto mergeableSize = g->size;
+	auto iter = g->firstChunk;
+	auto largeSize = g->chunkCapacity[(int)alloc_type::largebin];
+	while (iter->ct == alloc_type::largebin)
+	{
+		mergeableSize = mergeableSize > largeSize ?
+			mergeableSize - largeSize : 0u;
+	}
+	while (mergeableSize > largeSize)
+	{
+		auto c = malloc_chunk(alloc_type::largebin);
+		g->firstChunk = c;
+		mergeableSize -= largeSize;
+	}
+
+	//merge smallest chunk into largest chunk
+	auto dst = g->firstChunk;
+	while (dst != g->lastChunk)
+	{
+		auto src = g->lastChunk;
+		auto fullSize = g->chunkCapacity[(int)dst->ct];
+		auto freeSize = fullSize - dst->count;
+		auto moveSize = std::min(freeSize, src->count);
+		dst->move({ dst, dst->count, moveSize }, src, src->count - moveSize);
+		ents.move_entities({ dst, dst->count, moveSize }, src, src->count - moveSize);
+		dst->count += moveSize;
+		src->count -= moveSize;
+		if (dst->count == fullSize)
+			dst = dst->next;
+		if (src->count == 0)
+			destroy_chunk(g, src);
+	}
+
+	//maintain firstFree
+	if (dst->count != g->chunkCapacity[(int)dst->ct])
+		g->firstFree = dst;
+	else
+		g->firstFree = nullptr;
 }
 
 chunk_slice world::allocate_slice(archetype* g, uint32_t count)
@@ -2047,10 +2129,10 @@ void world::create_snapshot(i_serializer* s)
 		}
 	s->stream(bitset, size);
 
-	//todo: pack chunk into largebin chunk
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
+		merge_chunks(g); //todo: user option?
 		serialize_archetype(g, s);
 
 		for (chunk* c = g->firstChunk; c; c= c->next)
@@ -2447,7 +2529,7 @@ std::optional<uint32_t> world::entity_iterator::next()
 
 bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 {
-	//TODO: cache these things?
+	//todo: cache these things?
 	stack_array(index_t, _components, t.types.length + sharedT.length);
 	auto components = typeset::merge(t.types, sharedT, _components);
 
