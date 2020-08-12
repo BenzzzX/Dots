@@ -266,6 +266,27 @@ void chunk::unlink() noexcept
 	prev = next = nullptr;
 }
 
+void chunk::clone(chunk* dst) noexcept
+{
+	memcpy(dst, this, get_size());
+	uint32_t* offsets = type->offsets(ct);
+	uint16_t* sizes = type->sizes();
+	forloop(i, type->firstBuffer, type->firstTag)
+	{
+		char* src = data() + offsets[i] + sizes[i];
+		forloop(j, 0, count)
+		{
+			buffer* b = (buffer*)(j * sizes[i] + src);
+			if (b->d != nullptr)
+			{
+				char* clonedData = (char*)buffer_malloc(b->size);
+				memcpy(clonedData, b->d, b->size);
+				b->d = clonedData;
+			}
+		}
+	}
+}
+
 uint32_t chunk::get_timestamp(index_t t) noexcept
 {
 	tsize_t id = type->index(t);
@@ -953,11 +974,14 @@ archetype* world::get_archetype(const entity_type& key)
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
 	}
-	
+	add_archetype(g);
+	return g;
+}
 
+void world::add_archetype(archetype* g)
+{
 	archetypes.insert({ g->get_type(), g });
 	update_queries(g, true);
-	return g;
 }
 
 archetype* world::get_cleaning(archetype* g)
@@ -1398,6 +1422,22 @@ void world::structural_change(archetype* g, chunk* c)
 	auto timestamps = g->timestamps(c);
 	forloop(i, 0, t.types.length)
 		timestamps[i] = timestamp;
+}
+
+archetype* world::clone(archetype* g)
+{
+	auto size = archetype::alloc_size(g->componentCount, g->firstTag, g->metaCount);
+	archetype* newG = (archetype*)::malloc(size);
+	memcpy(newG, g, size);
+	newG->firstChunk = newG->firstFree = newG->lastChunk = nullptr;
+	for (auto c = g->firstChunk; c != nullptr; c = c->next)
+	{
+		auto newC = malloc_chunk(c->ct);
+		c->clone(newC);
+		add_chunk(newG, c);
+	}
+
+	return newG;
 }
 
 entity world::deserialize_single(i_serializer* s, i_patcher* patcher)
@@ -2058,7 +2098,7 @@ void world::move_context(world& src)
 {
 	auto& sents = src.ents;
 	uint32_t count = sents.size;
-	entity* patch = new entity[count];
+	entity* patch = (entity*)::malloc(sizeof(entity) * count);
 	forloop(i, 0, count)
 		if (sents.datas[i].c != nullptr)
 			patch[i] = ents.new_entity();
@@ -2094,6 +2134,18 @@ void world::patch_chunk(chunk* c, i_patcher* patcher)
 	forloop(i, 0, c->count)
 		es[i] = patcher->patch(es[i]);
 	chunk::patch(c, patcher);
+}
+
+world world::clone()
+{
+	world ext{ typeCapacity };
+	ents.clone(&ext.ents);
+	for (auto& iter : archetypes)
+	{
+		auto g = iter.second;
+		ext.add_archetype(clone(g));
+	}
+	return std::move(ext);
 }
 
 /*
@@ -2422,6 +2474,17 @@ void world::entities::fill_entities(chunk_slice dst, uint32_t srcIndex)
 	forloop(i, 0, dst.count)
 		datas[toMove[i].id].i = dst.start + i;
 	memcpy((entity*)dst.c->data() + dst.start, toMove, dst.count * sizeof(entity));
+}
+
+void world::entities::clone(entities* dst)
+{
+	memcpy(dst, this, sizeof(entities));
+	forloop(i, 0, chunkCount)
+	{
+		data_chunk* newChunk = (data_chunk*)gd.malloc(alloc_type::fastbin);
+		memcpy(newChunk, datas.chunks[i], kFastBinSize);
+		dst->datas.chunks[i] = newChunk;
+	}
 }
 
 std::optional<chunk_slice> world::alloc_iterator::next()

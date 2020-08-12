@@ -103,6 +103,16 @@ namespace core
 		extern index_t group_id;
 		extern index_t mask_id;
 
+		void* buffer_malloc(size_t size)
+		{
+			return ::malloc(size);
+		}
+
+		void buffer_free(void* ptr)
+		{
+			return ::free(ptr);
+		}
+
 		struct buffer
 		{
 			char* d;
@@ -144,10 +154,10 @@ namespace core
 			void grow()
 			{
 				uint16_t newCap = capacity * 2;
-				char* newBuffer = new char[newCap];
+				char* newBuffer = (char*)buffer_malloc(newCap);
 				memcpy(newBuffer, data(), size);
 				if (d != nullptr)
-					free(d);
+					buffer_free(d);
 				d = newBuffer;
 				capacity = newCap;
 			}
@@ -155,7 +165,7 @@ namespace core
 			~buffer()
 			{
 				if (d != nullptr)
-					free(d);
+					buffer_free(d);
 			}
 		};
 

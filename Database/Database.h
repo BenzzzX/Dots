@@ -128,6 +128,7 @@ namespace core
 				void free_entities(chunk_slice slice);
 				void move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex);
 				void fill_entities(chunk_slice dst, uint32_t srcIndex);
+				void clone(entities*);
 			};
 
 			//iterators
@@ -212,12 +213,14 @@ namespace core
 
 			//archetype behavior, lifetime
 			archetype* get_archetype(const entity_type&);
+			void add_archetype(archetype*);
 			archetype* get_cleaning(archetype*);
 			bool is_cleaned(const entity_type&);
 			archetype* get_instatiation(archetype*);
 			archetype* get_extending(archetype*, const entity_type&);
 			archetype* get_shrinking(archetype*, const entity_type&);
 			void structural_change(archetype* g, chunk* c);
+			archetype* clone(archetype*);
 
 			//archetype-chunk behavior
 			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
@@ -237,8 +240,6 @@ namespace core
 			void free_slice(chunk_slice);
 			void cast_slice(chunk_slice, archetype*);
 
-			void release_reference(archetype* g);
-
 			//serialize behavior
 			static void serialize_archetype(archetype* g, i_serializer* s);
 			archetype* deserialize_archetype(i_serializer* s, i_patcher* patcher);
@@ -256,6 +257,7 @@ namespace core
 			//ownership utils
 			void estimate_shared_size(tsize_t& size, archetype* t) const;
 			void get_shared_type(typeset& type, archetype* t, typeset& buffer) const;
+			void release_reference(archetype* g);
 
 			friend chunk;
 			friend batch_iterator;
@@ -326,6 +328,7 @@ namespace core
 			//multi world
 			void move_context(world& src);
 			void patch_chunk(chunk* c, i_patcher* patcher);
+			world clone(/*todo: archetype_filter*/);
 
 			//world serialize
 			void create_snapshot(i_serializer* s);
@@ -368,6 +371,7 @@ namespace core
 			size_t get_size();
 			void link(chunk*) noexcept;
 			void unlink() noexcept;
+			void clone(chunk*) noexcept;
 			char* data() { return (char*)(this + 1); }
 			const char* data() const { return (char*)(this + 1); }
 			friend world; 
