@@ -89,6 +89,12 @@ namespace core
 			static size_t alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t firstMeta);
 		};
 
+		struct type_diff
+		{
+			entity_type extend = EmptyType;
+			entity_type shrink = EmptyType;
+		};
+
 		class world
 		{
 			//entity allocator
@@ -214,9 +220,7 @@ namespace core
 			archetype* get_archetype(const entity_type&);
 			archetype* get_cleaning(archetype*);
 			bool is_cleaned(const entity_type&);
-			archetype* get_instatiation(archetype*);
-			archetype* get_extending(archetype*, const entity_type&);
-			archetype* get_shrinking(archetype*, const entity_type&);
+			archetype* get_casted(archetype*, type_diff diff, bool inst = false);
 			void structural_change(archetype* g, chunk* c);
 
 			//archetype-chunk behavior
@@ -240,7 +244,7 @@ namespace core
 			void release_reference(archetype* g);
 
 			//serialize behavior
-			static void serialize_archetype(archetype* g, i_serializer* s);
+			static void serialize_archetype(archetype* g, i_serializer* s, bool withMeta = true);
 			archetype* deserialize_archetype(i_serializer* s, i_patcher* patcher);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, i_serializer* s);
 
@@ -265,20 +269,18 @@ namespace core
 			//create
 			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
 			void instantiate(entity src, entity* ret, uint32_t count = 1);
+			void instantiate_cast(entity src, type_diff, entity* ret, uint32_t count = 1);
 
 			//batched stuctural change
 			void destroy(chunk_slice);
-			void extend(chunk_slice, const entity_type& type);
-			void shrink(chunk_slice, const entity_type& type);
+			void cast(chunk_slice, type_diff);
+			void cast(archetype*, type_diff);
 			void cast(chunk_slice, const entity_type& type);
 			void cast(chunk_slice, archetype* g);
-			void extend(archetype*, const entity_type& type);
-			void shrink(archetype*, const entity_type& type);
 
 			//stuctural change
 			void destroy(entity* es, int32_t count);
-			void extend(entity* es, int32_t count, const entity_type& type);
-			void shrink(entity* es, int32_t count, const entity_type& type);
+			void cast(entity* es, int32_t count, type_diff);
 			void cast(entity* es, int32_t count, const entity_type& type);
 
 			//update
@@ -361,7 +363,7 @@ namespace core
 			static void destruct(chunk_slice) noexcept;
 			static void move(chunk_slice dst, tsize_t srcIndex) noexcept;
 			static void move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept;
-			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept;
+			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct = true) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
 			static void patch(chunk_slice s, i_patcher* patcher) noexcept;
 			static void serialize(chunk_slice s, i_serializer *stream);

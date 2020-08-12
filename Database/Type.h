@@ -194,6 +194,8 @@ namespace core
 			}
 		};
 
+		static const entity_type EmptyType;
+
 		struct archetype_filter
 		{
 			entity_type all;
