@@ -114,7 +114,7 @@ void TransformSystem::UpdateHierachy(world& ctx)
 						auto cs = (buffer*)(childs + child_size * k);
 						auto ents = (entity*)cs->data();
 						auto count = cs->size / (uint16_t)sizeof(entity);
-						ctx.shrink(ents, count, { .types = {_treeT, 2} });
+						ctx.cast(ents, count, { .shrink = {.types = {_treeT, 2} } });
 					}
 				}
 			}
@@ -128,7 +128,7 @@ void TransformSystem::UpdateHierachy(world& ctx)
 		foriter(i, titer) 
 		{
 			auto citer = ctx.query(*i, {});
-			ctx.extend(*i, { .types = {_ltpT, 1} });
+			ctx.cast(*i, { .extend = {.types = {_ltpT, 1} } });
 		}
 	}
 	//需不需要检查 Parent 和 Child 的合法性？
@@ -280,7 +280,7 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e, test_track_id);
 	assert(component->v == 2);
 	//清理待销毁组件，完成销毁
-	ctx.shrink(&e, 1, type);
+	ctx.cast(&e, 1, { .shrink = type });
 	assert(!ctx.exist(e));
 
 	//待克隆状态
@@ -288,7 +288,7 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e2, test_track_id + 1);
 	assert(component->v == 2);
 	//添加待克隆组件，完成拷贝
-	ctx.extend(&e2, 1, type);
+	ctx.cast(&e2, 1, { .extend = type });
 	assert(ctx.has_component(e2, { t,1 }));
 }
 
@@ -338,7 +338,7 @@ void TestSystem::TestMeta()
 	{
 		core::entity me[] = { metae };
 		entity_type type({ {},{me, 1} });
-		ctx.extend(&e, 1, type);
+		ctx.cast(&e, 1, { .extend = type });
 	}
 	{
 		auto component = (test*)ctx.get_component_ro(metae, test_id);
@@ -348,7 +348,7 @@ void TestSystem::TestMeta()
 	{
 		index_t t[] = { test_id };
 		entity_type type({ {t,1},{} });
-		ctx.extend(&e, 1, type);
+		ctx.cast(&e, 1, { .extend = type });
 		((test*)ctx.get_owned_rw(e, test_id))->f = -2.f;
 	}
 	{
@@ -423,12 +423,13 @@ void TestSystem::TestDisable()
 			{
 				auto tests = (test*)ctx.get_owned_ro(*j, test_id);
 				auto masks = (mask*)ctx.get_owned_ro(*j, mask_id);
-				//auto num = (*j)->get_count();
-				//forloop(k, 0, num) //原始遍历，不考虑mask
-				auto eiter = ctx.query(*j, titer.get_mask({}));
-				foriter(k, eiter) //遍历 Entity
-					if (tests[*k].v % 2)
-						masks[*k] &= ~disableMask;
+				auto num = (*j)->get_count();
+				forloop(k, 0, num) //原始遍历，不考虑mask
+				{
+					masks[k] = (mask)-1;
+					if (tests[k].v % 2)
+						masks[k] &= ~disableMask;
+				}
 			}
 		}
 	}

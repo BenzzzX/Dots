@@ -143,6 +143,10 @@ static global_data gd;
 stack_object __so_##name((size)*sizeof(type)); \
 type* name = (type*)__so_##name.self;
 
+#define stack_array_assign(type, name, size) \
+stack_object __so_##name((size)*sizeof(type)); \
+name = (type*)__so_##name.self;
+
 struct stack_object
 {
 	size_t size;
@@ -555,7 +559,7 @@ size_t chunk::get_size()
 	return 0;
 }
 
-void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept
+void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) noexcept
 {
 	archetype* srcType = src->type;
 	archetype* dstType = dst.c->type;
@@ -605,8 +609,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept
 		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
 		if (st < dt) //destruct 
 		{
-			forloop(j, 0, count)
-				((buffer*)(j * srcSizes[srcI] + s))->~buffer();
+			if(destruct)
+				forloop(j, 0, count)
+					((buffer*)(j * srcSizes[srcI] + s))->~buffer();
 			srcI++;
 		}
 		else if (st > dt) //construct
@@ -621,13 +626,17 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex) noexcept
 			dstI++; srcI++;
 		}
 	}
-	while (srcI < srcType->firstTag) //destruct 
-	{
-		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
-		forloop(j, 0, count)
-			((buffer*)(j * srcSizes[srcI] + s))->~buffer();
-		srcI++;
-	}
+
+	if (destruct)
+		while (srcI < srcType->firstTag) //destruct 
+		{
+			char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
+			forloop(j, 0, count)
+				((buffer*)(j * srcSizes[srcI] + s))->~buffer();
+			srcI++;
+		}
+	else
+		srcI = srcType->firstTag;
 	while (dstI < dstType->firstTag) //construct
 	{
 		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
@@ -908,6 +917,7 @@ archetype* world::get_archetype(const entity_type& key)
 	g->firstBuffer = firstBuffer;
 	g->firstTag = firstTag;
 	g->cleaning = false;
+	g->copying = false;
 	g->disabled = false;
 	g->withMask = false;
 	g->withTracked = false;
@@ -967,9 +977,9 @@ archetype* world::get_archetype(const entity_type& key)
 		if (g->chunkCapacity[i] == 0)
 			continue;
 		uint32_t offset = sizeof(entity) * g->chunkCapacity[i];
-		forloop(i, 0, firstTag)
+		forloop(j, 0, firstTag)
 		{
-			tsize_t id = stableOrder[i];
+			tsize_t id = stableOrder[j];
 			offsets[id] = offset;
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
@@ -1021,106 +1031,131 @@ bool world::is_cleaned(const entity_type& type)
 	return type.types.length == 1;
 }
 
-archetype* world::get_instatiation(archetype* g)
+archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 {
-	if (g->cleaning) return nullptr;
-	else if (!g->withTracked) return g;
-
-	tsize_t count = g->componentCount;
-	index_t* types = g->types();
-	entity* metatypes = g->metatypes();
-
-	stack_array(index_t, dstTypes, count);
-	forloop(i, 0, count)
-	{
-		auto type = (tagged_index)types[i];
-		auto stage = gd.tracks[type.index()];
-		if ((stage & NeedCopying) != 0)
-			dstTypes[i] = type + 1;
-		else
-			dstTypes[i] = type;
-	}
-
-	auto dstKey = entity_type
-	{
-		typeset {dstTypes, count},
-		metaset {metatypes, g->metaCount}
-	};
-
-	return get_archetype(dstKey);
-}
-
-archetype* world::get_extending(archetype* g, const entity_type& ext)
-{
-	if (g->cleaning)
+	if (inst && g->cleaning)
 		return nullptr;
 
 	entity_type srcType = g->get_type();
-	stack_array(index_t, newTypes, srcType.types.length + ext.types.length);
-	stack_array(entity, newMetaTypes, srcType.metatypes.length + ext.metatypes.length);
-	entity_type key = entity_type::merge(srcType, ext, newTypes, newMetaTypes);
-	if (!g->copying)
-		return get_archetype(key);
-	else
+	const index_t* srcTypes = srcType.types.data;
+	const entity* srcMetaTypes = srcType.metatypes.data;
+	const index_t* shrTypes = diff.shrink.types.data;
+	index_t* dstTypes;
+	entity* dstMetaTypes;
+	tsize_t srcSize = srcType.types.length;
+	tsize_t srcMetaSize = srcType.metatypes.length;
+	tsize_t dstSize = srcType.types.length;
+	tsize_t dstMetaSize = srcType.metatypes.length;
+	tsize_t shrSize = diff.shrink.types.length;
+	std::optional<stack_object> _so_phase0;
+	std::optional<stack_object> _so_phase1_1;
+	std::optional<stack_object> _so_phase1_2;
+	std::optional<stack_object> _so_phase2;
+	std::optional<stack_object> _so_phase3;
+	std::optional<stack_object> _so_phase4_1;
+	std::optional<stack_object> _so_phase4_2;
+
+	//phase 0 : start copying state duto instantiate
+	if (inst && g->withTracked)
 	{
+		_so_phase0.emplace(sizeof(index_t) * dstSize);
+		dstTypes = (index_t*)_so_phase0->self;
+
+		forloop(i, 0, srcSize)
+		{
+			auto type = (tagged_index)srcTypes[i];
+			auto stage = gd.tracks[type.index()];
+			if ((stage & NeedCopying) != 0)
+				dstTypes[i] = type + 1;
+			else
+				dstTypes[i] = type;
+		}
+
+		srcTypes = dstTypes;
+	}
+
+	//phase 1 : extend
+	if (diff.extend != EmptyType)
+	{
+		dstSize = srcSize + diff.extend.types.length;
+		dstMetaSize = srcMetaSize + diff.extend.metatypes.length;
+		_so_phase1_1.emplace(sizeof(index_t) * dstSize);
+		dstTypes = (index_t*)_so_phase1_1->self;
+		_so_phase1_2.emplace(sizeof(entity) * dstMetaSize);
+		dstMetaTypes = (entity*)_so_phase1_2->self;
+		auto key = entity_type::merge(
+			{ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} },
+			diff.extend, dstTypes, dstMetaTypes);
+		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
+		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
+	}
+
+	//phase 2 : complete copying duto extend
+	if (g->copying && diff.extend != EmptyType)
+	{
+		_so_phase2.emplace(sizeof(index_t) * srcSize);
 		tsize_t k = 0, mk = 0;
-		stack_array(index_t, newTypesx, key.types.length);
+		dstTypes = (index_t*)_so_phase2->self;
 		auto can_zip = [&](int i)
 		{
-			auto type = (tagged_index)newTypes[i];
+			auto type = (tagged_index)srcTypes[i];
 			auto stage = gd.tracks[type.index()];
-			if (((stage & NeedCopying) != 0) && (newTypes[i + 1] == type + 1))
+			if (((stage & NeedCopying) != 0) && (srcTypes[i + 1] == type + 1))
 				return true;
 			return false;
 		};
-		forloop(i, 0, key.types.length)
+		forloop(i, 0, srcSize)
 		{
-			auto type = (tagged_index)newTypes[i];
-			newTypesx[k++] = type;
-			if (i < key.types.length - 1 && can_zip(i))
+			auto type = (tagged_index)srcTypes[i];
+			dstTypes[k++] = type;
+			if (i < srcSize - 1 && can_zip(i))
 				i++;
 		}
-		auto dstKey = entity_type
-		{
-			{newTypesx, k},
-			key.metatypes
-		};
-		return get_archetype(dstKey);
+		srcTypes = dstTypes;
+		srcSize = k;
 	}
-}
 
-archetype* world::get_shrinking(archetype* g, const entity_type& shr)
-{
-	if (!g->copying && !g->cleaning)
+	//phase 3 : interupt copying duto shrink
+	if (g->copying && diff.shrink != EmptyType)
 	{
-		entity_type srcType = g->get_type();
-		stack_array(index_t, newTypes, srcType.types.length);
-		stack_array(entity, newMetaTypes, srcType.metatypes.length);
-		auto key = entity_type::substract(srcType, shr, newTypes, newMetaTypes);
-		return get_archetype(key);
-	}
-	else
-	{
-		entity_type srcType = g->get_type();
-		stack_array(index_t, shrTypes, srcType.types.length * 2);
+		_so_phase3.emplace(sizeof(index_t) * diff.shrink.types.length * 2);
+		index_t* newShrTypes = (index_t*)_so_phase3->self;
 		tsize_t k = 0;
-		forloop(i, 0, shr.types.length)
+		forloop(i, 0, shrSize)
 		{
-			auto type = (tagged_index)shr.types[i];
-			shrTypes[k++] = type;
+			auto type = (tagged_index)shrTypes[i];
+			newShrTypes[k++] = type;
 			auto stage = gd.tracks[type.index()];
-			if((stage & NeedCopying) != 0)
-				shrTypes[k++] = type + 1;
+			if ((stage & NeedCopying) != 0)
+				newShrTypes[k++] = type + 1;
 		}
-		stack_array(index_t, newTypes, srcType.types.length);
-		stack_array(entity, newMetaTypes, srcType.metatypes.length);
-		entity_type shrx{ { shrTypes, k }, shr.metatypes };
-		auto key = entity_type::substract(srcType, shrx, newTypes, newMetaTypes);
-		if (g->cleaning && is_cleaned(key))
-			return nullptr;
-		else
-			return get_archetype(key);
+		shrTypes = newShrTypes;
+		shrSize = k;
 	}
+
+	//phase 4 : shrink
+	if (diff.shrink != EmptyType)
+	{
+		_so_phase4_1.emplace(sizeof(index_t) * srcSize);
+		dstTypes = (index_t*)_so_phase4_1->self;
+		_so_phase4_2.emplace(sizeof(entity) * srcMetaSize);
+		dstMetaTypes = (entity*)_so_phase4_2->self;
+		auto key = entity_type::substract(
+			{ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} },
+			{ .types = {shrTypes, shrSize}, .metatypes = diff.shrink.metatypes }, dstTypes, dstMetaTypes);
+		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
+		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
+	}
+
+	//phase 5 : check cleaning
+	if (g->cleaning)
+	{
+		entity_type key = { .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} };
+		if (is_cleaned(key))
+			return nullptr;
+	}
+
+	return get_archetype({ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} });
 }
 
 chunk* world::malloc_chunk(alloc_type type)
@@ -1213,16 +1248,18 @@ void world::release_reference(archetype* g)
 	//todo: does this make sense?
 }
 
-void world::serialize_archetype(archetype* g, i_serializer* s)
+void world::serialize_archetype(archetype* g, i_serializer* s, bool withMeta)
 {
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
 		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
-	s->stream(&mlength, sizeof(tsize_t));
-	stack_array(entity, metatypes, mlength);
-	s->stream(metatypes, mlength * sizeof(entity));
+	if (withMeta)
+	{
+		s->stream(&mlength, sizeof(tsize_t));
+		s->stream(type.metatypes.data, mlength * sizeof(entity));
+	}
 }
 
 archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
@@ -1376,7 +1413,7 @@ void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t
 void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr::vector<chunk_slice>* slices, int32_t stride)
 {
 	const auto& data = ents.datas[src.id];
-	archetype* g = get_instatiation(data.c->type);
+	archetype* g = get_casted(data.c->type, {}, true);
 	uint32_t k = 0;
 	while (k < count)
 	{
@@ -1402,7 +1439,7 @@ void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr
 void world::serialize_single(i_serializer* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
-	serialize_archetype(data.c->type, s);
+	serialize_archetype(data.c->type, s, false);
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
@@ -1651,11 +1688,35 @@ void world::instantiate(entity src, entity* ret, uint32_t count)
 	else
 	{
 		uint32_t size = group_data->size / sizeof(entity);
-		stack_array(entity, members, size);
+		adaptive_object _ao_members(group_data->size);
+		entity* members = (entity*)_ao_members.self;
 		memcpy(members, group_data->data(), group_data->size);
 		group_to_prefab(members, size);
 		instantiate_prefab(members, size, ret, count);
 		prefab_to_group(members, size);
+	}
+}
+
+void world::instantiate_cast(entity src, type_diff diff, entity* ret, uint32_t count)
+{
+	//assert(!has_component(src, group_id));
+	const auto& data = ents.datas[src.id];
+	archetype* g = get_casted(data.c->type, diff, true);
+	chunk_slice ss = allocate_slice(g, 1);
+	chunk::cast(ss, data.c, data.i, false);
+	ents.new_entities(ss);
+
+	uint32_t k = 1;
+	while (k < count)
+	{
+		chunk_slice s = allocate_slice(g, count - k);
+		chunk::duplicate(s, ss.c, ss.start);
+		ents.new_entities(s);
+		if (ret != nullptr)
+		{
+			memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
+		}
+		k += s.count;
 	}
 }
 
@@ -1716,18 +1777,9 @@ void world::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
-void world::extend(chunk_slice s, const entity_type& type)
+void world::cast(chunk_slice s, type_diff diff)
 {
-	archetype* g = get_extending(s.c->type, type);
-	if (g == nullptr)
-		return;
-	else
-		cast(s, g);
-}
-
-void world::shrink(chunk_slice s, const entity_type& type)
-{
-	archetype* g = get_shrinking(s.c->type, type);
+	archetype* g = get_casted(s.c->type, diff);
 	if (g == nullptr)
 	{
 		ents.free_entities(s);
@@ -1735,6 +1787,20 @@ void world::shrink(chunk_slice s, const entity_type& type)
 	}
 	else
 		cast(s, g);
+}
+
+void world::cast(archetype* t, type_diff diff)
+{
+	archetype* g = get_casted(t, diff);
+	if (g == nullptr)
+		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
+		{
+			ents.free_entities(c);
+			destroy_chunk(t, c);
+		}
+	else
+		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
+			cast(c, g);
 }
 
 bool static_castable(const entity_type& typeA, const entity_type& typeB)
@@ -1781,30 +1847,6 @@ void world::cast(chunk_slice s, archetype* g)
 		cast_slice(s, g);
 }
 
-void world::extend(archetype* t, const entity_type& type)
-{
-	archetype* g = get_extending(t, type);
-	if (g == nullptr)
-		return;
-	else
-		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
-			cast(c, g);
-}
-
-void world::shrink(archetype* t, const entity_type& type)
-{
-	archetype* g = get_shrinking(t, type);
-	if (g == nullptr)
-		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
-		{
-			ents.free_entities(c);
-			destroy_chunk(t, c);
-		}
-	else
-		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
-			cast(c, g);
-}
-
 #define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
 void world::destroy(entity* es, int32_t count)
 {
@@ -1813,18 +1855,11 @@ void world::destroy(entity* es, int32_t count)
 		destroy(*s);
 }
 
-void world::extend(entity* es, int32_t count, const entity_type& type)
+void world::cast(entity* es, int32_t count, type_diff diff)
 {
 	auto iter = batch(es, count);
 	foriter(s, iter)
-		extend(*s, type);
-}
-
-void world::shrink(entity* es, int32_t count, const entity_type& type)
-{
-	auto iter = batch(es, count);
-	foriter(s, iter)
-		shrink(*s, type);
+		cast(*s, diff);
 }
 
 void world::cast(entity* es, int32_t count, const entity_type& type)
