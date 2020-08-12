@@ -1210,7 +1210,7 @@ void world::unmark_free(archetype* g, chunk* c)
 
 void world::release_reference(archetype* g)
 {
-	//TODO
+	//todo: does this make sense?
 }
 
 void world::serialize_archetype(archetype* g, i_serializer* s)
@@ -1236,7 +1236,7 @@ archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
 	{
 		size_t hash;
 		s->stream(&hash, sizeof(size_t));
-		//TODO: check validation
+		//todo: check validation
 		types[i] = (index_t)gd.hash2type[hash];
 	}
 	tsize_t mlength;
@@ -1331,7 +1331,7 @@ void world::prefab_to_group(entity* members, uint32_t size)
 
 void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count)
 {
-	std::vector<chunk_slice> allSlices;
+	std::pmr::vector<chunk_slice> allSlices;
 	allSlices.reserve(count);
 
 	std::optional<adaptive_object> object;
@@ -1373,7 +1373,7 @@ void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t
 	}
 }
 
-void world::instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* slices, int32_t stride)
+void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr::vector<chunk_slice>* slices, int32_t stride)
 {
 	const auto& data = ents.datas[src.id];
 	archetype* g = get_instatiation(data.c->type);
@@ -1629,19 +1629,7 @@ world::world(index_t typeCapacity)
 world::~world()
 {
 	free(typeTimestamps);
-	for (auto& g : archetypes)
-	{
-		chunk* c = g.second->firstChunk;
-		while (c != nullptr)
-		{
-			chunk* next = c->next;
-			chunk::destruct({ c,0,c->count });
-			recycle_chunk(c);
-			c = next;
-		}
-		release_reference(g.second);
-		free(g.second);
-	}
+	clear();
 }
 
 world::alloc_iterator world::allocate(const entity_type& type, entity* ret, uint32_t count)
@@ -2139,6 +2127,7 @@ void world::patch_chunk(chunk* c, i_patcher* patcher)
 world world::clone()
 {
 	world ext{ typeCapacity };
+	//todo: should we patch?
 	ents.clone(&ext.ents);
 	for (auto& iter : archetypes)
 	{
@@ -2197,6 +2186,7 @@ void world::create_snapshot(i_serializer* s)
 
 void world::load_snapshot(i_serializer* s)
 {
+	//todo: load without patch
 	clear();
 	append_snapshot(s, nullptr);
 }
@@ -2253,6 +2243,7 @@ void world::clear()
 		release_reference(g.second);
 		free(g.second);
 	}
+	ents.clear();
 	queries.clear();
 	archetypes.clear();
 }
@@ -2391,7 +2382,7 @@ std::optional<chunk_slice> world::batch_iterator::next()
 	return { s };
 }
 
-world::entities::~entities()
+void world::entities::clear()
 {
 	size = free = 0;
 

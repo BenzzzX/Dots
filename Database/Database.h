@@ -121,7 +121,7 @@ namespace core
 				uint32_t free = 0;
 				uint32_t size = 0;
 				uint32_t chunkCount = 0;
-				~entities();
+				void clear();
 				void new_entities(chunk_slice slice);
 				entity new_prefab();
 				entity new_entity();
@@ -249,7 +249,7 @@ namespace core
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
 			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
-			void instantiate_single(entity src, entity* ret, uint32_t count, std::vector<chunk_slice>* = nullptr, int32_t stride = 1);
+			void instantiate_single(entity src, entity* ret, uint32_t count, std::pmr::vector<chunk_slice>* = nullptr, int32_t stride = 1);
 			void serialize_single(i_serializer* s, entity);
 			entity deserialize_single(i_serializer* s, i_patcher* patcher);
 			void destroy_single(chunk_slice);
