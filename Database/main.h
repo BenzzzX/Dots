@@ -135,6 +135,11 @@ namespace TestSystem
 
 	void TestDisable();
 
+	void TestMultiContext();
+
+	void TestSerialize();
+
+
 	void Update()
 	{
 		TestComponent();
@@ -143,5 +148,7 @@ namespace TestSystem
 		TestMeta();
 		TestIteration();
 		TestDisable();
+		TestMultiContext();
+		TestSerialize();
 	}
 }

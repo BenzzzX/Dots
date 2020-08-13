@@ -103,12 +103,12 @@ namespace core
 		extern index_t group_id;
 		extern index_t mask_id;
 
-		void* buffer_malloc(size_t size)
+		inline void* buffer_malloc(size_t size)
 		{
 			return ::malloc(size);
 		}
 
-		void buffer_free(void* ptr)
+		inline void buffer_free(void* ptr)
 		{
 			return ::free(ptr);
 		}

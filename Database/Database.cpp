@@ -511,6 +511,7 @@ void chunk::serialize(chunk_slice s, i_serializer* stream)
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
 	stream->stream(&s.count, sizeof(uint32_t));
+	stream->stream(s.c->get_entities()+s.start, sizeof(entity) * s.count);
 
 	forloop(i, 0, type->firstTag)
 	{

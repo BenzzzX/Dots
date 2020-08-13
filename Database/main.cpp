@@ -487,3 +487,11 @@ void TestSystem::TestDisable()
 	}
 
 }
+
+void TestSystem::TestMultiContext()
+{
+}
+
+void TestSystem::TestSerialize()
+{
+}
