@@ -335,11 +335,11 @@ namespace core
 			//world serialize
 			void create_snapshot(i_serializer* s);
 			void load_snapshot(i_serializer* s);
-			void append_snapshot(i_serializer* s, entity* ret);
 
 			//clear
 			void clear();
 			void gc_meta();
+			void merge_chunks();
 
 			//timestamp
 			uint32_t timestamp;

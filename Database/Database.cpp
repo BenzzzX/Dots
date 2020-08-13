@@ -420,22 +420,6 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	}
 }
 
-void patch_entity(entity& e, uint32_t start, const entity* target, uint32_t count) noexcept
-{
-	if (e.id < start || e.id > start + count) return;
-	e = target[e.id - start];
-}
-
-void depatch_entity(entity& e, const entity* src, const entity* target, uint32_t count) noexcept
-{
-	forloop(i, 0, count)
-		if (e == src[i])
-		{
-			e = target[i];
-			return;
-		}
-}
-
 //todo: will compiler inline patcher?
 void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 {
@@ -1280,8 +1264,9 @@ archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
 	s->stream(&mlength, sizeof(tsize_t));
 	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength);
-	forloop(i, 0, mlength)
-		metatypes[i] = patcher->patch(metatypes[i]);
+	if(patcher)
+		forloop(i, 0, mlength)
+			metatypes[i] = patcher->patch(metatypes[i]);
 	std::sort(types, types + tlength);
 	std::sort(metatypes, metatypes + mlength);
 	entity_type type = { {types, tlength}, {metatypes, mlength} };
@@ -1306,14 +1291,6 @@ std::optional<chunk_slice> world::deserialize_slice(archetype* g, i_serializer* 
 	chunk::serialize(slice, s);
 	return slice;
 }
-
-struct linear_patcher final : i_patcher
-{
-	uint32_t start;
-	entity* target;
-	uint32_t count;
-	entity patch(entity e) override;
-};
 
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
@@ -2121,12 +2098,25 @@ void world::move_context(world& src)
 {
 	auto& sents = src.ents;
 	uint32_t count = sents.size;
-	entity* patch = (entity*)::malloc(sizeof(entity) * count);
+	adaptive_object _ao_patch(sizeof(entity) * count);
+	entity* patch = (entity*)_ao_patch.self;
 	forloop(i, 0, count)
 		if (sents.datas[i].c != nullptr)
 			patch[i] = ents.new_entity();
+	sents.clear();
 
-	linear_patcher p;
+	struct patcher final : i_patcher
+	{
+		uint32_t start;
+		entity* target;
+		uint32_t count;
+		entity patch(entity e) override
+		{
+			if (e.id < start || e.id > start + count) return;
+			e = target[e.id - start];
+			return e;
+		}
+	} p;
 	p.start = 0;
 	p.target = patch;
 	p.count = count;
@@ -2146,9 +2136,6 @@ void world::move_context(world& src)
 		free(g);
 	}
 	src.archetypes.clear();
-
-	sents.~entities();
-	::free(patch);
 }
 
 void world::patch_chunk(chunk* c, i_patcher* patcher)
@@ -2162,7 +2149,6 @@ void world::patch_chunk(chunk* c, i_patcher* patcher)
 world world::clone()
 {
 	world ext{ typeCapacity };
-	//todo: should we patch?
 	ents.clone(&ext.ents);
 	for (auto& iter : archetypes)
 	{
@@ -2186,29 +2172,11 @@ struct Data
 
 void world::create_snapshot(i_serializer* s)
 {
-	const uint32_t start = 0;
-	s->stream(&start, sizeof(uint32_t));
 	s->stream(&ents.size, sizeof(uint32_t));
-	
-	//hack: save entity validation instead of patch all data
-	//trade space for time
-	auto size = ents.size / 8;
-	adaptive_object _ao_bitset(size);
-
-	char* bitset = (char*)_ao_bitset.self;
-	memset(bitset, 0, size);
-
-	forloop(i, 0, ents.size)
-		if (ents.datas[i].c != nullptr)
-		{
-			bitset[i / 8] |= (1 << (i % 8));
-		}
-	s->stream(bitset, size);
 
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
-		merge_chunks(g); //todo: user option?
 		serialize_archetype(g, s);
 
 		for (chunk* c = g->firstChunk; c; c= c->next)
@@ -2221,45 +2189,45 @@ void world::create_snapshot(i_serializer* s)
 
 void world::load_snapshot(i_serializer* s)
 {
-	//todo: load without patch
 	clear();
-	append_snapshot(s, nullptr);
-}
 
-entity linear_patcher::patch(entity e)
-{
-	patch_entity(e, start, target, count);
-	return e;
-}
+	s->stream(&ents.size, sizeof(uint32_t));
 
-void world::append_snapshot(i_serializer* s, entity* ret)
-{
-	uint32_t start, count;
-	s->stream(&start, sizeof(uint32_t));
-	s->stream(&count, sizeof(uint32_t));
-	auto size = count / 8;
-	adaptive_object _ao_bitset(size);
-	adaptive_object _ao_patch(count * sizeof(entity));
-
-	entity* patch = (entity*)_ao_patch.self;
-	char* bitset = (char*)_ao_bitset.self;
-
-	s->stream(bitset, size);
-
-	forloop(i, 0, count)
-		if ((bitset[i / 8] & (1 << (i % 8))) != 0)
-			patch[i] = ents.new_entity();
-		else
-			patch[i] = entity::Invalid;
-	linear_patcher patcher;
-	patcher.start = start;
-	patcher.target = patch;
-	patcher.count = count;
+	//reallocate entity data buffer
+	while (ents.size > ents.chunkCount * ents.kDataPerChunk)
+	{
+		auto newChunk = (entities::data_chunk*)gd.malloc(alloc_type::fastbin);
+		memset(newChunk, 0, kFastBinSize);
+		ents.datas.chunks[ents.chunkCount++] = newChunk;
+	}
 
 	//todo: multithread?
-	for(archetype* g = deserialize_archetype(s, &patcher); g!=nullptr; g = deserialize_archetype(s, &patcher))
-		for(auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
-			chunk::patch(*slice, &patcher);
+	for (archetype* g = deserialize_archetype(s, nullptr); g != nullptr; g = deserialize_archetype(s, nullptr))
+		for (auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
+		{
+			//reinitialize entity data
+			auto ref = get_entities(slice->c);
+			forloop(i, 0, slice->count)
+			{
+				auto index = i + slice->start;
+				auto e = ref[index];
+				auto& data = ents.datas[e.id];
+				data.c = slice->c;
+				data.i = index;
+				data.v = e.version;
+			}
+		}
+
+	//reinitialize entity free list
+	forloop(i, 0, ents.size)
+	{
+		auto& data = ents.datas[i];
+		if (data.c == nullptr)
+		{
+			data.nextFree = ents.free;
+			ents.free = data.i;
+		}
+	}
 }
 
 void world::clear()
@@ -2314,6 +2282,15 @@ void world::gc_meta()
 			}
 			archetypes.insert({ g->get_type(), g });
 		}
+	}
+}
+
+void world::merge_chunks()
+{
+	for (auto& pair : archetypes)
+	{
+		archetype* g = pair.second;
+		merge_chunks(g);
 	}
 }
 
