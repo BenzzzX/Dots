@@ -224,7 +224,6 @@ namespace core
 			bool is_cleaned(const entity_type&);
 			archetype* get_casted(archetype*, type_diff diff, bool inst = false);
 			void structural_change(archetype* g, chunk* c);
-			archetype* clone(archetype*);
 
 			//archetype-chunk behavior
 			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
@@ -232,7 +231,7 @@ namespace core
 			void remove_chunk(archetype* g, chunk* c);
 			static void mark_free(archetype* g, chunk* c);
 			static void unmark_free(archetype* g, chunk* c);
-			chunk* malloc_chunk(alloc_type type);
+			static chunk* malloc_chunk(alloc_type type);
 			chunk* new_chunk(archetype*, uint32_t hint);
 			void destroy_chunk(archetype*, chunk*);
 			void recycle_chunk(chunk*);
@@ -267,6 +266,7 @@ namespace core
 			friend batch_iterator;
 		public:
 			world(index_t typeCapacity = 4096u);
+			world(const world& other/*todo: ,archetype_filter*/);
 			~world();
 			//create
 			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
@@ -330,7 +330,6 @@ namespace core
 			//multi world
 			void move_context(world& src);
 			void patch_chunk(chunk* c, i_patcher* patcher);
-			world clone(/*todo: archetype_filter*/);
 
 			//world serialize
 			void create_snapshot(i_serializer* s);

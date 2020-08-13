@@ -1438,22 +1438,6 @@ void world::structural_change(archetype* g, chunk* c)
 		timestamps[i] = timestamp;
 }
 
-archetype* world::clone(archetype* g)
-{
-	auto size = archetype::alloc_size(g->componentCount, g->firstTag, g->metaCount);
-	archetype* newG = (archetype*)::malloc(size);
-	memcpy(newG, g, size);
-	newG->firstChunk = newG->firstFree = newG->lastChunk = nullptr;
-	for (auto c = g->firstChunk; c != nullptr; c = c->next)
-	{
-		auto newC = malloc_chunk(c->ct);
-		c->clone(newC);
-		add_chunk(newG, c);
-	}
-
-	return newG;
-}
-
 entity world::deserialize_single(i_serializer* s, i_patcher* patcher)
 {
 	auto *g = deserialize_archetype(s, patcher);
@@ -1638,6 +1622,33 @@ world::world(index_t typeCapacity)
 {
 	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+}
+
+world::world(const world& other)
+{
+	auto& src = const_cast<world&>(other);
+	timestamp = src.timestamp;
+	typeCapacity = src.typeCapacity;
+	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
+	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+	src.ents.clone(&ents);
+	for (auto& iter : src.archetypes)
+	{
+		auto g = iter.second;
+
+		auto size = archetype::alloc_size(g->componentCount, g->firstTag, g->metaCount);
+		archetype* newG = (archetype*)::malloc(size);
+		memcpy(newG, g, size);
+		newG->firstChunk = newG->firstFree = newG->lastChunk = nullptr;
+		for (auto c = g->firstChunk; c != nullptr; c = c->next)
+		{
+			auto newC = malloc_chunk(c->ct);
+			c->clone(newC);
+			add_chunk(newG, c);
+		}
+
+		add_archetype(newG);
+	}
 }
 
 world::~world()
@@ -2112,7 +2123,7 @@ void world::move_context(world& src)
 		uint32_t count;
 		entity patch(entity e) override
 		{
-			if (e.id < start || e.id > start + count) return;
+			if (e.id < start || e.id > start + count) return entity::Invalid;
 			e = target[e.id - start];
 			return e;
 		}
@@ -2144,18 +2155,6 @@ void world::patch_chunk(chunk* c, i_patcher* patcher)
 	forloop(i, 0, c->count)
 		es[i] = patcher->patch(es[i]);
 	chunk::patch(c, patcher);
-}
-
-world world::clone()
-{
-	world ext{ typeCapacity };
-	ents.clone(&ext.ents);
-	for (auto& iter : archetypes)
-	{
-		auto g = iter.second;
-		ext.add_archetype(clone(g));
-	}
-	return std::move(ext);
 }
 
 /*
