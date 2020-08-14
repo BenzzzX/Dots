@@ -18,7 +18,7 @@ namespace core
 				T version : B;
 			};
 		};
-		constexpr TransientMagicNumber = ((1 << B) - 1);
+		constexpr static T TransientMagicNumber = ((1 << B) - 1);
 		constexpr operator T() { return value; }
 		constexpr handle() = default;
 		constexpr handle(T t) : value(t) { }
