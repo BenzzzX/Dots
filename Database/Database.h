@@ -244,7 +244,7 @@ namespace core
 			void cast_slice(chunk_slice, archetype*);
 
 			//serialize behavior
-			static void serialize_archetype(archetype* g, i_serializer* s, bool withMeta = true);
+			static void serialize_archetype(archetype* g, i_serializer* s);
 			archetype* deserialize_archetype(i_serializer* s, i_patcher* patcher);
 			std::optional<chunk_slice> deserialize_slice(archetype* g, i_serializer* s);
 
@@ -332,8 +332,8 @@ namespace core
 			void patch_chunk(chunk* c, i_patcher* patcher);
 
 			//world serialize
-			void create_snapshot(i_serializer* s);
-			void load_snapshot(i_serializer* s);
+			void serialize(i_serializer* s);
+			void deserialize(i_serializer* s);
 
 			//clear
 			void clear();

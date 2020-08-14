@@ -6,7 +6,6 @@
 using namespace core;
 using namespace database;
 
-core::entity core::entity::Invalid{ (uint32_t)-1 };
 uint32_t database::metaTimestamp;
 constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
@@ -1233,18 +1232,15 @@ void world::release_reference(archetype* g)
 	//todo: does this make sense?
 }
 
-void world::serialize_archetype(archetype* g, i_serializer* s, bool withMeta)
+void world::serialize_archetype(archetype* g, i_serializer* s)
 {
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
 		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
-	if (withMeta)
-	{
-		s->stream(&mlength, sizeof(tsize_t));
-		s->stream(type.metatypes.data, mlength * sizeof(entity));
-	}
+	s->stream(&mlength, sizeof(tsize_t));
+	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
 
 archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
@@ -1278,6 +1274,7 @@ std::optional<chunk_slice> world::deserialize_slice(archetype* g, i_serializer* 
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
+	g->size += count;
 	if (count == 0)
 		return {};
 	chunk* c;
@@ -1305,8 +1302,8 @@ void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 		{
 			forloop(i, 0, count)
 				if (e == source[i])
-					return entity{ i,(uint32_t)-1 };
-			return keepExternal?e : entity::Invalid;
+					return entity::make_transient(i);
+			return keepExternal ? e : NullEntity;
 		}
 	} p;
 	p.count = size;
@@ -1417,7 +1414,7 @@ void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr
 void world::serialize_single(i_serializer* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
-	serialize_archetype(data.c->type, s, false);
+	serialize_archetype(data.c->type, s);
 	chunk::serialize({ data.c, data.i, 1 }, s);
 }
 
@@ -1636,10 +1633,21 @@ world::world(const world& other)
 	for (auto& iter : src.archetypes)
 	{
 		auto g = iter.second;
-
+		if (g->cleaning) // skip dead entities
+			continue;
 		auto size = archetype::alloc_size(g->componentCount, g->firstTag, g->metaCount);
 		archetype* newG = (archetype*)::malloc(size);
 		memcpy(newG, g, size);
+
+		// mark copying stage
+		forloop(i, 0, newG->componentCount)
+		{
+			auto type = (tagged_index)newG->types()[i];
+			if ((gd.tracks[type.index()] & NeedCopying) != 0)
+				newG->types()[i] = index_t(type) + 1;
+		}
+
+		//clone chunks
 		newG->firstChunk = newG->firstFree = newG->lastChunk = nullptr;
 		for (auto c = g->firstChunk; c != nullptr; c = c->next)
 		{
@@ -1647,7 +1655,6 @@ world::world(const world& other)
 			c->clone(newC);
 			add_chunk(newG, c);
 		}
-
 		add_archetype(newG);
 	}
 }
@@ -2124,7 +2131,7 @@ void world::move_context(world& src)
 		uint32_t count;
 		entity patch(entity e) override
 		{
-			if (e.id < start || e.id > start + count) return entity::Invalid;
+			if (e.id < start || e.id > start + count) return NullEntity;
 			e = target[e.id - start];
 			return e;
 		}
@@ -2170,15 +2177,16 @@ struct Data
 };
 */
 
-void world::create_snapshot(i_serializer* s)
+void world::serialize(i_serializer* s)
 {
 	s->stream(&ents.size, sizeof(uint32_t));
 
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
+		if (g->cleaning)
+			continue;
 		serialize_archetype(g, s);
-
 		for (chunk* c = g->firstChunk; c; c= c->next)
 			chunk::serialize({ c, 0, c->count }, s);
 
@@ -2187,7 +2195,7 @@ void world::create_snapshot(i_serializer* s)
 	s->stream(0, sizeof(tsize_t));
 }
 
-void world::load_snapshot(i_serializer* s)
+void world::deserialize(i_serializer* s)
 {
 	clear();
 
@@ -2445,11 +2453,11 @@ void world::entities::free_entities(chunk_slice s)
 	forloop(i, 0, s.count - 1)
 	{
 		data& freeData = datas[toFree[i].id];
-		freeData = { nullptr, 0, freeData.v + 1 };
+		freeData = { nullptr, 0, entity::recycle(freeData.v) };
 		freeData.nextFree = toFree[i + 1].id;
 	}
 	data& freeData = datas[toFree[s.count - 1].id];
-	freeData = { nullptr, 0, freeData.v + 1 };
+	freeData = { nullptr, 0, entity::recycle(freeData.v) };
 	freeData.nextFree = free;
 	free = toFree[0].id;
 	//shrink

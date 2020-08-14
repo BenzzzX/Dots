@@ -1,8 +1,7 @@
 #pragma once
 #include <cstdint>
-#include <memory>
 #include <variant>
-
+#undef max
 namespace core
 {
 	template<size_t A, size_t B, class T = uint32_t>
@@ -10,13 +9,26 @@ namespace core
 	{
 		using underlying_type = T;
 		static_assert(A + B == sizeof(T) * 8);
-		T id : A;
-		T version : B;
-		operator T() { return *reinterpret_cast<T*>(this); }
+		union
+		{
+			T value;
+			struct
+			{
+				T id : A;
+				T version : B;
+			};
+		};
+		constexpr TransientMagicNumber = ((1 << B) - 1);
+		constexpr operator T() { return value; }
 		constexpr handle() = default;
-		constexpr handle(T t) { *reinterpret_cast<T*>(this) = t; }
-		constexpr handle(T i, T v) { id = i; version = v; }
+		constexpr handle(T t) : value(t) { }
+		constexpr handle(T i, T v) : id(i), version(v) { }
 		constexpr bool is_transient() { return version == ((1 << B) - 1); }
+		constexpr static handle make_transient(T i) { return { i, TransientMagicNumber }; }
+		constexpr static T recycle(T version) 
+		{
+			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
+		}
 
 		bool operator==(const handle& e) const
 		{
@@ -34,11 +46,9 @@ namespace core
 		}
 	};
 
-	struct entity : handle<24, 8>
-	{
-		using handle::handle;
-		static entity Invalid;
-	};
+	using entity = handle<24, 8>;
+	constexpr entity NullEntity = std::numeric_limits<uint32_t>::max();
+
 
 	namespace database
 	{

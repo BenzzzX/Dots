@@ -15,21 +15,28 @@ namespace core
 	{
 		class tagged_index
 		{
-			index_t id;
+			static_assert(sizeof(index_t) * 8 == 32);
+			union
+			{
+				index_t value;
+				struct
+				{
+					index_t id : 30;
+					index_t buffer : 1;
+					index_t tag : 1;
+				};
+			};
 
-			static constexpr size_t offset = sizeof(id) * CHAR_BIT - 2;
-			static constexpr index_t mask = (index_t(1) << offset) - 1;
 		public:
-			constexpr index_t index() const noexcept { return id & mask; }
-			constexpr bool is_buffer() const noexcept { return (id >> (offset)) & 1; }
-			constexpr bool is_tag() const noexcept { return (id >> (offset + 1)) & 1; }
+			constexpr index_t index() const noexcept { return id; }
+			constexpr bool is_buffer() const noexcept { return buffer; }
+			constexpr bool is_tag() const noexcept { return tag; }
 
-			constexpr tagged_index(index_t value = 0) noexcept :id(value) { }
+			constexpr tagged_index(index_t value = 0) noexcept : value(value) { }
 			constexpr tagged_index(index_t a, bool b, bool c) noexcept
-				: id(a | ((index_t)b << offset) |
-					((index_t)c << (offset + 1))) { }
+				: id(a), buffer(b), tag(c) { }
 
-			constexpr operator index_t() const { return id; }
+			constexpr operator index_t() const { return value; }
 		};
 
 		template<class... Ts>
