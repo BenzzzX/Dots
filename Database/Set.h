@@ -14,11 +14,11 @@ namespace core
 			T value;
 			struct
 			{
-				T id : A;
 				T version : B;
+				T id : A;
 			};
 		};
-		constexpr TransientMagicNumber = ((1 << B) - 1);
+		constexpr static T TransientMagicNumber = ((1 << B) - 1);
 		constexpr operator T() { return value; }
 		constexpr handle() = default;
 		constexpr handle(T t) : value(t) { }
@@ -28,21 +28,6 @@ namespace core
 		constexpr static T recycle(T version) 
 		{
 			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
-		}
-
-		bool operator==(const handle& e) const
-		{
-			return id == e.id && version == e.version;
-		}
-
-		bool operator>(const handle& e) const
-		{
-			return id > e.id || version > e.version;
-		}
-
-		bool operator<(const handle& e) const
-		{
-			return id < e.id || version < e.version;
 		}
 	};
 
