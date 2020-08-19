@@ -1,5 +1,5 @@
 #include "Database.h"
-
+#include <iostream>
 #define cat(a, b) a##b
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 #define apply(iter) for(const auto& cat(__I,__LINE__) : iter);
@@ -77,11 +77,13 @@ struct global_data
 	{
 		auto result = stackbuffer + allocatedStack;
 		allocatedStack += size;
+		std::cout << "stack alloc: ptr=" << (void*)result <<" size="<< size << std::endl;
 		return result;
 	}
 
-	void stack_free(size_t size)
+	void stack_free(void* ptr, size_t size)
 	{
+		std::cout << "stack free: ptr=" << ptr << " size=" << size << std::endl;
 		allocatedStack -= size;
 	}
 
@@ -158,7 +160,7 @@ struct stack_object
 	}
 	~stack_object()
 	{
-		gd.stack_free(size);
+		gd.stack_free(self, size);
 	}
 };
 
@@ -201,7 +203,7 @@ struct adaptive_object
 		case Heap:
 			::free(self);
 		case Stack:
-			gd.stack_free(size);
+			gd.stack_free(self, size);
 		}
 	}
 };
@@ -1711,8 +1713,8 @@ world::world(const world& other)
 
 world::~world()
 {
-	free(typeTimestamps);
 	clear();
+	free(typeTimestamps);
 }
 
 generator<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t count)
@@ -2576,5 +2578,5 @@ char* gallocator::allocate(const size_t count)
 
 void core::database::gallocator::deallocate(char* const ptr, const size_t count)
 {
-	gd.stack_free(count);
+	gd.stack_free(ptr, count);
 }
