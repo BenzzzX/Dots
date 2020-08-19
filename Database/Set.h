@@ -14,8 +14,8 @@ namespace core
 			T value;
 			struct
 			{
-				T id : A;
 				T version : B;
+				T id : A;
 			};
 		};
 		constexpr static T TransientMagicNumber = ((1 << B) - 1);
@@ -28,21 +28,6 @@ namespace core
 		constexpr static T recycle(T version) 
 		{
 			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
-		}
-
-		bool operator==(const handle& e) const
-		{
-			return id == e.id && version == e.version;
-		}
-
-		bool operator>(const handle& e) const
-		{
-			return id > e.id || version > e.version;
-		}
-
-		bool operator<(const handle& e) const
-		{
-			return id < e.id || version < e.version;
 		}
 	};
 
