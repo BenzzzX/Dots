@@ -556,6 +556,7 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	uint16_t* dstSizes = dstType->sizes();
 	index_t* srcTypes = srcType->types(); index_t* dstTypes = dstType->types();
 
+	//phase0: cast all components
 	while (srcI < srcType->firstBuffer && dstI < dstType->firstBuffer)
 	{
 		auto st = to_valid_type(srcTypes[srcI]);
@@ -585,6 +586,8 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 #else
 	dstI = dstType->firstBuffer;
 #endif
+
+	//phase1: cast all buffers
 	while (srcI < srcType->firstTag && dstI < dstType->firstTag)
 	{
 		auto st = to_valid_type(srcTypes[srcI]);
@@ -629,6 +632,8 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 		dstI++;
 	}
 
+
+	//phase2: maintain mask for new archetype
 	tsize_t srcMaskId = srcType->index(mask_id);
 	tsize_t dstMaskId = dstType->index(mask_id);
 	if (srcMaskId != InvalidIndex && dstMaskId != InvalidIndex)
@@ -1341,22 +1346,25 @@ void world::prefab_to_group(entity* members, uint32_t size)
 	}
 }
 
-void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count)
+generator<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uint32_t count)
 {
 	std::pmr::vector<chunk_slice> allSlices;
 	allSlices.reserve(count);
 
-	std::optional<adaptive_object> object;
-	if (ret == nullptr)
-	{
-		object.emplace(sizeof(entity) * size * count);
-		ret = (entity*)object->self;
-	}
+	adaptive_object object(sizeof(entity) * size * count);
+	auto ret = (entity*)object.self;
 
 	forloop(i, 0, size)
 	{
 		auto e = src[i];
-		instantiate_single(e, &ret[i * count], count, &allSlices, size);
+		auto g = instantiate_single(e, count);
+		uint32_t k = 0;
+		for (auto s : g)
+		{
+			allSlices.push_back(s);
+			forloop(i, 0, s.count)
+				ret[k++ * size] = s.c->get_entities()[s.start + i];
+		}
 	}
 
 	struct patcher final : i_patcher
@@ -1382,10 +1390,12 @@ void world::instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t
 		p.curr = p.base = &ret[(k % count) * size + (k / count)];
 		chunk::patch(s, &p);
 		k += s.count;
+		co_yield s;
 	}
+	co_return;
 }
 
-void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr::vector<chunk_slice>* slices, int32_t stride)
+generator<chunk_slice> world::instantiate_single(entity src, uint32_t count)
 {
 	const auto& data = ents.datas[src.id];
 	archetype* g = get_casted(data.c->type, {}, true);
@@ -1395,20 +1405,10 @@ void world::instantiate_single(entity src, entity* ret, uint32_t count, std::pmr
 		chunk_slice s = allocate_slice(g, count - k);
 		chunk::duplicate(s, data.c, data.i);
 		ents.new_entities(s);
-		if (ret != nullptr)
-		{
-			if (stride == 1)
-				memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
-			else
-			{
-				forloop(i, 0, s.count)
-					ret[k * stride] = s.c->get_entities()[s.start + i];
-			}
-		}
-		if(slices != nullptr)
-			slices->push_back(s);
 		k += s.count;
+		co_yield s;
 	}
+	co_return;
 }
 
 void world::serialize_single(i_serializer* s, entity src)
@@ -1436,13 +1436,13 @@ void world::structural_change(archetype* g, chunk* c)
 		timestamps[i] = timestamp;
 }
 
-entity world::deserialize_single(i_serializer* s, i_patcher* patcher)
+chunk_slice world::deserialize_single(i_serializer* s, i_patcher* patcher)
 {
 	auto *g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
 	ents.new_entities(*slice);
 	chunk::patch(*slice, patcher);
-	return slice->c->get_entities()[slice->start];
+	return *slice;
 }
 
 void world::destroy_single(chunk_slice s)
@@ -1599,7 +1599,7 @@ void world::free_slice(chunk_slice s)
 	resize_chunk(s.c, s.c->count - s.count);
 }
 
-void world::cast_slice(chunk_slice src, archetype* g) 
+generator<chunk_slice_pair> world::cast_slice(chunk_slice src, archetype* g)
 {
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
@@ -1611,8 +1611,57 @@ void world::cast_slice(chunk_slice src, archetype* g)
 		chunk::cast(s, src.c, src.start + k);
 		ents.move_entities(s, src.c, src.start + k);
 		k += s.count;
+		co_yield chunk_slice_pair{ s.c, s.c };
 	}
 	free_slice(src);
+	co_return;
+}
+
+bool static_castable(const entity_type& typeA, const entity_type& typeB)
+{
+	int size = std::min(typeA.types.length, typeB.types.length);
+	int i = 0;
+	for (; i < size; ++i)
+	{
+		tagged_index st = typeA.types[i];
+		tagged_index dt = typeB.types[i];
+		if (st.is_tag() && dt.is_tag())
+			return true;
+		if (to_valid_type(st) != to_valid_type(dt))
+			return false;
+	}
+	if (typeA.types.length == typeB.types.length)
+		return true;
+	else if (i >= typeA.types.length)
+		return tagged_index(typeB.types[i]).is_tag();
+	else if (i >= typeB.types.length)
+		return tagged_index(typeA.types[i]).is_tag();
+	else
+		return false;
+}
+
+generator<chunk_slice_pair> world::cast_iter(chunk_slice s, archetype* g)
+{
+	if (g == nullptr)
+	{
+		ents.free_entities(s);
+		free_slice(s);
+		return {};
+	}
+	archetype* srcG = s.c->type;
+	entity_type srcT = srcG->get_type();
+	if (srcG == g)
+		return {};
+	else if (s.full() && static_castable(srcT, g->get_type()))
+	{
+		remove_chunk(srcG, s.c);
+		add_chunk(g, s.c);
+		return {};
+	}
+	else
+	{
+		return cast_slice(s, g);
+	}
 }
 
 world::world(index_t typeCapacity)
@@ -1665,22 +1714,29 @@ world::~world()
 	clear();
 }
 
-world::alloc_iterator world::allocate(const entity_type& type, entity* ret, uint32_t count)
+generator<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t count)
 {
-	alloc_iterator i;
-	i.ret = ret;
-	i.count = count;
-	i.cont = this;
-	i.g = get_archetype(type);
-	i.k = 0;
-	return i;
+	archetype* g = get_archetype(type);
+	uint32_t k = 0;
+
+	while (k < count)
+	{
+		chunk_slice s = allocate_slice(g, count - k);
+		chunk::construct(s);
+		ents.new_entities(s);
+		k += s.count;
+		co_yield s;
+	}
+	co_return;
 }
 
-void world::instantiate(entity src, entity* ret, uint32_t count)
+generator<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
-		instantiate_single(src, ret, count);
+	{
+		return instantiate_single(src, count);
+	}
 	else
 	{
 		uint32_t size = group_data->size / sizeof(entity);
@@ -1688,37 +1744,29 @@ void world::instantiate(entity src, entity* ret, uint32_t count)
 		entity* members = (entity*)_ao_members.self;
 		memcpy(members, group_data->data(), group_data->size);
 		group_to_prefab(members, size);
-		instantiate_prefab(members, size, ret, count);
+		return instantiate_prefab(members, size, count);
 		prefab_to_group(members, size);
 	}
 }
 
-void world::instantiate_cast(entity src, type_diff diff, entity* ret, uint32_t count)
+generator<chunk_slice> world::batch_iter(entity* es, uint32_t count)
 {
-	//assert(!has_component(src, group_id));
-	const auto& data = ents.datas[src.id];
-	archetype* g = get_casted(data.c->type, diff, true);
-	chunk_slice ss = allocate_slice(g, 1);
-	chunk::cast(ss, data.c, data.i, false);
-	ents.new_entities(ss);
-
-	uint32_t k = 1;
-	while (k < count)
+	uint32_t i = 0;
+	while (i < count)
 	{
-		chunk_slice s = allocate_slice(g, count - k);
-		chunk::duplicate(s, ss.c, ss.start);
-		ents.new_entities(s);
-		if (ret != nullptr)
+		const auto& datas = ents.datas;
+		const auto& start = datas[es[i++].id];
+		chunk_slice s{ start.c, start.i, 1 };
+		while (i < count)
 		{
-			memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
+			const auto& curr = datas[es[i].id];
+			if (curr.i != start.i + s.count || curr.c != start.c)
+				break;
+			i++; s.count++;
 		}
-		k += s.count;
+		co_yield s;
 	}
-}
-
-world::batch_iterator world::batch(entity* ents, uint32_t count)
-{
-	return batch_iterator{ ents,count,this,0 };
+	co_return;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)
@@ -1773,96 +1821,26 @@ void world::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
-void world::cast(chunk_slice s, type_diff diff)
+generator<chunk_slice_pair> world::cast_iter(chunk_slice s, type_diff diff)
 {
 	archetype* g = get_casted(s.c->type, diff);
-	if (g == nullptr)
-	{
-		ents.free_entities(s);
-		free_slice(s);
-	}
-	else
-		cast(s, g);
+	return cast_iter(s, g);
 }
 
-void world::cast(archetype* t, type_diff diff)
+generator<chunk_slice_pair> world::cast_iter(chunk_slice s, const entity_type& type)
 {
-	archetype* g = get_casted(t, diff);
-	if (g == nullptr)
-		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
-		{
-			ents.free_entities(c);
-			destroy_chunk(t, c);
-		}
-	else
-		for (auto c = t->firstChunk; c != nullptr; c = t->firstChunk)
-			cast(c, g);
+	archetype* g = get_archetype(type);
+	return cast_iter(s, g);
 }
 
-bool static_castable(const entity_type& typeA, const entity_type& typeB)
+void world::cast(chunk_slice s, type_diff diff)
 {
-	int size = std::min(typeA.types.length, typeB.types.length);
-	int i = 0;
-	for(;i<size;++i)
-	{
-		tagged_index st = typeA.types[i];
-		tagged_index dt = typeB.types[i];
-		if (st.is_tag() && dt.is_tag())
-			return true;
-		if (to_valid_type(st) != to_valid_type(dt))
-			return false;
-	}
-	if (typeA.types.length == typeB.types.length)
-		return true;
-	else if (i >= typeA.types.length)
-		return tagged_index(typeB.types[i]).is_tag();
-	else if (i >= typeB.types.length)
-		return tagged_index(typeA.types[i]).is_tag();
-	else
-		return false;
+	for (const auto& _ : cast_iter(s, diff));
 }
 
 void world::cast(chunk_slice s, const entity_type& type)
 {
-	archetype* g = get_archetype(type);
-	cast(s, g);
-}
-
-void world::cast(chunk_slice s, archetype* g)
-{
-	archetype* srcG = s.c->type;
-	entity_type srcT = srcG->get_type();
-	if (srcG == g)
-		return;
-	else if (s.full() && static_castable(srcT, g->get_type()))
-	{
-		remove_chunk(srcG, s.c);
-		add_chunk(g, s.c);
-	}
-	else
-		cast_slice(s, g);
-}
-
-#define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
-void world::destroy(entity* es, int32_t count)
-{
-	auto iter = batch(es, count);
-	foriter(s, iter)
-		destroy(*s);
-}
-
-void world::cast(entity* es, int32_t count, type_diff diff)
-{
-	auto iter = batch(es, count);
-	foriter(s, iter)
-		cast(*s, diff);
-}
-
-void world::cast(entity* es, int32_t count, const entity_type& type)
-{
-	auto iter = batch(es, count);
-	foriter(s, iter)
-		cast(*s, type);
+	for (const auto& _ : cast_iter(s, type));
 }
 
 const void* world::get_component_ro(entity e, index_t type) const noexcept
@@ -2087,30 +2065,42 @@ void world::serialize(i_serializer* s, entity src)
 	}
 }
 
-void world::deserialize(i_serializer* s, i_patcher* patcher, entity* ret, uint32_t times)
+entity first_entity(chunk_slice s)
 {
-	entity src = deserialize_single(s, patcher);
+	return s.c->get_entities()[s.start];
+}
+
+generator<chunk_slice> world::deserialize_iter(i_serializer* s, i_patcher* patcher, uint32_t times)
+{
+	auto slice = deserialize_single(s, patcher);
+	entity src = first_entity(slice);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
-	if (ret != nullptr)
-		ret[0] = src;
 	if (group_data == nullptr)
 	{
-		if(times > 1)
-			instantiate_single(src, ret + 1, times - 1);
+		if (times > 1)
+			for (auto s : instantiate_single(src, times - 1))
+				co_yield s;
 	}
 	else
 	{
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
+		stack_array(chunk_slice, chunks, size);
 		members[0] = src;
+		chunks[0] = slice;
 		forloop(i, 1, size)
 		{
-			members[i] = deserialize_single(s, patcher);
+			chunks[i] = deserialize_single(s, patcher);
+			members[i] = first_entity(chunks[i]);
 		}
 		if (times > 1)
-			instantiate_prefab(members, size, ret + 1, times - 1);
+			for (auto s : instantiate_prefab(members, size, times - 1))
+				co_yield s;
 		prefab_to_group(members, size);
+		forloop(i, 0, size)
+			co_yield chunks[i];
 	}
+	co_return;
 }
 
 void world::move_context(world& src)
@@ -2498,108 +2488,50 @@ void world::entities::clone(entities* dst)
 	}
 }
 
-std::optional<chunk_slice> world::alloc_iterator::next()
-{
-	if (k < count)
-	{
-		chunk_slice s = cont->allocate_slice(g, count - k);
-		chunk::construct(s);
-		cont->ents.new_entities(s);
-		memcpy(ret + k, s.c->get_entities() + s.start, s.count * sizeof(entity));
-		k += s.count;
-		return s;
-	}
-	else
-		return {};
-}
-
-world::archetype_iterator world::query(const archetype_filter& filter)
+generator<matched_archetype> world::query_iter(const archetype_filter& filter)
 {
 	auto& cache = get_query_cache(filter);
-	archetype_iterator iter;
-	iter.iter = cache.archetypes.begin();
-	iter.end = cache.archetypes.end();
-	return iter;
+	for (auto& type : cache.archetypes)
+		co_yield type;
+	co_return;
 }
 
-world::chunk_iterator world::query(archetype* type , const chunk_filter& filter)
+generator<chunk*> world::query_iter(archetype* type , const chunk_filter& filter)
 {
-	chunk_iterator iter{};
-	iter.type = type;
-	iter.iter = type->firstChunk;
-	iter.filter = filter;
-	return iter;
-}
+	auto iter = type->firstChunk;
 
-world::entity_iterator world::query(chunk* c, const mask& filter)
-{
-	entity_iterator iter{
-		.filter = filter,
-		.size = c->get_count(),
-		.masks = (mask*)get_component_ro(c, mask_id),
-		.index = 0,
-	};
-
-	return iter;
-}
-
-std::optional<archetype*> world::archetype_iterator::next()
-{
-	if (iter == end)
-		return {};
-	curr = iter;
-	iter++;
-	return curr->type;
-}
-
-mask world::archetype_iterator::get_mask(const entity_filter& filter) const
-{
-	return curr->matched & ~(curr->type->get_mask(filter.disabeld));
-}
-
-archetype* world::archetype_iterator::get_archetype() const
-{
-	return curr->type;
-}
-
-std::optional<chunk*> world::chunk_iterator::next()
-{
 	while (iter != nullptr)
 	{
 		if (filter.match(type->get_type(), type->timestamps(iter)))
 		{
 			chunk* c = iter;
 			iter = c->next;
-			return c;
+			co_yield c;
 		}
-		iter = iter->next;
+		else
+			iter = iter->next;
 	}
-	return {};
+	co_return;
 }
 
-std::optional<uint32_t> world::entity_iterator::next()
+generator<uint32_t> world::query_iter(chunk* c, const mask& filter)
 {
+	auto masks = (mask*)get_component_ro(c, mask_id);
+	uint32_t index = 0, size = c->get_count();
 	if (masks == nullptr || filter.none())
 	{
-		if (index < size)
-			return index++;
-		else return {};
+		while (index < size)
+			co_yield index++;
+		co_return;
 	}
 	while (index < size)
 	{
 		if ((filter & masks[index]) == filter)
-		{
-			uint32_t i = index;
-			index++;
-			return i;
-		}
+			co_yield index;
 		index++;
-	} 
-	
-	return {};
+	}
+	co_return;
 }
-
-
 
 bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 {
@@ -2634,4 +2566,14 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 		return false;
 
 	return true;
+}
+
+char* gallocator::allocate(const size_t count)
+{
+	return (char*)gd.stack_alloc(count);
+}
+
+void core::database::gallocator::deallocate(char* const ptr, const size_t count)
+{
+	gd.stack_free(count);
 }

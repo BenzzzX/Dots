@@ -4,10 +4,7 @@
 #include <assert.h>
 #include "main.h"
 
-
-#define foriter(c, iter) for (auto c = iter.next(); c.has_value(); c = iter.next())
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
-
 
 int main()
 { 
@@ -88,18 +85,17 @@ void TransformSystem::UpdateHierachy(world& ctx)
 	{
 		//清理删除 Entity 后的层级关系
 
-		auto titer = ctx.query({
+		auto titer = ctx.query_iter({
 		.all = {.types = {_cleanT,1} },
 		.any = {.types = {_toCleanT,2} } });
-		foriter(i, titer)
+		for(auto i : titer)
 		{
-			auto citer = ctx.query(*i, {});
-			foriter(j, citer)
+			for(auto j : ctx.query_iter(i.type, {}))
 			{
-				auto parents = (entity*)ctx.get_owned_ro(*j, parent_id);
-				auto childs = (char*)ctx.get_owned_ro(*j, child_id);
-				auto entities = ctx.get_entities(*j);
-				auto num = (*j)->get_count();
+				auto parents = (entity*)ctx.get_owned_ro(j, parent_id);
+				auto childs = (char*)ctx.get_owned_ro(j, child_id);
+				auto entities = ctx.get_entities(j);
+				auto num = j->get_count();
 				if (parents != nullptr)
 				{ 
 					//清理被删除的 Child
@@ -114,7 +110,8 @@ void TransformSystem::UpdateHierachy(world& ctx)
 						auto cs = (buffer*)(childs + child_size * k);
 						auto ents = (entity*)cs->data();
 						auto count = cs->size / (uint16_t)sizeof(entity);
-						ctx.cast(ents, count, { .shrink = {.types = {_treeT, 2} } });
+						for(auto c : ctx.batch_iter(ents, count))
+							ctx.cast(c, { .shrink = {.types = {_treeT, 2} } });
 					}
 				}
 			}
@@ -122,32 +119,27 @@ void TransformSystem::UpdateHierachy(world& ctx)
 	}
 	{
 		//修复丢失的 local to parent
-		auto titer = ctx.query({
+		auto titer = ctx.query_iter({
 		.all = {.types = {_parentT,1} },
 		.none = {.types = {_ltpT,1} } });
-		foriter(i, titer) 
-		{
-			auto citer = ctx.query(*i, {});
-			ctx.cast(*i, { .extend = {.types = {_ltpT, 1} } });
-		}
+		for (auto i : titer)
+			for(auto j : ctx.query_iter(i.type, {}))
+				ctx.cast(j, { .extend = {.types = {_ltpT, 1} } });
 	}
 	//需不需要检查 Parent 和 Child 的合法性？
 }
 
 void TransformSystem::UpdateLocalToX(world& ctx, index_t X, const archetype_filter& filter)
 {
-	auto titer = ctx.query(filter);
-	foriter(i, titer) //遍历 Archetype
+	for(auto i : ctx.query_iter(filter)) //遍历 Archetype
 	{
-		auto citer = ctx.query(*i, {});
-		foriter(j, citer) //遍历 Chunk
+		for(auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
 		{
-			auto trans = (location*)ctx.get_owned_ro(*j, location_id);
-			auto rots = (rotation*)ctx.get_owned_ro(*j, rotation_id);
-			auto ltxs = (transform*)ctx.get_owned_rw(*j, X);
-			auto eiter = ctx.query(*j);
-			foriter(k, eiter) //遍历 Entity
-				ltxs[*k] = mul(trans[*k], rots[*k]);
+			auto trans = (location*)ctx.get_owned_ro(j, location_id);
+			auto rots = (rotation*)ctx.get_owned_ro(j, rotation_id);
+			auto ltxs = (transform*)ctx.get_owned_rw(j, X);
+			for(auto k : ctx.query_iter(j)) //遍历 Entity
+				ltxs[k] = mul(trans[k], rots[k]);
 		}
 	}
 }
@@ -180,16 +172,14 @@ void TransformSystem::SolveParentToWorld(world& ctx)
 		.all = {.types = {_rootT,2}},
 		.none = {.types = {_treeT,1}}
 	};
-	auto titer = ctx.query(fTransformRoot);
-	foriter(i, titer) //遍历 Archetype
+	for(auto i : ctx.query_iter(fTransformRoot)) //遍历 Archetype
 	{
-		auto citer = ctx.query(*i, {});
-		foriter(j, citer) //遍历 Chunk
+		for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
 		{
-			auto childs = (char*)ctx.get_owned_ro(*j, child_id);
-			auto pltw = (transform*)ctx.get_owned_rw(*j, local_to_world_id);
-			auto entities = ctx.get_entities(*j);
-			auto num = (*j)->get_count();
+			auto childs = (char*)ctx.get_owned_ro(j, child_id);
+			auto pltw = (transform*)ctx.get_owned_rw(j, local_to_world_id);
+			auto entities = ctx.get_entities(j);
+			auto num = j->get_count();
 			forloop(k, 0, num) //遍历组件
 			{
 				auto cs = (buffer*)(childs + child_size * k);
@@ -239,16 +229,17 @@ void TestSystem::TestComponent()
 
 	index_t t[] = { test_id };
 	entity_type type({ .types = {t,1} });
-	auto iter = ctx.allocate(type, &e);
-	foriter(c, iter)
+	for(auto c : ctx.allocate_iter(type))
 	{
-		auto components = (test*)ctx.get_owned_rw(c->c, test_id);
-		forloop(i, 0, c->count)
-			components[c->start + i].f = -1.f;
+		auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+		e = ctx.get_entities(c.c)[c.start];
+		forloop(i, 0, c.count)
+			components[c.start + i].f = -1.f;
 	}
 	auto component = (test*)ctx.get_component_ro(e, test_id);
 	assert(component->f == -1.f);
-	ctx.destroy(&e, 1);
+	for(auto c : ctx.batch_iter(&e, 1))
+		ctx.destroy(c);
 }
 
 void TestSystem::TestLifeTime()
@@ -260,19 +251,20 @@ void TestSystem::TestLifeTime()
 	//初始化
 	index_t t[] = { test_track_id };
 	entity_type type({ .types = {t,1} });
-	auto iter = ctx.allocate(type, &e);
-	foriter(c, iter)
+	for(auto c : ctx.allocate_iter(type))
 	{
-		auto components = (test_track*)ctx.get_owned_rw(c->c, test_track_id);
-		forloop(i, 0, c->count)
-			components[c->start + i].v = 2;
+		auto components = (test_track*)ctx.get_owned_rw(c.c, test_track_id);
+		e = ctx.get_entities(c.c)[c.start];
+		components[c.start].v = 2;
 	}
 	auto component = (test_track*)ctx.get_component_ro(e, test_track_id);
 	assert(component->v == 2);
 
 	//克隆并销毁
-	ctx.instantiate(e, &e2);
-	ctx.destroy(&e, 1);
+	for (auto c : ctx.instantiate_iter(e))
+		e2 = ctx.get_entities(c.c)[c.start];
+	for (auto c : ctx.batch_iter(&e, 1))
+		ctx.destroy(c);
 
 	//待销毁状态
 	assert(ctx.exist(e));
@@ -280,7 +272,8 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e, test_track_id);
 	assert(component->v == 2);
 	//清理待销毁组件，完成销毁
-	ctx.cast(&e, 1, { .shrink = type });
+	for (auto c : ctx.batch_iter(&e, 1))
+		ctx.cast(c, { .shrink = type });
 	assert(!ctx.exist(e));
 
 	//待克隆状态
@@ -288,7 +281,8 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e2, test_track_id + 1);
 	assert(component->v == 2);
 	//添加待克隆组件，完成拷贝
-	ctx.cast(&e2, 1, { .extend = type });
+	for (auto c : ctx.batch_iter(&e2, 1))
+		ctx.cast(c, { .extend = type });
 	assert(ctx.has_component(e2, { t,1 }));
 }
 
@@ -300,13 +294,13 @@ void TestSystem::TestElement()
 
 	index_t t[] = { test_element_id };
 	entity_type type({ .types = {t,1} });
-	auto iter = ctx.allocate(type, &e);
-	foriter(c, iter)
+	for(auto c : ctx.allocate_iter(type))
 	{
-		auto buffers = (buffer*)ctx.get_owned_rw(c->c, test_element_id);
+		auto buffers = (buffer*)ctx.get_owned_rw(c.c, test_element_id);
+		e = ctx.get_entities(c.c)[c.start];
 		test_element v{ 3 };
-		forloop(i, 0, c->count)
-			buffers[c->start + i].push(&v, sizeof(test_element));
+		forloop(i, 0, c.count)
+			buffers[c.start + i].push(&v, sizeof(test_element));
 	}
 	auto b = (buffer*)ctx.get_component_ro(e, test_element_id);
 
@@ -322,23 +316,24 @@ void TestSystem::TestMeta()
 	{
 		index_t t[] = { test_id };
 		entity_type type({ .types = {t,1} });
-		auto iter = ctx.allocate(type, &metae);
-		foriter(c, iter)
+		for(auto c : ctx.allocate_iter(type))
 		{
-			auto components = (test*)ctx.get_owned_rw(c->c, test_id);
-			forloop(i, 0, c->count)
-				components[c->start + i].f = -1.f;
+			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			metae = ctx.get_entities(c.c)[c.start];
+			forloop(i, 0, c.count)
+				components[c.start + i].f = -1.f;
 		}
 	}
 	{
 		entity_type type({ {},{} });
-		auto iter = ctx.allocate(type, &e);
-		foriter(c, iter);
+		for (auto c : ctx.allocate_iter(type))
+			e = ctx.get_entities(c.c)[c.start];
 	}
 	{
 		core::entity me[] = { metae };
 		entity_type type({ {},{me, 1} });
-		ctx.cast(&e, 1, { .extend = type });
+		for(auto c : ctx.batch_iter(&e, 1))
+			ctx.cast(c, { .extend = type });
 	}
 	{
 		auto component = (test*)ctx.get_component_ro(metae, test_id);
@@ -348,8 +343,14 @@ void TestSystem::TestMeta()
 	{
 		index_t t[] = { test_id };
 		entity_type type({ {t,1},{} });
-		ctx.cast(&e, 1, { .extend = type });
-		((test*)ctx.get_owned_rw(e, test_id))->f = -2.f;
+
+		for (auto c : ctx.batch_iter(&e, 1))
+			for (auto s : ctx.cast_iter(c, { .extend = type }))
+			{
+				auto tests = (test*)ctx.get_owned_rw(s.casted.c, test_id);
+				forloop(i, 0, s.casted.count)
+					tests[s.casted.start + i].f = -2.f;
+			}
 	}
 	{
 		auto component = (test*)ctx.get_component_ro(e, test_id);
@@ -364,26 +365,25 @@ void TestSystem::TestIteration()
 	index_t t[] = { test_id };
 	entity_type type({ .types = {t,1} });
 	{
-		auto iter = ctx.allocate(type, es, 100);
 		int counter = 1;
-		foriter(c, iter)
+		for(auto c : ctx.allocate_iter(type, 100))
 		{
-			auto components = (test*)ctx.get_owned_rw(c->c, test_id);
-			forloop(i, 0, c->count)
-				components[c->start + i].v = counter++;
+			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			std::memcpy(es + counter, ctx.get_entities(c.c), c.count * sizeof(core::entity));
+			forloop(i, 0, c.count)
+				components[c.start + i].v = counter++;
 		}
 	}
-	ctx.destroy(es + 33, 1);
+	for (auto c : ctx.batch_iter(es + 33, 1))
+		ctx.destroy(c);
 	int counter = 0;
 
-	auto titer = ctx.query({ .all = type });
-	foriter(i, titer) //遍历 Archetype
+	for(auto i : ctx.query_iter({ .all = type })) //遍历 Archetype
 	{
-		auto citer = ctx.query(*i, {});
-		foriter(j, citer) //遍历 Chunk
+		for(auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
 		{
-			auto tests = (test*)ctx.get_owned_ro(*j, test_id);
-			auto num = (*j)->get_count();
+			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto num = j->get_count();
 			forloop(k, 0, num) //遍历组件
 				counter += tests[k].v;
 		}
@@ -399,31 +399,30 @@ void TestSystem::TestDisable()
 	std::sort(t, t + 2);
 	entity_type type({ .types = {t,2} });
 	{
-		auto iter = ctx.allocate(type, es, 100);
 		int counter = 1;
-		foriter(c, iter) //遍历创建 Entity
+		for(auto c : ctx.allocate_iter(type, 100)) //遍历创建 Entity
 		{
-			auto components = (test*)ctx.get_owned_rw(c->c, test_id);
-			forloop(i, 0, c->count) //初始化 Component
-				components[c->start + i].v = counter++;
+			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			std::memcpy(es + counter, ctx.get_entities(c.c), c.count * sizeof(core::entity));
+			forloop(i, 0, c.count) //初始化 Component
+				components[c.start + i].v = counter++;
 		}
 	}
-	ctx.destroy(es + 33, 1);
+	for (auto c : ctx.batch_iter(es + 33, 1))
+		ctx.destroy(c);
 
 	index_t dt[] = { test_id };
 	entity_type disabledType({ .types = {dt, 1} });
 	{
 		mask disableMask;
-		auto titer = ctx.query({ .all = disabledType });
-		foriter(i, titer) //遍历 Archetype
+		for(auto i : ctx.query_iter({ .all = disabledType })) //遍历 Archetype
 		{
-			disableMask = (*i)->get_mask({ dt, 1 });
-			auto citer = ctx.query(*i, {});
-			foriter(j, citer) //遍历 Chunk
+			disableMask = i.type->get_mask({ dt, 1 });
+			for(auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
 			{
-				auto tests = (test*)ctx.get_owned_ro(*j, test_id);
-				auto masks = (mask*)ctx.get_owned_ro(*j, mask_id);
-				auto num = (*j)->get_count();
+				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto num = j->get_count();
 				forloop(k, 0, num) //原始遍历，不考虑mask
 				{
 					masks[k] = (mask)-1;
@@ -436,17 +435,10 @@ void TestSystem::TestDisable()
 
 	{
 		int counter = 0;
-		auto titer = ctx.query({ .all = type });
-		foriter(i, titer) //遍历 Archetype
-		{
-			auto citer = ctx.query(*i, {});
-			foriter(j, citer) //遍历 Chunk
-			{
-				auto eiter = ctx.query(*j, titer.get_mask({}));
-				foriter(k, eiter) //遍历 Entity, 带禁用检查
+		for (auto i : ctx.query_iter({ .all = type })) //遍历 Archetype
+			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
+				for(auto k : ctx.query_iter(j, i.matched)) //遍历 Entity, 带禁用检查
 					counter++;
-			}
-		}
 		assert(counter == 49); //只有偶数被匹配到
 	}
 
@@ -454,34 +446,22 @@ void TestSystem::TestDisable()
 		index_t qt[] = { mask_id };
 		entity_type queryType({ .types = {qt, 1} });
 		int counter = 0;
-		auto titer = ctx.query({ .all = queryType });
-		foriter(i, titer) //遍历 Archetype
-		{
-			auto citer = ctx.query(*i, {});
-			foriter(j, citer) //遍历 Chunk
-			{
-				auto eiter = ctx.query(*j, titer.get_mask({}));
-				foriter(k, eiter) //遍历 Entity
+		for (auto i : ctx.query_iter({ .all = queryType })) //遍历 Archetype
+			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
+				for (auto k : ctx.query_iter(j, i.matched)) //遍历 Entity, 带禁用检查
 					counter++;
-			}
-		}
 		assert(counter == 99);
 	}
 
 	{
 		mask enableMask;
 		int counter = 0;
-		auto titer = ctx.query({ .all = type });
-		foriter(i, titer) //遍历 Archetype
+		for (auto i : ctx.query_iter({ .all = type }))//遍历 Archetype
 		{
-			auto mask = titer.get_mask({ dt, 1 });
-			auto citer = ctx.query(*i, {});
-			foriter(j, citer) //遍历 Chunk
-			{
-				auto eiter = ctx.query(*j, mask); //关闭 test 的禁用检查
-				foriter(k, eiter) //遍历 Entity
+			auto mask = i.matched & ~i.type->get_mask({ dt, 1 });
+			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
+				for (auto k : ctx.query_iter(j, mask)) //遍历 Entity, 带禁用检查
 					counter++;
-			}
 		}
 		assert(counter == 99); //所有都被匹配到
 	}

@@ -7,13 +7,29 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
-
+#include "recursive_generator.hpp"
 namespace core
 {
 	namespace database
 	{
 		struct chunk;
 		class world;
+
+		struct gallocator : public std::allocator<char>
+		{
+			using al = std::allocator<char>;
+			using al::size_type;
+			using al::value_type;
+			using al::is_always_equal;
+			using al::difference_type;
+			using al::propagate_on_container_move_assignment;
+
+			[[nodiscard]] __declspec(allocator) char* allocate(_CRT_GUARDOVERFLOW const size_t count);
+			void deallocate(char* const ptr, const size_t count);
+		};
+
+		template<class T>
+		using generator = std::experimental::generator<T, gallocator>;
 
 		//system overhead
 		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
@@ -89,6 +105,18 @@ namespace core
 			static size_t alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t firstMeta);
 		};
 
+		struct matched_archetype
+		{
+			archetype* type;
+			mask matched;
+		};
+
+		struct chunk_slice_pair
+		{
+			chunk_slice old;
+			chunk_slice casted;
+		};
+
 		struct type_diff
 		{
 			entity_type extend = EmptyType;
@@ -148,59 +176,15 @@ namespace core
 				std::optional<chunk_slice> next();
 			};
 
-			struct alloc_iterator
-			{
-				world* cont;
-				archetype* g;
-				entity* ret;
-				uint32_t count;
-				uint32_t k;
-
-				std::optional<chunk_slice> next();
-			};
 
 			struct query_cache
 			{
-				struct mached_archetype
-				{
-					archetype* type;
-					mask matched;
-				};
 				std::unique_ptr<char[]> data;
 				bool includeDisabled;
 				bool includeClean;
 				archetype_filter filter;
-				std::vector<mached_archetype> archetypes;
-				using iterator = std::vector<mached_archetype>::iterator;
-			};
-
-			struct archetype_iterator
-			{
-				query_cache::iterator curr;
-				query_cache::iterator iter;
-				query_cache::iterator end;
-				std::optional<archetype*> next();
-				mask get_mask(const entity_filter& filter) const;
-				archetype* get_archetype() const;
-			};
-
-			struct chunk_iterator
-			{
-				chunk_filter filter;
-				archetype* type;
-				chunk* iter;
-
-				std::optional<chunk*> next();
-			};
-
-			struct entity_iterator
-			{
-				mask filter;
-				uint32_t size;
-				const mask *const masks;
-				uint32_t index;
-
-				std::optional<uint32_t> next();
+				std::vector<matched_archetype> archetypes;
+				using iterator = std::vector<matched_archetype>::iterator;
 			};
 
 			using queries_t = std::unordered_map<archetype_filter, query_cache, archetype_filter::hash>;
@@ -241,7 +225,8 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			void cast_slice(chunk_slice, archetype*);
+			generator<chunk_slice_pair> cast_slice(chunk_slice, archetype*);
+			generator<chunk_slice_pair> cast_iter(chunk_slice, archetype* g);
 
 			//serialize behavior
 			static void serialize_archetype(archetype* g, i_serializer* s);
@@ -251,10 +236,10 @@ namespace core
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
-			void instantiate_prefab(entity* src, uint32_t size, entity* ret, uint32_t count);
-			void instantiate_single(entity src, entity* ret, uint32_t count, std::pmr::vector<chunk_slice>* = nullptr, int32_t stride = 1);
+			generator<chunk_slice> instantiate_prefab(entity* src, uint32_t size, uint32_t count);
+			generator<chunk_slice> instantiate_single(entity src, uint32_t count);
 			void serialize_single(i_serializer* s, entity);
-			entity deserialize_single(i_serializer* s, i_patcher* patcher);
+			chunk_slice deserialize_single(i_serializer* s, i_patcher* patcher);
 			void destroy_single(chunk_slice);
 
 			//ownership utils
@@ -269,21 +254,17 @@ namespace core
 			world(const world& other/*todo: ,archetype_filter*/);
 			~world();
 			//create
-			alloc_iterator allocate(const entity_type& type, entity* ret, uint32_t count = 1);
-			void instantiate(entity src, entity* ret, uint32_t count = 1);
-			void instantiate_cast(entity src, type_diff, entity* ret, uint32_t count = 1);
+			generator<chunk_slice> allocate_iter(const entity_type& type, uint32_t count = 1);
+			generator<chunk_slice> instantiate_iter(entity src, uint32_t count = 1);
 
 			//batched stuctural change
 			void destroy(chunk_slice);
-			void cast(chunk_slice, type_diff);
-			void cast(archetype*, type_diff);
-			void cast(chunk_slice, const entity_type& type);
-			void cast(chunk_slice, archetype* g);
+			/* note: return null if trigger chunk move or chunk clean up */
+			generator<chunk_slice_pair> cast_iter(chunk_slice, type_diff);
+			generator<chunk_slice_pair> cast_iter(chunk_slice, const entity_type& type);
 
-			//stuctural change
-			void destroy(entity* es, int32_t count);
-			void cast(entity* es, int32_t count, type_diff);
-			void cast(entity* es, int32_t count, const entity_type& type);
+			void cast(chunk_slice, type_diff);
+			void cast(chunk_slice, const entity_type& type);
 
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
@@ -292,10 +273,10 @@ namespace core
 
 			//query
 			//iterators
-			batch_iterator batch(entity* ents, uint32_t count);
-			archetype_iterator query(const archetype_filter& filter);
-			chunk_iterator query(archetype*, const chunk_filter& filter);
-			entity_iterator query(chunk*, const mask& filter = mask{ (uint32_t)-1 });
+			generator<chunk_slice> batch_iter(entity* ents, uint32_t count);
+			generator<matched_archetype> query_iter(const archetype_filter& filter);
+			generator<chunk*> query_iter(archetype*, const chunk_filter& filter);
+			generator<uint32_t> query_iter(chunk*, const mask& filter = mask{ (uint32_t)-1 });
 			//per entity
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
@@ -307,7 +288,8 @@ namespace core
 			bool is_component_enabled(entity, const typeset& type) const noexcept;
 			bool exist(entity) const noexcept;
 			archetype* get_archetype(entity) const noexcept;
-			entity_type get_type(entity) const noexcept; //note: only owne
+			/* note: only owned */
+			entity_type get_type(entity) const noexcept; 
 			//per chunk or archetype
 			const void* get_component_ro(chunk* c, index_t type) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
@@ -325,7 +307,7 @@ namespace core
 			//entity/group serialize
 			void gather_reference(entity, std::pmr::vector<entity>& entities);
 			void serialize(i_serializer* s, entity);
-			void deserialize(i_serializer* s, i_patcher* patcher, entity*, uint32_t times = 1);
+			generator<chunk_slice> deserialize_iter(i_serializer* s, i_patcher* patcher, uint32_t times = 1);
 
 			//multi world
 			void move_context(world& src);
