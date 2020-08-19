@@ -19,7 +19,7 @@ namespace core
 			};
 		};
 		constexpr static T TransientMagicNumber = ((1 << B) - 1);
-		constexpr operator T() { return value; }
+		constexpr operator T() const { return value; }
 		constexpr handle() = default;
 		constexpr handle(T t) : value(t) { }
 		constexpr handle(T i, T v) : id(i), version(v) { }

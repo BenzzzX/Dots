@@ -7,7 +7,7 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
-#include "recursive_generator.hpp"
+#include <experimental/generator>
 namespace core
 {
 	namespace database
@@ -225,7 +225,7 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			generator<chunk_slice_pair> cast_slice(chunk_slice, archetype*);
+			generator<chunk_slice_pair> cast_slice_iter(chunk_slice, archetype*);
 			generator<chunk_slice_pair> cast_iter(chunk_slice, archetype* g);
 
 			//serialize behavior

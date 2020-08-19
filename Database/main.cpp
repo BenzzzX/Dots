@@ -369,7 +369,7 @@ void TestSystem::TestIteration()
 		for(auto c : ctx.allocate_iter(type, 100))
 		{
 			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
-			std::memcpy(es + counter, ctx.get_entities(c.c), c.count * sizeof(core::entity));
+			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count)
 				components[c.start + i].v = counter++;
 		}
@@ -403,7 +403,7 @@ void TestSystem::TestDisable()
 		for(auto c : ctx.allocate_iter(type, 100)) //遍历创建 Entity
 		{
 			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
-			std::memcpy(es + counter, ctx.get_entities(c.c), c.count * sizeof(core::entity));
+			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count) //初始化 Component
 				components[c.start + i].v = counter++;
 		}

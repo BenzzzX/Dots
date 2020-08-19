@@ -1,7 +1,8 @@
 #include "Database.h"
 
+#define cat(a, b) a##b
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
-
+#define apply(iter) for(const auto& cat(__I,__LINE__) : iter);
 
 using namespace core;
 using namespace database;
@@ -1459,7 +1460,7 @@ void world::destroy_single(chunk_slice s)
 	}
 	else
 	{
-		cast_slice(s, g);
+		apply(cast_slice_iter(s, g));
 	}
 }
 
@@ -1599,7 +1600,7 @@ void world::free_slice(chunk_slice s)
 	resize_chunk(s.c, s.c->count - s.count);
 }
 
-generator<chunk_slice_pair> world::cast_slice(chunk_slice src, archetype* g)
+generator<chunk_slice_pair> world::cast_slice_iter(chunk_slice src, archetype* g)
 {
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
@@ -1660,7 +1661,7 @@ generator<chunk_slice_pair> world::cast_iter(chunk_slice s, archetype* g)
 	}
 	else
 	{
-		return cast_slice(s, g);
+		return cast_slice_iter(s, g);
 	}
 }
 
@@ -1835,12 +1836,12 @@ generator<chunk_slice_pair> world::cast_iter(chunk_slice s, const entity_type& t
 
 void world::cast(chunk_slice s, type_diff diff)
 {
-	for (const auto& _ : cast_iter(s, diff));
+	apply(cast_iter(s, diff));
 }
 
 void world::cast(chunk_slice s, const entity_type& type)
 {
-	for (const auto& _ : cast_iter(s, type));
+	apply(cast_iter(s, type));
 }
 
 const void* world::get_component_ro(entity e, index_t type) const noexcept
