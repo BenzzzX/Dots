@@ -24,6 +24,11 @@ namespace core
 			using al::difference_type;
 			using al::propagate_on_container_move_assignment;
 
+			template <class U>
+			struct rebind {
+				typedef gallocator other;
+			};
+
 			[[nodiscard]] __declspec(allocator) char* allocate(_CRT_GUARDOVERFLOW const size_t count);
 			void deallocate(char* const ptr, const size_t count);
 		};
@@ -263,18 +268,18 @@ namespace core
 			generator<chunk_slice_pair> cast_iter(chunk_slice, type_diff);
 			generator<chunk_slice_pair> cast_iter(chunk_slice, const entity_type& type);
 
+			//query iterators
+			generator<chunk_slice> batch_iter(entity* ents, uint32_t count);
+			generator<matched_archetype> query_iter(const archetype_filter& filter);
+			generator<chunk*> query_iter(archetype*, const chunk_filter& filter);
+			generator<uint32_t> query_iter(chunk*, const mask& filter = mask{ (uint32_t)-1 });
+
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
 			void enable_component(entity, const typeset& type) const noexcept;
 			void disable_component(entity, const typeset& type) const noexcept;
 
-			//query
-			//iterators
-			generator<chunk_slice> batch_iter(entity* ents, uint32_t count);
-			generator<matched_archetype> query_iter(const archetype_filter& filter);
-			generator<chunk*> query_iter(archetype*, const chunk_filter& filter);
-			generator<uint32_t> query_iter(chunk*, const mask& filter = mask{ (uint32_t)-1 });
-			//per entity
+			//per entity query
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;

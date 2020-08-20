@@ -41,7 +41,8 @@ struct global_data
 	size_t largebinSize = 0;
 
 	char* stackbuffer = nullptr;
-	size_t allocatedStack = 0;
+	void* stacktop = nullptr;
+	size_t stackSize = 0;
 	
 	global_data()
 	{
@@ -71,20 +72,31 @@ struct global_data
 		mask_id = register_type(desc);
 
 		stackbuffer = (char*)::malloc(10000);
+		stackSize = 10000;
+		stacktop = stackbuffer;
 	}
 
-	void* stack_alloc(size_t size)
+	void* stack_alloc(size_t size, size_t align = alignof(int))
 	{
-		auto result = stackbuffer + allocatedStack;
-		allocatedStack += size;
-		std::cout << "stack alloc: ptr=" << (void*)result <<" size="<< size << std::endl;
-		return result;
+		auto offset = uint32_t((char*)stacktop - stackbuffer);
+		stacktop = (uint32_t*)stacktop + 1;
+		if (std::align(align, size, stacktop, stackSize))
+		{
+			*((uint32_t*)stacktop - 1) = offset;
+			auto result = stacktop;
+			stacktop = (char*)stacktop + size;
+			stackSize -= size + sizeof(uint32_t);
+			return result;
+		}
+		return nullptr;
 	}
 
 	void stack_free(void* ptr, size_t size)
 	{
-		std::cout << "stack free: ptr=" << ptr << " size=" << size << std::endl;
-		allocatedStack -= size;
+		auto offset = uint32_t((char*)stacktop - stackbuffer);
+		auto oldOffset = *((uint32_t*)ptr - 1);
+		stackSize += offset - oldOffset;
+		stacktop = stackbuffer + oldOffset;
 	}
 
 	void free(alloc_type type, void* data)
@@ -178,7 +190,7 @@ struct adaptive_object
 	adaptive_object(size_t size)
 		:size(size), self(nullptr)
 	{
-		if (gd.allocatedStack - size > 1024)
+		if (gd.stackSize - size > 1024)
 		{
 			self = gd.stack_alloc(size);
 			type = Stack;
@@ -1614,7 +1626,7 @@ generator<chunk_slice_pair> world::cast_slice_iter(chunk_slice src, archetype* g
 		chunk::cast(s, src.c, src.start + k);
 		ents.move_entities(s, src.c, src.start + k);
 		k += s.count;
-		co_yield chunk_slice_pair{ s.c, s.c };
+		co_yield chunk_slice_pair{ {src.c, src.start + k, s.count}, s };
 	}
 	free_slice(src);
 	co_return;
@@ -2551,12 +2563,13 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 	return true;
 }
 
-char* gallocator::allocate(const size_t count)
+char* gallocator::allocate(const size_t size)
 {
-	return (char*)gd.stack_alloc(count);
+	auto result = gd.stack_alloc(size, 16u);
+	return (char*)result;
 }
 
-void core::database::gallocator::deallocate(char* const ptr, const size_t count)
+void core::database::gallocator::deallocate(char* const ptr, const size_t size)
 {
-	gd.stack_free(ptr, count);
+	gd.stack_free(ptr, size);
 }

@@ -20,11 +20,11 @@ namespace Util
 	void Cast(world& ctx, std::span<entity> es, type_diff diff)
 	{
 		for(auto c : ctx.batch_iter(es.data(), es.size()))
-			for (const auto _ : ctx.cast_iter(c, diff));
+			for (const auto& _ : ctx.cast_iter(c, diff));
 	}
 	void Cast(world& ctx, chunk_slice c, type_diff diff)
 	{
-		for (const auto _ : ctx.cast_iter(c, diff));
+		for (const auto& _ : ctx.cast_iter(c, diff));
 	}
 }
 
@@ -294,7 +294,7 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e2, test_track_id + 1);
 	assert(component->v == 2);
 	//添加待克隆组件，完成拷贝
-	Util::Cast(ctx, { &e, 1 }, { .extend = type });
+	Util::Cast(ctx, { &e2, 1 }, { .extend = type });
 	assert(ctx.has_component(e2, { t,1 }));
 }
 
