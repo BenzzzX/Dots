@@ -1836,16 +1836,6 @@ generator<chunk_slice_pair> world::cast_iter(chunk_slice s, const entity_type& t
 	return cast_iter(s, g);
 }
 
-void world::cast(chunk_slice s, type_diff diff)
-{
-	apply(cast_iter(s, diff));
-}
-
-void world::cast(chunk_slice s, const entity_type& type)
-{
-	apply(cast_iter(s, type));
-}
-
 const void* world::get_component_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
@@ -2073,18 +2063,12 @@ entity first_entity(chunk_slice s)
 	return s.c->get_entities()[s.start];
 }
 
-generator<chunk_slice> world::deserialize_iter(i_serializer* s, i_patcher* patcher, uint32_t times)
+entity world::deserialize(i_serializer* s, i_patcher* patcher)
 {
 	auto slice = deserialize_single(s, patcher);
 	entity src = first_entity(slice);
 	auto group_data = (buffer*)get_component_ro(src, group_id);
-	if (group_data == nullptr)
-	{
-		if (times > 1)
-			for (auto s : instantiate_single(src, times - 1))
-				co_yield s;
-	}
-	else
+	if (group_data != nullptr)
 	{
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
@@ -2096,14 +2080,10 @@ generator<chunk_slice> world::deserialize_iter(i_serializer* s, i_patcher* patch
 			chunks[i] = deserialize_single(s, patcher);
 			members[i] = first_entity(chunks[i]);
 		}
-		if (times > 1)
-			for (auto s : instantiate_prefab(members, size, times - 1))
-				co_yield s;
 		prefab_to_group(members, size);
-		forloop(i, 0, size)
-			co_yield chunks[i];
+
 	}
-	co_return;
+	return src;
 }
 
 void world::move_context(world& src)

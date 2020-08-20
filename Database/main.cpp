@@ -13,6 +13,21 @@ int main()
 	return 0;
 }
 
+namespace Util
+{
+	using namespace core::database;
+	using core::entity;
+	void Cast(world& ctx, std::span<entity> es, type_diff diff)
+	{
+		for(auto c : ctx.batch_iter(es.data(), es.size()))
+			for (const auto _ : ctx.cast_iter(c, diff));
+	}
+	void Cast(world& ctx, chunk_slice c, type_diff diff)
+	{
+		for (const auto _ : ctx.cast_iter(c, diff));
+	}
+}
+
 namespace TransformSystem
 {
 	void UpdateHierachy(world& ctx);
@@ -109,9 +124,8 @@ void TransformSystem::UpdateHierachy(world& ctx)
 					{
 						auto cs = (buffer*)(childs + child_size * k);
 						auto ents = (entity*)cs->data();
-						auto count = cs->size / (uint16_t)sizeof(entity);
-						for(auto c : ctx.batch_iter(ents, count))
-							ctx.cast(c, { .shrink = {.types = {_treeT, 2} } });
+						size_t count = cs->size / (uint16_t)sizeof(entity);
+						Util::Cast(ctx, { ents, count }, { .shrink = {.types = {_treeT, 2} } });
 					}
 				}
 			}
@@ -124,7 +138,7 @@ void TransformSystem::UpdateHierachy(world& ctx)
 		.none = {.types = {_ltpT,1} } });
 		for (auto i : titer)
 			for(auto j : ctx.query_iter(i.type, {}))
-				ctx.cast(j, { .extend = {.types = {_ltpT, 1} } });
+				Util::Cast(ctx, j, { .extend = {.types = {_ltpT, 1} } });
 	}
 	//需不需要检查 Parent 和 Child 的合法性？
 }
@@ -272,8 +286,7 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e, test_track_id);
 	assert(component->v == 2);
 	//清理待销毁组件，完成销毁
-	for (auto c : ctx.batch_iter(&e, 1))
-		ctx.cast(c, { .shrink = type });
+	Util::Cast(ctx, { &e, 1 }, { .shrink = type });
 	assert(!ctx.exist(e));
 
 	//待克隆状态
@@ -281,8 +294,7 @@ void TestSystem::TestLifeTime()
 	component = (test_track*)ctx.get_component_ro(e2, test_track_id + 1);
 	assert(component->v == 2);
 	//添加待克隆组件，完成拷贝
-	for (auto c : ctx.batch_iter(&e2, 1))
-		ctx.cast(c, { .extend = type });
+	Util::Cast(ctx, { &e, 1 }, { .extend = type });
 	assert(ctx.has_component(e2, { t,1 }));
 }
 
@@ -332,8 +344,7 @@ void TestSystem::TestMeta()
 	{
 		core::entity me[] = { metae };
 		entity_type type({ {},{me, 1} });
-		for(auto c : ctx.batch_iter(&e, 1))
-			ctx.cast(c, { .extend = type });
+		Util::Cast(ctx, { &e, 1 }, { .extend = type });
 	}
 	{
 		auto component = (test*)ctx.get_component_ro(metae, test_id);

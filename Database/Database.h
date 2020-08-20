@@ -263,9 +263,6 @@ namespace core
 			generator<chunk_slice_pair> cast_iter(chunk_slice, type_diff);
 			generator<chunk_slice_pair> cast_iter(chunk_slice, const entity_type& type);
 
-			void cast(chunk_slice, type_diff);
-			void cast(chunk_slice, const entity_type& type);
-
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
 			void enable_component(entity, const typeset& type) const noexcept;
@@ -307,7 +304,7 @@ namespace core
 			//entity/group serialize
 			void gather_reference(entity, std::pmr::vector<entity>& entities);
 			void serialize(i_serializer* s, entity);
-			generator<chunk_slice> deserialize_iter(i_serializer* s, i_patcher* patcher, uint32_t times = 1);
+			entity deserialize(i_serializer* s, i_patcher* patcher);
 
 			//multi world
 			void move_context(world& src);
