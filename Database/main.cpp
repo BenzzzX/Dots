@@ -408,41 +408,28 @@ void TestSystem::TestDisable()
 	core::entity es[100];
 	index_t t[] = { mask_id, test_id };
 	std::sort(t, t + 2);
+	index_t dt[] = { test_id };
 	entity_type type({ .types = {t,2} });
 	{
 		int counter = 1;
 		for(auto c : ctx.allocate_iter(type, 100)) //遍历创建 Entity
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			mask disableMask = c.c->get_mask({ dt, 1 });
+			auto tests = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto masks = (mask*)ctx.get_owned_ro(c.c, mask_id);
 			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count) //初始化 Component
-				components[c.start + i].v = counter++;
+			{
+				auto k = c.start + i;
+				tests[k].v = counter++;
+				masks[k] = (mask)-1;
+				if (tests[k].v % 2)
+					masks[k] &= ~disableMask;
+			}
 		}
 	}
 	for (auto c : ctx.batch_iter(es + 33, 1))
 		ctx.destroy(c);
-
-	index_t dt[] = { test_id };
-	entity_type disabledType({ .types = {dt, 1} });
-	{
-		mask disableMask;
-		for(auto i : ctx.query_iter({ .all = disabledType })) //遍历 Archetype
-		{
-			disableMask = i.type->get_mask({ dt, 1 });
-			for(auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
-			{
-				auto tests = (test*)ctx.get_owned_ro(j, test_id);
-				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
-				auto num = j->get_count();
-				forloop(k, 0, num) //原始遍历，不考虑mask
-				{
-					masks[k] = (mask)-1;
-					if (tests[k].v % 2)
-						masks[k] &= ~disableMask;
-				}
-			}
-		}
-	}
 
 	{
 		int counter = 0;
