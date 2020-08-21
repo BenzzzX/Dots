@@ -157,10 +157,6 @@ static global_data gd;
 stack_object __so_##name((size)*sizeof(type)); \
 type* name = (type*)__so_##name.self;
 
-#define stack_array_assign(type, name, size) \
-stack_object __so_##name((size)*sizeof(type)); \
-name = (type*)__so_##name.self;
-
 struct stack_object
 {
 	size_t size;
@@ -1174,9 +1170,10 @@ chunk* world::malloc_chunk(alloc_type type)
 chunk* world::new_chunk(archetype* g, uint32_t hint)
 {
 	chunk* c = nullptr;
-	if (g->chunkCount < kSmallBinThreshold && hint < g->chunkCapacity[(int)alloc_type::smallbin])
+	auto size = hint * g->entitySize;
+	if (g->chunkCount < kSmallBinThreshold && size < kSmallBinSize)
 		c = malloc_chunk(alloc_type::smallbin);
-	else if (hint > g->chunkCapacity[(int)alloc_type::fastbin] * 8u)
+	else if (size > kFastBinSize * 8u)
 		c = malloc_chunk(alloc_type::largebin);
 	else
 		c = malloc_chunk(alloc_type::fastbin);
@@ -2565,7 +2562,7 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 
 char* gallocator::allocate(const size_t size)
 {
-	auto result = gd.stack_alloc(size, 16u);
+	auto result = gd.stack_alloc(size, sizeof(void*) * 2);
 	return (char*)result;
 }
 
