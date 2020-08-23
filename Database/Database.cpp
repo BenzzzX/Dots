@@ -154,7 +154,7 @@ struct global_data
 static global_data gd;
 
 #define stack_array(type, name, size) \
-stack_object __so_##name((size)*sizeof(type)); \
+stack_object __so_##name((size_t)(size)*sizeof(type)); \
 type* name = (type*)__so_##name.self;
 
 #define stack_array_assign(type, name, size) \
@@ -212,10 +212,13 @@ struct adaptive_object
 		{
 		case Pool:
 			gd.free(alloc_type::fastbin, self);
+			break;
 		case Heap:
 			::free(self);
+			break;
 		case Stack:
 			gd.stack_free(self, size);
+			break;
 		}
 	}
 };
@@ -294,7 +297,7 @@ void chunk::clone(chunk* dst) noexcept
 		char* src = data() + offsets[i] + sizes[i];
 		forloop(j, 0, count)
 		{
-			buffer* b = (buffer*)(j * sizes[i] + src);
+			buffer* b = (buffer*)((size_t)j * sizes[i] + src);
 			if (b->d != nullptr)
 			{
 				char* clonedData = (char*)buffer_malloc(b->size);
@@ -319,9 +322,9 @@ void chunk::move(chunk_slice dst, tsize_t srcIndex) noexcept
 	uint16_t* sizes = src->type->sizes();
 	forloop(i, 0, src->type->firstTag)
 		memcpy(
-			src->data() + offsets[i] + sizes[i] * dst.start,
-			src->data() + offsets[i] + sizes[i] * srcIndex,
-			dst.count * sizes[i]
+			src->data() + offsets[i] + (size_t)sizes[i] * dst.start,
+			src->data() + offsets[i] + (size_t)sizes[i] * srcIndex,
+			(size_t)dst.count * sizes[i]
 		);
 }
 
@@ -332,13 +335,13 @@ void chunk::move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept
 	uint16_t* sizes = dst.c->type->sizes();
 	forloop(i, 0, dst.c->type->firstTag)
 		memcpy(
-			dst.c->data() + offsets[i] + sizes[i] * dst.start,
-			src->data() + offsets[i] + sizes[i] * srcIndex,
-			dst.count * sizes[i]
+			dst.c->data() + offsets[i] + (size_t)sizes[i] * dst.start,
+			src->data() + offsets[i] + (size_t)sizes[i] * srcIndex,
+			(size_t)dst.count * sizes[i]
 		);
 }
 
-#define srcData (s.c->data() + offsets[i] + sizes[i] * s.start)
+#define srcData (s.c->data() + (size_t)offsets[i] + (size_t)sizes[i] * s.start)
 void chunk::construct(chunk_slice s) noexcept
 {
 	archetype* type = s.c->type;
@@ -346,20 +349,20 @@ void chunk::construct(chunk_slice s) noexcept
 	uint16_t* sizes = type->sizes();
 #ifndef NOINITIALIZE
 	forloop(i, 0, type->firstBuffer)
-		memset(srcData, 0, sizes[i] * s.count);
+		memset(srcData, 0, (size_t)sizes[i] * s.count);
 #endif
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
-			new(j * sizes[i] + src) buffer{ sizes[i] - sizeof(buffer) };
+			new((size_t)j * sizes[i] + src) buffer{ sizes[i] - sizeof(buffer) };
 	}
 
 	tsize_t maskId = type->index(mask_id);
 	if (maskId != (tsize_t)-1)
 	{
 		auto i = maskId;
-		memset(srcData, -1, sizes[i] * s.count);
+		memset(srcData, -1, (size_t)sizes[i] * s.count);
 	}
 }
 
@@ -373,7 +376,7 @@ void chunk::destruct(chunk_slice s) noexcept
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
-			((buffer*)(j * sizes[i] + src))->~buffer();
+			((buffer*)((size_t)j * sizes[i] + src))->~buffer();
 	}
 }
 
@@ -398,8 +401,8 @@ tagged_index to_valid_type(tagged_index t)
 }
 
 #undef srcData
-#define dstData (dst.c->data() + offsets[i] + sizes[i] * dst.start)
-#define srcData (src->data() + offsets[i] + sizes[i] * srcIndex)
+#define dstData (dst.c->data() + offsets[i] + (size_t)sizes[i] * dst.start)
+#define srcData (src->data() + offsets[i] + (size_t)sizes[i] * srcIndex)
 void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept
 {
 	archetype* type = src->type;
@@ -429,7 +432,7 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 		const char* s = srcData;
 		char* d = dstData;
 		forloop(j, 0, dst.count)
-			new(d + sizes[i]*j) buffer{ *(buffer*)s };
+			new(d + (size_t)sizes[i]*j) buffer{ *(buffer*)s };
 		dstI++;
 	}
 }
@@ -444,16 +447,16 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 	forloop(i, 0, g->firstBuffer)
 	{
 		const auto& t = gd.infos[types[i].index()];
-		char* arr = s.c->data() + offsets[i] + sizes[i]*s.start;
+		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i]*s.start;
 		auto f = t.vtable.patch;
 		if (f != nullptr)
 		{
 			forloop(j, 0, s.count)
 			{
-				char* data = arr + sizes[i] * j;
+				char* data = arr + (size_t)sizes[i] * j;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
+					entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
 					e = patcher->patch(e);
 				}
 				f(data, patcher);
@@ -464,10 +467,10 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 		{
 			forloop(j, 0, s.count)
 			{
-				char* data = arr + sizes[i] * j;
+				char* data = arr + (size_t)sizes[i] * j;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
+					entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
 					e = patcher->patch(e);
 				}
 				patcher->move();
@@ -479,20 +482,20 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 	forloop(i, g->firstBuffer, g->firstTag)
 	{
 		const auto& t = gd.infos[types[i].index()];
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
-			buffer *b =(buffer*)(arr + sizes[i] * j);
+			buffer *b =(buffer*)(arr + (size_t)sizes[i] * j);
 			uint16_t n = b->size / t.elementSize;
 			auto f = t.vtable.patch;
 			if (f != nullptr)
 			{
 				forloop(l, 0, n)
 				{
-					char* data = b->data() + t.elementSize * l;
+					char* data = b->data() + (size_t)t.elementSize * l;
 					forloop(k, 0, t.entityRefCount)
 					{
-						entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
+						entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
 						e = patcher->patch(e);
 					}
 					f(data, patcher);
@@ -503,10 +506,10 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 			{
 				forloop(l, 0, n)
 				{
-					char* data = b->data() + t.elementSize * l;
+					char* data = b->data() + (size_t)t.elementSize * l;
 					forloop(k, 0, t.entityRefCount)
 					{
-						entity& e = *(entity*)(data + gd.entityRefs[t.entityRefs + k]);
+						entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
 						e = patcher->patch(e);
 					}
 					patcher->move();
@@ -529,16 +532,16 @@ void chunk::serialize(chunk_slice s, i_serializer* stream)
 
 	forloop(i, 0, type->firstTag)
 	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		stream->stream(arr, sizes[i] * s.count);
 	}
 
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
-		char* arr = s.c->data() + offsets[i] + sizes[i] * s.start;
+		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
-			buffer* b = (buffer*)(arr + j * sizes[i]);
+			buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
 			stream->stream(b->data(), b->size);
 		}
 	}
@@ -582,20 +585,20 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 			srcI++;
 		else if (st > dt) //construct
 #ifndef NOINITIALIZE
-			memset(d, 0, dstSizes[dstI++] * count);
+			memset(d, 0, (size_t)dstSizes[dstI++] * count);
 #else
 			dstI++;
 #endif
 		else //move
-			memcpy(d, s, dstSizes[(srcI++, dstI++)] * count);
+			memcpy(d, s, (size_t)dstSizes[(srcI++, dstI++)] * count);
 	}
 
 	srcI = srcType->firstBuffer; // destruct
 #ifndef NOINITIALIZE
 	while (dstI < dstType->firstBuffer) //construct
 	{
-		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
-		memset(d, 0, dstSizes[dstI] * count);
+		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
+		memset(d, 0, (size_t)dstSizes[dstI] * count);
 		dstI++;
 	}
 #else
@@ -607,24 +610,24 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	{
 		auto st = to_valid_type(srcTypes[srcI]);
 		auto dt = to_valid_type(dstTypes[dstI]);
-		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
-		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
+		char* s = src->data() + srcOffsets[srcI] + (size_t)srcSizes[srcI] * srcIndex;
+		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
 		if (st < dt) //destruct 
 		{
 			if(destruct)
 				forloop(j, 0, count)
-					((buffer*)(j * srcSizes[srcI] + s))->~buffer();
+					((buffer*)((size_t)j * srcSizes[srcI] + s))->~buffer();
 			srcI++;
 		}
 		else if (st > dt) //construct
 		{
 			forloop(j, 0, count)
-				new(j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
+				new((size_t)j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
 			dstI++;
 		}
 		else //move
 		{
-			memcpy(d, s, dstSizes[dstI] * count);
+			memcpy(d, s, (size_t)dstSizes[dstI] * count);
 			dstI++; srcI++;
 		}
 	}
@@ -632,18 +635,18 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	if (destruct)
 		while (srcI < srcType->firstTag) //destruct 
 		{
-			char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
+			char* s = src->data() + srcOffsets[srcI] + (size_t)srcSizes[srcI] * srcIndex;
 			forloop(j, 0, count)
-				((buffer*)(j * srcSizes[srcI] + s))->~buffer();
+				((buffer*)((size_t)j * srcSizes[srcI] + s))->~buffer();
 			srcI++;
 		}
 	else
 		srcI = srcType->firstTag;
 	while (dstI < dstType->firstTag) //construct
 	{
-		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
+		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
 		forloop(j, 0, count)
-			new(j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
+			new((size_t)j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
 		dstI++;
 	}
 
@@ -653,8 +656,8 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	tsize_t dstMaskId = dstType->index(mask_id);
 	if (srcMaskId != InvalidIndex && dstMaskId != InvalidIndex)
 	{
-		mask* s = (mask*)(src->data() + srcOffsets[srcMaskId] + srcSizes[srcMaskId] * srcIndex);
-		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
+		mask* s = (mask*)(src->data() + srcOffsets[srcMaskId] + (size_t)srcSizes[srcMaskId] * srcIndex);
+		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + (size_t)dstSizes[dstMaskId] * dst.start);
 		forloop(i, 0, count)
 		{
 			srcI = dstI = 0;
@@ -677,8 +680,8 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	}
 	else if (dstMaskId != InvalidIndex)
 	{
-		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + dstSizes[dstMaskId] * dst.start);
-		memset(d, -1, dstSizes[dstMaskId] * count);
+		mask* d = (mask*)(dst.c->data() + dstOffsets[dstMaskId] + (size_t)dstSizes[dstMaskId] * dst.start);
+		memset(d, -1, (size_t)dstSizes[dstMaskId] * count);
 	}
 }
 
@@ -960,7 +963,7 @@ archetype* world::get_archetype(const entity_type& key)
 	forloop(i, 0, firstTag)
 	{
 		auto type = (tagged_index)key.types[i];
-		auto info = gd.infos[type.index()];
+		auto& info = gd.infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.hash;
 		stableOrder[i] = i;
@@ -1682,7 +1685,7 @@ generator<chunk_slice_pair> world::cast_iter(chunk_slice s, archetype* g)
 world::world(index_t typeCapacity)
 	:typeCapacity(typeCapacity)
 {
-	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
+	typeTimestamps = (uint32_t*)::malloc(typeCapacity * sizeof(uint32_t));
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
 }
 
@@ -1691,7 +1694,7 @@ world::world(const world& other)
 	auto& src = const_cast<world&>(other);
 	timestamp = src.timestamp;
 	typeCapacity = src.typeCapacity;
-	typeTimestamps = (uint32_t*)malloc(typeCapacity * sizeof(uint32_t));
+	typeTimestamps = (uint32_t*)::malloc(typeCapacity * sizeof(uint32_t));
 	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
 	src.ents.clone(&ents);
 	for (auto& iter : src.archetypes)
@@ -1823,7 +1826,7 @@ void world::destroy(chunk_slice s)
 		char* src = (s.c->data() + g->offsets(s.c->ct)[id]);
 		forloop(i, 0, s.count)
 		{
-			auto* group_data = (buffer*)(src + i * sizes[i]);
+			auto* group_data = (buffer*)(src + (size_t)i * sizes[i]);
 			uint16_t size = group_data->size / sizeof(entity);
 			forloop(j, 1, size)
 			{
@@ -1857,7 +1860,7 @@ const void* world::get_component_ro(entity e, index_t type) const noexcept
 	tsize_t id = g->index(type);
 	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
-	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
+	return c->data() + (size_t)g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
 
 const void* world::get_owned_ro(entity e, index_t type) const noexcept
@@ -1868,7 +1871,7 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
 	if (id == InvalidIndex) return nullptr;
-	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
+	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
 
 const void* world::get_shared_ro(entity e, index_t type) const noexcept
@@ -1889,7 +1892,7 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 	tsize_t id = g->index(type);
 	if (id == InvalidIndex) return nullptr;
 	g->timestamps(c)[id] = timestamp;
-	return c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id];
+	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
 
 
@@ -2331,7 +2334,7 @@ void world::enable_component(entity e, const typeset& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
 	m |= mm;
 }
 
@@ -2346,7 +2349,7 @@ void world::disable_component(entity e, const typeset& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
 	m &= ~mm;
 }
 
@@ -2361,7 +2364,7 @@ bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
 	return (m & mm) == mm;
 }
 
