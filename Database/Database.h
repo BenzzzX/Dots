@@ -364,6 +364,7 @@ namespace core
 			friend world::entities;
 		public:
 			uint32_t get_count() { return count; }
+			mask get_mask(const typeset& ts) { return type->get_mask(ts); }
 			const entity* get_entities() const { return (entity*)data(); }
 			uint32_t get_timestamp(index_t type) noexcept;
 		};
