@@ -62,9 +62,34 @@ namespace core
 				: c(c), start(s), count(count) {}
 		};
 
-		struct stage
+		struct chunk_vector_base
 		{
+			struct chunk
+			{
+				chunk* next;
+			};
 
+			size_t chunkCapacity;
+			size_t chunkSize;
+			size_t size;
+
+			void grow();
+			void shrink();
+		};
+
+		template<class T>
+		struct chunk_vector
+		{
+			struct iterator
+			{
+
+			};
+
+			iterator begin();
+			iterator end();
+			template<class... T>
+			void push(T&&...);
+			void pop();
 		};
 
 		struct archetype
@@ -170,18 +195,6 @@ namespace core
 				void clone(entities*);
 			};
 
-			//iterators
-			struct batch_iterator
-			{
-				entity* ents;
-				uint32_t count;
-				world* cont;
-				uint32_t i;
-
-				std::optional<chunk_slice> next();
-			};
-
-
 			struct query_cache
 			{
 				std::unique_ptr<char[]> data;
@@ -253,7 +266,6 @@ namespace core
 			void release_reference(archetype* g);
 
 			friend chunk;
-			friend batch_iterator;
 		public:
 			world(index_t typeCapacity = 4096u);
 			world(const world& other/*todo: ,archetype_filter*/);

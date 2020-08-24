@@ -2370,23 +2370,6 @@ bool world::exist(entity e) const noexcept
 	return e.id < ents.size && e.version == ents.datas[e.id].v;
 }
 
-
-std::optional<chunk_slice> world::batch_iterator::next()
-{
-	if (i >= count) return {};
-	const auto& datas = cont->ents.datas;
-	const auto& start = datas[ents[i++].id];
-	chunk_slice s{ start.c, start.i, 1 };
-	while (i < count)
-	{
-		const auto& curr = datas[ents[i].id];
-		if (curr.i != start.i + s.count || curr.c != start.c)
-			break;
-		i++; s.count++;
-	}
-	return { s };
-}
-
 void world::entities::clear()
 {
 	size = free = 0;
