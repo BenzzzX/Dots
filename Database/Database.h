@@ -119,6 +119,7 @@ namespace core
 				bool includeDisabled;
 				bool includeClean;
 				archetype_filter filter;
+				//TODO: use fixed_vector
 				std::vector<matched_archetype> archetypes;
 				using iterator = std::vector<matched_archetype>::iterator;
 			};
@@ -225,7 +226,7 @@ namespace core
 			void disable_component(entity, const typeset& type) const noexcept;
 			entity_type get_type(entity) const noexcept; /* note: only owned */
 			//entity/group serialize
-			void gather_reference(entity, std::pmr::vector<entity>& entities);
+			chunk_vector<entity> gather_reference(entity);
 			void serialize(i_serializer* s, entity);
 			entity deserialize(i_serializer* s, i_patcher* patcher);
 

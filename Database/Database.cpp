@@ -1991,24 +1991,25 @@ entity_type world::get_type(entity e) const noexcept
 	return data.c->type->get_type();
 }
 
-void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
+chunk_vector<entity> world::gather_reference(entity e)
 {
+	chunk_vector<entity> result;
 	auto group_data = (buffer*)get_component_ro(e, group_id);
 	if (group_data == nullptr)
 	{
 		struct gather final : i_patcher
 		{
 			entity source;
-			std::pmr::vector<entity>* ents;
+			chunk_vector<entity>* ents;
 			entity patch(entity e) override
 			{
 				if(e!=source)
-					ents->push_back(e);
+					ents->push(e);
 				return e;
 			}
 		} p;
 		p.source = e;
-		p.ents = &entities;
+		p.ents = &result;
 		auto& data = ents.datas[e.id];
 		auto g = data.c->type;
 		auto mt = g->metatypes();
@@ -2025,19 +2026,19 @@ void world::gather_reference(entity e, std::pmr::vector<entity>& entities)
 		{
 			entity* source;
 			uint32_t count;
-			std::pmr::vector<entity>* ents;
+			chunk_vector<entity>* ents;
 			entity patch(entity e) override
 			{
 				forloop(i, 0, count)
 					if (e == source[i])
 						return e;
-				ents->push_back(e);
+				ents->push(e);
 				return e;
 			}
 		} p;
 		p.source = members;
 		p.count = size;
-		p.ents = &entities;
+		p.ents = &result;
 		forloop(i, 0, size)
 		{
 			e = members[i];

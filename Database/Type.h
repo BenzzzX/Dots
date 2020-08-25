@@ -64,6 +64,7 @@ namespace core
 			~chunk_vector_base();
 		};
 
+		//for transient lightweight data storage
 		template<class T>
 		struct chunk_vector : chunk_vector_base
 		{
