@@ -152,7 +152,7 @@ void TransformSystem::UpdateLocalToX(world& ctx, index_t X, const archetype_filt
 			auto trans = (location*)ctx.get_owned_ro(j, location_id);
 			auto rots = (rotation*)ctx.get_owned_ro(j, rotation_id);
 			auto ltxs = (transform*)ctx.get_owned_rw(j, X);
-			for(auto k : ctx.query_iter(j)) //遍历 Entity
+			forloop(k, 0, j->get_count()) //遍历 Entity
 				ltxs[k] = mul(trans[k], rots[k]);
 		}
 	}
@@ -358,9 +358,9 @@ void TestSystem::TestMeta()
 		for (auto c : ctx.batch_iter(&e, 1))
 			for (auto s : ctx.cast_iter(c, { .extend = type }))
 			{
-				auto tests = (test*)ctx.get_owned_rw(s.casted.c, test_id);
-				forloop(i, 0, s.casted.count)
-					tests[s.casted.start + i].f = -2.f;
+				auto tests = (test*)ctx.get_owned_rw(s.c, test_id);
+				forloop(i, 0, s.count)
+					tests[s.start + i].f = -2.f;
 			}
 	}
 	{
@@ -435,8 +435,17 @@ void TestSystem::TestDisable()
 		int counter = 0;
 		for (auto i : ctx.query_iter({ .all = type })) //遍历 Archetype
 			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
-				for(auto k : ctx.query_iter(j, i.matched)) //遍历 Entity, 带禁用检查
-					counter++;
+			{
+				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto length = j->get_count();
+				forloop(k, 0, length)
+				{
+					if((masks[k] & i.matched) == i.matched)  //遍历 Entity, 带禁用检查
+						counter++;
+				}
+			}
+				
+				
 		assert(counter == 49); //只有偶数被匹配到
 	}
 
@@ -446,8 +455,15 @@ void TestSystem::TestDisable()
 		int counter = 0;
 		for (auto i : ctx.query_iter({ .all = queryType })) //遍历 Archetype
 			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
-				for (auto k : ctx.query_iter(j, i.matched)) //遍历 Entity, 带禁用检查
-					counter++;
+			{
+				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto length = j->get_count();
+				forloop(k, 0, length)
+				{
+					if ((masks[k] & i.matched) == i.matched)  //遍历 Entity, 带禁用检查
+						counter++;
+				}
+			}
 		assert(counter == 99);
 	}
 
@@ -456,10 +472,17 @@ void TestSystem::TestDisable()
 		int counter = 0;
 		for (auto i : ctx.query_iter({ .all = type }))//遍历 Archetype
 		{
-			auto mask = i.matched & ~i.type->get_mask({ dt, 1 });
+			auto mymask = i.matched & ~i.type->get_mask({ dt, 1 });
 			for (auto j : ctx.query_iter(i.type, {})) //遍历 Chunk
-				for (auto k : ctx.query_iter(j, mask)) //遍历 Entity, 带禁用检查
-					counter++;
+			{
+				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto length = j->get_count();
+				forloop(k, 0, length)
+				{
+					if ((masks[k] & mymask) == mymask)  //遍历 Entity, 带禁用检查
+						counter++;
+				}
+			}
 		}
 		assert(counter == 99); //所有都被匹配到
 	}

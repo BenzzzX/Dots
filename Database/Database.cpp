@@ -2,7 +2,6 @@
 #include <iostream>
 #define cat(a, b) a##b
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
-#define apply(iter) for(const auto& cat(__I,__LINE__) : iter);
 
 using namespace core;
 using namespace database;
@@ -1361,10 +1360,9 @@ void world::prefab_to_group(entity* members, uint32_t size)
 	}
 }
 
-generator<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uint32_t count)
+chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uint32_t count)
 {
-	std::pmr::vector<chunk_slice> allSlices;
-	allSlices.reserve(count);
+	chunk_vector<chunk_slice> allSlices;
 
 	adaptive_object object(sizeof(entity) * size * count);
 	auto ret = (entity*)object.self;
@@ -1376,7 +1374,7 @@ generator<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uin
 		uint32_t k = 0;
 		for (auto s : g)
 		{
-			allSlices.push_back(s);
+			allSlices.push(s);
 			forloop(i, 0, s.count)
 				ret[k++ * size] = s.c->get_entities()[s.start + i];
 		}
@@ -1405,13 +1403,13 @@ generator<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uin
 		p.curr = p.base = &ret[(k % count) * size + (k / count)];
 		chunk::patch(s, &p);
 		k += s.count;
-		co_yield s;
 	}
-	co_return;
+	return allSlices;
 }
 
-generator<chunk_slice> world::instantiate_single(entity src, uint32_t count)
+chunk_vector<chunk_slice> world::instantiate_single(entity src, uint32_t count)
 {
+	chunk_vector<chunk_slice> result;
 	const auto& data = ents.datas[src.id];
 	archetype* g = get_casted(data.c->type, {}, true);
 	uint32_t k = 0;
@@ -1421,9 +1419,9 @@ generator<chunk_slice> world::instantiate_single(entity src, uint32_t count)
 		chunk::duplicate(s, data.c, data.i);
 		ents.new_entities(s);
 		k += s.count;
-		co_yield s;
+		result.push(s);
 	}
-	co_return;
+	return result;
 }
 
 void world::serialize_single(i_serializer* s, entity src)
@@ -1474,7 +1472,7 @@ void world::destroy_single(chunk_slice s)
 	}
 	else
 	{
-		apply(cast_slice_iter(s, g));
+		cast_slice_iter(s, g);
 	}
 }
 
@@ -1614,8 +1612,9 @@ void world::free_slice(chunk_slice s)
 	resize_chunk(s.c, s.c->count - s.count);
 }
 
-generator<chunk_slice_pair> world::cast_slice_iter(chunk_slice src, archetype* g)
+chunk_vector<chunk_slice> world::cast_slice_iter(chunk_slice src, archetype* g)
 {
+	chunk_vector<chunk_slice> result;
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
 	g->size -= src.count;
@@ -1626,10 +1625,10 @@ generator<chunk_slice_pair> world::cast_slice_iter(chunk_slice src, archetype* g
 		chunk::cast(s, src.c, src.start + k);
 		ents.move_entities(s, src.c, src.start + k);
 		k += s.count;
-		co_yield chunk_slice_pair{ {src.c, src.start + k, s.count}, s };
+		result.push(s);
 	}
 	free_slice(src);
-	co_return;
+	return result;
 }
 
 bool static_castable(const entity_type& typeA, const entity_type& typeB)
@@ -1655,7 +1654,7 @@ bool static_castable(const entity_type& typeA, const entity_type& typeB)
 		return false;
 }
 
-generator<chunk_slice_pair> world::cast_iter(chunk_slice s, archetype* g)
+chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, archetype* g)
 {
 	if (g == nullptr)
 	{
@@ -1729,8 +1728,9 @@ world::~world()
 	free(typeTimestamps);
 }
 
-generator<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t count)
+chunk_vector<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t count)
 {
+	chunk_vector<chunk_slice> result;
 	archetype* g = get_archetype(type);
 	uint32_t k = 0;
 
@@ -1740,12 +1740,12 @@ generator<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t co
 		chunk::construct(s);
 		ents.new_entities(s);
 		k += s.count;
-		co_yield s;
+		result.push(s);
 	}
-	co_return;
+	return result;
 }
 
-generator<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
+chunk_vector<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -1764,8 +1764,9 @@ generator<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
 	}
 }
 
-generator<chunk_slice> world::batch_iter(entity* es, uint32_t count)
+chunk_vector<chunk_slice> world::batch_iter(entity* es, uint32_t count)
 {
+	chunk_vector<chunk_slice> result;
 	uint32_t i = 0;
 	while (i < count)
 	{
@@ -1779,9 +1780,9 @@ generator<chunk_slice> world::batch_iter(entity* es, uint32_t count)
 				break;
 			i++; s.count++;
 		}
-		co_yield s;
+		result.push(s);
 	}
-	co_return;
+	return result;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)
@@ -1836,13 +1837,13 @@ void world::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
-generator<chunk_slice_pair> world::cast_iter(chunk_slice s, type_diff diff)
+chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, type_diff diff)
 {
 	archetype* g = get_casted(s.c->type, diff);
 	return cast_iter(s, g);
 }
 
-generator<chunk_slice_pair> world::cast_iter(chunk_slice s, const entity_type& type)
+chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_archetype(type);
 	return cast_iter(s, g);
@@ -2442,29 +2443,23 @@ void world::entities::fill_entities(chunk_slice dst, uint32_t srcIndex)
 
 void world::entities::clone(entities* dst)
 {
-	memcpy(dst, this, sizeof(entities));
-	if(datas.chunkSize > 0)
-		dst->datas.data = (void**)gd.malloc(alloc_type::fastbin);
-	forloop(i, 0, datas.chunkSize)
-	{
-		void* newChunk = gd.malloc(alloc_type::fastbin);
-		memcpy(newChunk, datas.data[i], kFastBinSize);
-		dst->datas.data[i] = newChunk;
-	}
-	dst->datas.size = datas.size;
-	dst->datas.chunkSize = datas.chunkSize;
+	dst->clear();
+	new(&dst->datas) chunk_vector<data>(datas);
+	dst->free = free;
 }
 
-generator<matched_archetype> world::query_iter(const archetype_filter& filter)
+chunk_vector<matched_archetype> world::query_iter(const archetype_filter& filter)
 {
+	chunk_vector<matched_archetype> result;
 	auto& cache = get_query_cache(filter);
 	for (auto& type : cache.archetypes)
-		co_yield type;
-	co_return;
+		result.push(type);
+	return result;
 }
 
-generator<chunk*> world::query_iter(archetype* type , const chunk_filter& filter)
+chunk_vector<chunk*> world::query_iter(archetype* type , const chunk_filter& filter)
 {
+	chunk_vector<chunk*> result;
 	auto iter = type->firstChunk;
 
 	while (iter != nullptr)
@@ -2473,31 +2468,12 @@ generator<chunk*> world::query_iter(archetype* type , const chunk_filter& filter
 		{
 			chunk* c = iter;
 			iter = c->next;
-			co_yield c;
+			result.push(c);
 		}
 		else
 			iter = iter->next;
 	}
-	co_return;
-}
-
-generator<uint32_t> world::query_iter(chunk* c, const mask& filter)
-{
-	auto masks = (mask*)get_component_ro(c, mask_id);
-	uint32_t index = 0, size = c->get_count();
-	if (masks == nullptr || filter.none())
-	{
-		while (index < size)
-			co_yield index++;
-		co_return;
-	}
-	while (index < size)
-	{
-		if ((filter & masks[index]) == filter)
-			co_yield index;
-		index++;
-	}
-	co_return;
+	return result;
 }
 
 bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
@@ -2562,6 +2538,29 @@ void chunk_vector_base::shrink(size_t n)
 		gd.free(alloc_type::fastbin, data);
 		data = nullptr;
 	}
+}
+
+chunk_vector_base::chunk_vector_base(chunk_vector_base&& r)
+{
+	data = r.data;
+	size = r.size;
+	chunkSize = r.chunkSize;
+	r.data = nullptr;
+	r.size = r.chunkSize = 0;
+}
+
+chunk_vector_base::chunk_vector_base(const chunk_vector_base& r)
+{
+	if (r.chunkSize > 0)
+		data = (void**)gd.malloc(alloc_type::fastbin);
+	forloop(i, 0, r.chunkSize)
+	{
+		void* newChunk = gd.malloc(alloc_type::fastbin);
+		memcpy(newChunk, r.data[i], kFastBinSize);
+		data[i] = newChunk;
+	}
+	size = r.size;
+	chunkSize = r.chunkSize;
 }
 
 chunk_vector_base::~chunk_vector_base()

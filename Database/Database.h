@@ -70,13 +70,17 @@ namespace core
 
 			void grow();
 			void shrink(size_t n);
+
+			chunk_vector_base() = default;
+			chunk_vector_base(chunk_vector_base&& r);
+			chunk_vector_base(const chunk_vector_base& r);
 			~chunk_vector_base();
 		};
 
 		template<class T>
 		struct chunk_vector : chunk_vector_base
 		{
-			chunk_vector() = default;
+			using chunk_vector_base::chunk_vector_base;
 			static T* get(void** data, size_t i)
 			{
 				return &((T**)data)[i / kChunkCapacity][i % kChunkCapacity];
@@ -99,7 +103,7 @@ namespace core
 
 				const T& operator*()
 				{
-					return get(c, i);
+					return *get(c, i);
 				}
 				const T* operator->()
 				{
@@ -109,7 +113,6 @@ namespace core
 			struct iterator : const_iterator
 			{
 				using const_iterator::operator++;
-				using const_iterator::operator==;
 				using const_iterator::operator!=;
 				T& operator*()
 				{
@@ -199,12 +202,6 @@ namespace core
 			mask matched;
 		};
 
-		struct chunk_slice_pair
-		{
-			chunk_slice old;
-			chunk_slice casted;
-		};
-
 		struct type_diff
 		{
 			entity_type extend = EmptyType;
@@ -286,8 +283,8 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			generator<chunk_slice_pair> cast_slice_iter(chunk_slice, archetype*);
-			generator<chunk_slice_pair> cast_iter(chunk_slice, archetype* g);
+			chunk_vector<chunk_slice> cast_slice_iter(chunk_slice, archetype*);
+			chunk_vector<chunk_slice> cast_iter(chunk_slice, archetype* g);
 
 			//serialize behavior
 			static void serialize_archetype(archetype* g, i_serializer* s);
@@ -297,8 +294,8 @@ namespace core
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
-			generator<chunk_slice> instantiate_prefab(entity* src, uint32_t size, uint32_t count);
-			generator<chunk_slice> instantiate_single(entity src, uint32_t count);
+			chunk_vector<chunk_slice> instantiate_prefab(entity* src, uint32_t size, uint32_t count);
+			chunk_vector<chunk_slice> instantiate_single(entity src, uint32_t count);
 			void serialize_single(i_serializer* s, entity);
 			chunk_slice deserialize_single(i_serializer* s, i_patcher* patcher);
 			void destroy_single(chunk_slice);
@@ -314,20 +311,19 @@ namespace core
 			world(const world& other/*todo: ,archetype_filter*/);
 			~world();
 			//create
-			generator<chunk_slice> allocate_iter(const entity_type& type, uint32_t count = 1);
-			generator<chunk_slice> instantiate_iter(entity src, uint32_t count = 1);
+			chunk_vector<chunk_slice> allocate_iter(const entity_type& type, uint32_t count = 1);
+			chunk_vector<chunk_slice> instantiate_iter(entity src, uint32_t count = 1);
 
 			//batched stuctural change
 			void destroy(chunk_slice);
 			/* note: return null if trigger chunk move or chunk clean up */
-			generator<chunk_slice_pair> cast_iter(chunk_slice, type_diff);
-			generator<chunk_slice_pair> cast_iter(chunk_slice, const entity_type& type);
+			chunk_vector<chunk_slice> cast_iter(chunk_slice, type_diff);
+			chunk_vector<chunk_slice> cast_iter(chunk_slice, const entity_type& type);
 
 			//query iterators
-			generator<chunk_slice> batch_iter(entity* ents, uint32_t count);
-			generator<matched_archetype> query_iter(const archetype_filter& filter);
-			generator<chunk*> query_iter(archetype*, const chunk_filter& filter);
-			generator<uint32_t> query_iter(chunk*, const mask& filter = mask{ (uint32_t)-1 });
+			chunk_vector<chunk_slice> batch_iter(entity* ents, uint32_t count);
+			chunk_vector<matched_archetype> query_iter(const archetype_filter& filter);
+			chunk_vector<chunk*> query_iter(archetype*, const chunk_filter& filter);
 
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;
