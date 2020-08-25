@@ -283,8 +283,8 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			chunk_vector<chunk_slice> cast_slice_iter(chunk_slice, archetype*);
-			chunk_vector<chunk_slice> cast_iter(chunk_slice, archetype* g);
+			chunk_vector<chunk_slice> cast_slice(chunk_slice, archetype*);
+			chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//serialize behavior
 			static void serialize_archetype(archetype* g, i_serializer* s);
@@ -311,19 +311,19 @@ namespace core
 			world(const world& other/*todo: ,archetype_filter*/);
 			~world();
 			//create
-			chunk_vector<chunk_slice> allocate_iter(const entity_type& type, uint32_t count = 1);
-			chunk_vector<chunk_slice> instantiate_iter(entity src, uint32_t count = 1);
+			chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
+			chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
 
 			//batched stuctural change
 			void destroy(chunk_slice);
 			/* note: return null if trigger chunk move or chunk clean up */
-			chunk_vector<chunk_slice> cast_iter(chunk_slice, type_diff);
-			chunk_vector<chunk_slice> cast_iter(chunk_slice, const entity_type& type);
+			chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
+			chunk_vector<chunk_slice> cast(chunk_slice, const entity_type& type);
 
 			//query iterators
-			chunk_vector<chunk_slice> batch_iter(entity* ents, uint32_t count);
-			chunk_vector<matched_archetype> query_iter(const archetype_filter& filter);
-			chunk_vector<chunk*> query_iter(archetype*, const chunk_filter& filter);
+			chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
+			chunk_vector<matched_archetype> query(const archetype_filter& filter);
+			chunk_vector<chunk*> query(archetype*, const chunk_filter& filter);
 
 			//update
 			void* get_owned_rw(entity, index_t type) const noexcept;

@@ -1472,7 +1472,7 @@ void world::destroy_single(chunk_slice s)
 	}
 	else
 	{
-		cast_slice_iter(s, g);
+		cast_slice(s, g);
 	}
 }
 
@@ -1612,7 +1612,7 @@ void world::free_slice(chunk_slice s)
 	resize_chunk(s.c, s.c->count - s.count);
 }
 
-chunk_vector<chunk_slice> world::cast_slice_iter(chunk_slice src, archetype* g)
+chunk_vector<chunk_slice> world::cast_slice(chunk_slice src, archetype* g)
 {
 	chunk_vector<chunk_slice> result;
 	archetype* srcG = src.c->type;
@@ -1654,7 +1654,7 @@ bool static_castable(const entity_type& typeA, const entity_type& typeB)
 		return false;
 }
 
-chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, archetype* g)
+chunk_vector<chunk_slice> world::cast(chunk_slice s, archetype* g)
 {
 	if (g == nullptr)
 	{
@@ -1674,7 +1674,7 @@ chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, archetype* g)
 	}
 	else
 	{
-		return cast_slice_iter(s, g);
+		return cast_slice(s, g);
 	}
 }
 
@@ -1728,7 +1728,7 @@ world::~world()
 	free(typeTimestamps);
 }
 
-chunk_vector<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t count)
+chunk_vector<chunk_slice> world::allocate(const entity_type& type, uint32_t count)
 {
 	chunk_vector<chunk_slice> result;
 	archetype* g = get_archetype(type);
@@ -1745,7 +1745,7 @@ chunk_vector<chunk_slice> world::allocate_iter(const entity_type& type, uint32_t
 	return result;
 }
 
-chunk_vector<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
+chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -1764,7 +1764,7 @@ chunk_vector<chunk_slice> world::instantiate_iter(entity src, uint32_t count)
 	}
 }
 
-chunk_vector<chunk_slice> world::batch_iter(entity* es, uint32_t count)
+chunk_vector<chunk_slice> world::batch(entity* es, uint32_t count)
 {
 	chunk_vector<chunk_slice> result;
 	uint32_t i = 0;
@@ -1837,16 +1837,16 @@ void world::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
-chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, type_diff diff)
+chunk_vector<chunk_slice> world::cast(chunk_slice s, type_diff diff)
 {
 	archetype* g = get_casted(s.c->type, diff);
-	return cast_iter(s, g);
+	return cast(s, g);
 }
 
-chunk_vector<chunk_slice> world::cast_iter(chunk_slice s, const entity_type& type)
+chunk_vector<chunk_slice> world::cast(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_archetype(type);
-	return cast_iter(s, g);
+	return cast(s, g);
 }
 
 const void* world::get_component_ro(entity e, index_t type) const noexcept
@@ -2448,7 +2448,7 @@ void world::entities::clone(entities* dst)
 	dst->free = free;
 }
 
-chunk_vector<matched_archetype> world::query_iter(const archetype_filter& filter)
+chunk_vector<matched_archetype> world::query(const archetype_filter& filter)
 {
 	chunk_vector<matched_archetype> result;
 	auto& cache = get_query_cache(filter);
@@ -2457,7 +2457,7 @@ chunk_vector<matched_archetype> world::query_iter(const archetype_filter& filter
 	return result;
 }
 
-chunk_vector<chunk*> world::query_iter(archetype* type , const chunk_filter& filter)
+chunk_vector<chunk*> world::query(archetype* type , const chunk_filter& filter)
 {
 	chunk_vector<chunk*> result;
 	auto iter = type->firstChunk;
