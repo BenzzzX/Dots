@@ -64,32 +64,90 @@ namespace core
 
 		struct chunk_vector_base
 		{
-			struct chunk
-			{
-				chunk* next;
-			};
-
-			size_t chunkCapacity;
-			size_t chunkSize;
-			size_t size;
+			size_t chunkSize = 0;
+			size_t size = 0;
+			void** data = nullptr;
 
 			void grow();
-			void shrink();
+			void shrink(size_t n);
+			~chunk_vector_base();
 		};
 
 		template<class T>
-		struct chunk_vector
+		struct chunk_vector : chunk_vector_base
 		{
-			struct iterator
+			chunk_vector() = default;
+			static T* get(void** data, size_t i)
 			{
+				return &((T**)data)[i / kChunkCapacity][i % kChunkCapacity];
+			}
+			static constexpr size_t kChunkCapacity = kFastBinSize / sizeof(T);
 
+			struct const_iterator
+			{
+				size_t i;
+				void** c;
+				
+				const_iterator& operator++()
+				{
+					++i;
+					return *this;
+				}
+				void operator++(int) { ++*this; }
+				bool operator==(const const_iterator& right) const { return i == right.i && c == right.c; }
+				bool operator!=(const const_iterator& right) const { return !(*this == right); };
+
+				const T& operator*()
+				{
+					return get(c, i);
+				}
+				const T* operator->()
+				{
+					return &**this;
+				}
+			};
+			struct iterator : const_iterator
+			{
+				using const_iterator::operator++;
+				using const_iterator::operator==;
+				using const_iterator::operator!=;
+				T& operator*()
+				{
+					return const_cast<T&>(const_iterator::operator*());
+				}
+				T* operator->()
+				{
+					return &**this;
+				}
 			};
 
-			iterator begin();
-			iterator end();
-			template<class... T>
-			void push(T&&...);
-			void pop();
+			iterator begin() { return iterator{ 0, data }; }
+			iterator end() { return iterator{ size, data }; }
+
+			const_iterator begin() const { return const_iterator{ 0, data }; }
+			const_iterator end() const { return const_iterator{ size, data }; }
+			template<class... Ts>
+			void push(Ts&&... args)
+			{
+				if (size >= chunkSize * kChunkCapacity)
+					grow();
+				new(get(data, size)) T{ std::forward<Ts>(args)... };
+				++size;
+			}
+			void pop() { --size; shrink(); }
+			T& last() { return *get(data, size - 1); }
+			const T& last() const { return *get(data, size - 1); }
+			void shrink()
+			{
+				chunk_vector_base::shrink(chunkSize - (size + kChunkCapacity - 1) / kChunkCapacity);
+			}
+			void reserve(size_t n)
+			{
+				while (n < chunkSize * kChunkCapacity)
+					grow();
+			}
+			T& operator[](size_t i) { return *get(data, i); }
+			const T& operator[](size_t i) const { return *get(data, i); }
 		};
 
 		struct archetype
@@ -168,23 +226,8 @@ namespace core
 					uint32_t i;
 					uint32_t v;
 				};
-				constexpr static size_t kDataPerChunk = kFastBinSize / sizeof(data);
-				using data_chunk = data[kDataPerChunk];
-				struct datas_t
-				{
-					data_chunk* chunks[kFastBinSize / sizeof(void*)];
-					data& operator[](uint32_t i)
-					{
-						return (*chunks[i / kDataPerChunk])[i % kDataPerChunk];
-					}
-					const data& operator[](uint32_t i) const
-					{
-						return (*chunks[i / kDataPerChunk])[i % kDataPerChunk];
-					}
-				} datas;
+				chunk_vector<data> datas;
 				uint32_t free = 0;
-				uint32_t size = 0;
-				uint32_t chunkCount = 0;
 				void clear();
 				void new_entities(chunk_slice slice);
 				entity new_prefab();
@@ -381,5 +424,5 @@ namespace core
 			uint32_t get_timestamp(index_t type) noexcept;
 		};
 
-	};
+};
 }

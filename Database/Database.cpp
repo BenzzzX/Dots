@@ -2101,7 +2101,7 @@ entity world::deserialize(i_serializer* s, i_patcher* patcher)
 void world::move_context(world& src)
 {
 	auto& sents = src.ents;
-	uint32_t count = sents.size;
+	uint32_t count = sents.datas.size;
 	adaptive_object _ao_patch(sizeof(entity) * count);
 	entity* patch = (entity*)_ao_patch.self;
 	forloop(i, 0, count)
@@ -2164,7 +2164,7 @@ struct Data
 
 void world::serialize(i_serializer* s)
 {
-	s->stream(&ents.size, sizeof(uint32_t));
+	s->stream(&ents.datas.size, sizeof(uint32_t));
 
 	for (auto& pair : archetypes)
 	{
@@ -2184,15 +2184,10 @@ void world::deserialize(i_serializer* s)
 {
 	clear();
 
-	s->stream(&ents.size, sizeof(uint32_t));
+	s->stream(&ents.datas.size, sizeof(uint32_t));
 
 	//reallocate entity data buffer
-	while (ents.size > ents.chunkCount * ents.kDataPerChunk)
-	{
-		auto newChunk = (entities::data_chunk*)gd.malloc(alloc_type::fastbin);
-		memset(newChunk, 0, kFastBinSize);
-		ents.datas.chunks[ents.chunkCount++] = newChunk;
-	}
+	ents.datas.reserve(ents.datas.size);
 
 	//todo: multithread?
 	for (archetype* g = deserialize_archetype(s, nullptr); g != nullptr; g = deserialize_archetype(s, nullptr))
@@ -2212,7 +2207,7 @@ void world::deserialize(i_serializer* s)
 		}
 
 	//reinitialize entity free list
-	forloop(i, 0, ents.size)
+	forloop(i, 0, ents.datas.size)
 	{
 		auto& data = ents.datas[i];
 		if (data.c == nullptr)
@@ -2367,15 +2362,13 @@ bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 
 bool world::exist(entity e) const noexcept
 {
-	return e.id < ents.size && e.version == ents.datas[e.id].v;
+	return e.id < ents.datas.size && e.version == ents.datas[e.id].v;
 }
 
 void world::entities::clear()
 {
-	size = free = 0;
-
-	while (chunkCount != 0)
-		gd.free(alloc_type::fastbin, datas.chunks[--chunkCount]);
+	free = 0;
+	datas.~chunk_vector<data>();
 }
 
 void world::entities::new_entities(chunk_slice s)
@@ -2392,14 +2385,8 @@ void world::entities::new_entities(chunk_slice s)
 
 entity world::entities::new_prefab()
 {
-	uint32_t id;
-	if (size == chunkCount * kDataPerChunk)
-	{
-		data_chunk* newChunk = (data_chunk*)gd.malloc(alloc_type::fastbin);
-		memset(newChunk, 0, kFastBinSize);
-		datas.chunks[chunkCount++] = newChunk;
-	}
-	id = size++;
+	uint32_t id = (uint32_t)datas.size;
+	datas.push();
 	return { id, datas[id].v };
 }
 
@@ -2429,10 +2416,8 @@ void world::entities::free_entities(chunk_slice s)
 	freeData.nextFree = free;
 	free = toFree[0].id;
 	//shrink
-	while (size > 0 && datas[--size].c == nullptr);
-	size += (datas[size].c != nullptr);
-	if (chunkCount > 1 && size < (chunkCount - 1) * kDataPerChunk - 1)
-		gd.free(alloc_type::fastbin, datas.chunks[--chunkCount]);
+	while (datas.size > 0 && datas.last().c == nullptr)
+		datas.pop();
 }
 
 void world::entities::move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex)
@@ -2458,12 +2443,16 @@ void world::entities::fill_entities(chunk_slice dst, uint32_t srcIndex)
 void world::entities::clone(entities* dst)
 {
 	memcpy(dst, this, sizeof(entities));
-	forloop(i, 0, chunkCount)
+	if(datas.chunkSize > 0)
+		dst->datas.data = (void**)gd.malloc(alloc_type::fastbin);
+	forloop(i, 0, datas.chunkSize)
 	{
-		data_chunk* newChunk = (data_chunk*)gd.malloc(alloc_type::fastbin);
-		memcpy(newChunk, datas.chunks[i], kFastBinSize);
-		dst->datas.chunks[i] = newChunk;
+		void* newChunk = gd.malloc(alloc_type::fastbin);
+		memcpy(newChunk, datas.data[i], kFastBinSize);
+		dst->datas.data[i] = newChunk;
 	}
+	dst->datas.size = datas.size;
+	dst->datas.chunkSize = datas.chunkSize;
 }
 
 generator<matched_archetype> world::query_iter(const archetype_filter& filter)
@@ -2552,7 +2541,30 @@ char* gallocator::allocate(const size_t size)
 	return (char*)result;
 }
 
-void core::database::gallocator::deallocate(char* const ptr, const size_t size)
+void gallocator::deallocate(char* const ptr, const size_t size)
 {
 	gd.stack_free(ptr, size);
+}
+
+void chunk_vector_base::grow()
+{
+	if (data == nullptr)
+		data = (void**)gd.malloc(alloc_type::fastbin);
+	data[chunkSize++] = gd.malloc(alloc_type::fastbin);
+}
+
+void chunk_vector_base::shrink(size_t n)
+{
+	forloop(i, 0, n)
+		gd.free(alloc_type::fastbin, data[--chunkSize]);
+	if (data && chunkSize == 0)
+	{
+		gd.free(alloc_type::fastbin, data);
+		data = nullptr;
+	}
+}
+
+chunk_vector_base::~chunk_vector_base()
+{
+	shrink(chunkSize);
 }
