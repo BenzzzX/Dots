@@ -39,6 +39,107 @@ namespace core
 			constexpr operator index_t() const { return value; }
 		};
 
+		//system overhead
+		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
+		static constexpr size_t kSmallBinThreshold = 8;
+		static constexpr size_t kSmallBinSize = 1024 - 256;
+		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
+
+		static constexpr size_t kFastBinCapacity = 800;
+		static constexpr size_t kSmallBinCapacity = 200;
+		static constexpr size_t kLargeBinCapacity = 80;
+
+		struct chunk_vector_base
+		{
+			size_t chunkSize = 0;
+			size_t size = 0;
+			void** data = nullptr;
+
+			void grow();
+			void shrink(size_t n);
+
+			chunk_vector_base() = default;
+			chunk_vector_base(chunk_vector_base&& r) noexcept;
+			chunk_vector_base(const chunk_vector_base& r) noexcept;
+			~chunk_vector_base();
+		};
+
+		template<class T>
+		struct chunk_vector : chunk_vector_base
+		{
+			using chunk_vector_base::chunk_vector_base;
+			static T* get(void** data, size_t i)
+			{
+				return &((T**)data)[i / kChunkCapacity][i % kChunkCapacity];
+			}
+			static constexpr size_t kChunkCapacity = kFastBinSize / sizeof(T);
+
+			struct const_iterator
+			{
+				size_t i;
+				void** c;
+
+				const_iterator& operator++() noexcept
+				{
+					++i;
+					return *this;
+				}
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const const_iterator& right) const noexcept { return i == right.i && c == right.c; }
+				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
+
+				const T& operator*()
+				{
+					return *get(c, i);
+				}
+				const T* operator->()
+				{
+					return &**this;
+				}
+			};
+			struct iterator : const_iterator
+			{
+				using const_iterator::operator++;
+				using const_iterator::operator!=;
+				T& operator*()
+				{
+					return const_cast<T&>(const_iterator::operator*());
+				}
+				T* operator->()
+				{
+					return &**this;
+				}
+			};
+
+			iterator begin() noexcept { return iterator{ 0, data }; }
+			iterator end() noexcept { return iterator{ size, data }; }
+
+			const_iterator begin() const noexcept { return const_iterator{ 0, data }; }
+			const_iterator end() const noexcept { return const_iterator{ size, data }; }
+			template<class... Ts>
+			void push(Ts&&... args)
+			{
+				if (size >= chunkSize * kChunkCapacity)
+					grow();
+				new(get(data, size)) T{ std::forward<Ts>(args)... };
+				++size;
+			}
+			void pop() { --size; shrink(); }
+			T& last() { return *get(data, size - 1); }
+			const T& last() const { return *get(data, size - 1); }
+			void shrink() noexcept
+			{
+				chunk_vector_base::shrink(chunkSize - (size + kChunkCapacity - 1) / kChunkCapacity);
+			}
+			void reserve(size_t n)
+			{
+				while (n < chunkSize * kChunkCapacity)
+					grow();
+			}
+			T& operator[](size_t i) noexcept { return *get(data, i); }
+			const T& operator[](size_t i) const noexcept { return *get(data, i); }
+		};
+
 		template<class... Ts>
 		struct soa
 		{
@@ -310,4 +411,3 @@ namespace core
 	}
 	
 }
-#undef stack_array

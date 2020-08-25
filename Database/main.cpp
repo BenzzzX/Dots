@@ -1,5 +1,3 @@
-
-#include "Profiler.h"
 #include <iostream>
 #include <assert.h>
 #include "main.h"

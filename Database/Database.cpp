@@ -2511,17 +2511,6 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 	return true;
 }
 
-char* gallocator::allocate(const size_t size)
-{
-	auto result = gd.stack_alloc(size, sizeof(void*) * 2);
-	return (char*)result;
-}
-
-void gallocator::deallocate(char* const ptr, const size_t size)
-{
-	gd.stack_free(ptr, size);
-}
-
 void chunk_vector_base::grow()
 {
 	if (data == nullptr)
@@ -2540,7 +2529,7 @@ void chunk_vector_base::shrink(size_t n)
 	}
 }
 
-chunk_vector_base::chunk_vector_base(chunk_vector_base&& r)
+chunk_vector_base::chunk_vector_base(chunk_vector_base&& r) noexcept
 {
 	data = r.data;
 	size = r.size;
@@ -2549,7 +2538,7 @@ chunk_vector_base::chunk_vector_base(chunk_vector_base&& r)
 	r.size = r.chunkSize = 0;
 }
 
-chunk_vector_base::chunk_vector_base(const chunk_vector_base& r)
+chunk_vector_base::chunk_vector_base(const chunk_vector_base& r) noexcept
 {
 	if (r.chunkSize > 0)
 		data = (void**)gd.malloc(alloc_type::fastbin);

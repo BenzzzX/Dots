@@ -7,44 +7,13 @@
 #include <functional>
 #include "Set.h"
 #include "Type.h"
-#include <experimental/generator>
+
 namespace core
 {
 	namespace database
 	{
 		struct chunk;
 		class world;
-
-		struct gallocator : public std::allocator<char>
-		{
-			using al = std::allocator<char>;
-			using al::size_type;
-			using al::value_type;
-			using al::is_always_equal;
-			using al::difference_type;
-			using al::propagate_on_container_move_assignment;
-
-			template <class U>
-			struct rebind {
-				typedef gallocator other;
-			};
-
-			[[nodiscard]] __declspec(allocator) char* allocate(_CRT_GUARDOVERFLOW const size_t count);
-			void deallocate(char* const ptr, const size_t count);
-		};
-
-		template<class T>
-		using generator = std::experimental::generator<T, gallocator>;
-
-		//system overhead
-		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
-		static constexpr size_t kSmallBinThreshold = 8;
-		static constexpr size_t kSmallBinSize = 1024 - 256;
-		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
-
-		static constexpr size_t kFastBinCapacity = 800;
-		static constexpr size_t kSmallBinCapacity = 200;
-		static constexpr size_t kLargeBinCapacity = 80;
 
 		enum class alloc_type : uint8_t
 		{
@@ -60,97 +29,6 @@ namespace core
 			chunk_slice(chunk* c);
 			chunk_slice(chunk* c, uint32_t s, uint32_t count)
 				: c(c), start(s), count(count) {}
-		};
-
-		struct chunk_vector_base
-		{
-			size_t chunkSize = 0;
-			size_t size = 0;
-			void** data = nullptr;
-
-			void grow();
-			void shrink(size_t n);
-
-			chunk_vector_base() = default;
-			chunk_vector_base(chunk_vector_base&& r);
-			chunk_vector_base(const chunk_vector_base& r);
-			~chunk_vector_base();
-		};
-
-		template<class T>
-		struct chunk_vector : chunk_vector_base
-		{
-			using chunk_vector_base::chunk_vector_base;
-			static T* get(void** data, size_t i)
-			{
-				return &((T**)data)[i / kChunkCapacity][i % kChunkCapacity];
-			}
-			static constexpr size_t kChunkCapacity = kFastBinSize / sizeof(T);
-
-			struct const_iterator
-			{
-				size_t i;
-				void** c;
-				
-				const_iterator& operator++()
-				{
-					++i;
-					return *this;
-				}
-				void operator++(int) { ++*this; }
-				bool operator==(const const_iterator& right) const { return i == right.i && c == right.c; }
-				bool operator!=(const const_iterator& right) const { return !(*this == right); };
-
-				const T& operator*()
-				{
-					return *get(c, i);
-				}
-				const T* operator->()
-				{
-					return &**this;
-				}
-			};
-			struct iterator : const_iterator
-			{
-				using const_iterator::operator++;
-				using const_iterator::operator!=;
-				T& operator*()
-				{
-					return const_cast<T&>(const_iterator::operator*());
-				}
-				T* operator->()
-				{
-					return &**this;
-				}
-			};
-
-			iterator begin() { return iterator{ 0, data }; }
-			iterator end() { return iterator{ size, data }; }
-
-			const_iterator begin() const { return const_iterator{ 0, data }; }
-			const_iterator end() const { return const_iterator{ size, data }; }
-			template<class... Ts>
-			void push(Ts&&... args)
-			{
-				if (size >= chunkSize * kChunkCapacity)
-					grow();
-				new(get(data, size)) T{ std::forward<Ts>(args)... };
-				++size;
-			}
-			void pop() { --size; shrink(); }
-			T& last() { return *get(data, size - 1); }
-			const T& last() const { return *get(data, size - 1); }
-			void shrink()
-			{
-				chunk_vector_base::shrink(chunkSize - (size + kChunkCapacity - 1) / kChunkCapacity);
-			}
-			void reserve(size_t n)
-			{
-				while (n < chunkSize * kChunkCapacity)
-					grow();
-			}
-			T& operator[](size_t i) { return *get(data, i); }
-			const T& operator[](size_t i) const { return *get(data, i); }
 		};
 
 		struct archetype
@@ -310,11 +188,14 @@ namespace core
 			world(index_t typeCapacity = 4096u);
 			world(const world& other/*todo: ,archetype_filter*/);
 			~world();
+			
+
+			/*** per chunk slice ***/
 			//create
 			chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
 			chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
 
-			//batched stuctural change
+			//stuctural change
 			void destroy(chunk_slice);
 			/* note: return null if trigger chunk move or chunk clean up */
 			chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
@@ -325,12 +206,9 @@ namespace core
 			chunk_vector<matched_archetype> query(const archetype_filter& filter);
 			chunk_vector<chunk*> query(archetype*, const chunk_filter& filter);
 
-			//update
-			void* get_owned_rw(entity, index_t type) const noexcept;
-			void enable_component(entity, const typeset& type) const noexcept;
-			void disable_component(entity, const typeset& type) const noexcept;
 
-			//per entity query
+			/*** per entity ***/
+			//query
 			const void* get_component_ro(entity, index_t type) const noexcept;
 			const void* get_owned_ro(entity, index_t type) const noexcept;
 			const void* get_shared_ro(entity, index_t type) const noexcept;
@@ -341,41 +219,43 @@ namespace core
 			bool is_component_enabled(entity, const typeset& type) const noexcept;
 			bool exist(entity) const noexcept;
 			archetype* get_archetype(entity) const noexcept;
-			/* note: only owned */
-			entity_type get_type(entity) const noexcept; 
-			//per chunk or archetype
+			//update
+			void* get_owned_rw(entity, index_t type) const noexcept;
+			void enable_component(entity, const typeset& type) const noexcept;
+			void disable_component(entity, const typeset& type) const noexcept;
+			entity_type get_type(entity) const noexcept; /* note: only owned */
+			//entity/group serialize
+			void gather_reference(entity, std::pmr::vector<entity>& entities);
+			void serialize(i_serializer* s, entity);
+			entity deserialize(i_serializer* s, i_patcher* patcher);
+
+			/*** per chunk or archetype ***/
+			//query
 			const void* get_component_ro(chunk* c, index_t type) const noexcept;
 			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw(chunk* c, index_t type) noexcept;
 			const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
 			void* get_owned_rw_local(chunk* c, index_t type) noexcept;
+			const entity* get_entities(chunk* c) noexcept;
+			uint16_t get_size(chunk* c, index_t type) const noexcept;
 			const void* get_shared_ro(archetype *g, index_t type) const;
 			bool share_component(archetype* g, const typeset& type) const;
 			bool own_component(archetype* g, const typeset& type) const;
 			bool has_component(archetype* g, const typeset& type) const;
-			const entity* get_entities(chunk* c) noexcept;
-			uint16_t get_size(chunk* c, index_t type) const noexcept;
 
-			//entity/group serialize
-			void gather_reference(entity, std::pmr::vector<entity>& entities);
-			void serialize(i_serializer* s, entity);
-			entity deserialize(i_serializer* s, i_patcher* patcher);
 
-			//multi world
+			/*** per world ***/
 			void move_context(world& src);
 			void patch_chunk(chunk* c, i_patcher* patcher);
-
-			//world serialize
+			//serialize
 			void serialize(i_serializer* s);
 			void deserialize(i_serializer* s);
-
 			//clear
 			void clear();
 			void gc_meta();
 			void merge_chunks();
-
-			//timestamp
+			//query
 			uint32_t timestamp;
 		};
 

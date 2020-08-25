@@ -151,7 +151,6 @@
   <ItemGroup>
     <ClInclude Include="Database.h" />
     <ClInclude Include="main.h" />
-    <ClInclude Include="Profiler.h" />
     <ClInclude Include="Set.h" />
     <ClInclude Include="Type.h" />
   </ItemGroup>
