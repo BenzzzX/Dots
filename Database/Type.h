@@ -260,9 +260,9 @@ namespace core
 				return data() + (size -= length);
 			}
 
-			void grow()
+			void grow(uint16_t hint = 0)
 			{
-				uint16_t newCap = capacity * 2;
+				uint16_t newCap = (uint16_t)std::max((int)hint, capacity * 2);
 				char* newBuffer = (char*)buffer_malloc(newCap);
 				memcpy(newBuffer, data(), size);
 				if (d != nullptr)
@@ -271,10 +271,134 @@ namespace core
 				capacity = newCap;
 			}
 
+			void shrink(uint16_t inlineSize)
+			{
+				if (size < inlineSize)
+				{
+					buffer_free(d);
+					d = nullptr;
+					return;
+				}
+				uint16_t newCap = capacity;
+				while (newCap > size * 2)
+					newCap /= 2;
+				if (newCap != capacity)
+				{
+					char* newBuffer = (char*)buffer_malloc(newCap);
+					memcpy(newBuffer, data(), size);
+					if (d != nullptr)
+						buffer_free(d);
+					d = newBuffer;
+					capacity = newCap;
+					return;
+				}
+			}
+
 			~buffer()
 			{
 				if (d != nullptr)
 					buffer_free(d);
+			}
+		};
+		template<class T>
+		class buffer_t
+		{
+			buffer* data;
+
+		public:
+			buffer_t(void* inData)
+				:data((buffer*)inData) {}
+			T& operator[](int i)
+			{
+				return ((T*)data->data())[i];
+			}
+			const T& operator[](int i) const
+			{
+				return ((const T*)data->data())[i];
+			}
+			uint16_t size() const
+			{
+				return data->size / sizeof(T);
+			}
+			struct const_iterator
+			{
+				size_t i;
+				T* data;
+
+				const_iterator& operator++() noexcept
+				{
+					++i;
+					return *this;
+				}
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const const_iterator& right) const noexcept { return i == right.i && data == right.data; }
+				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
+
+				const T& operator*()
+				{
+					return data[i];
+				}
+				const T* operator->()
+				{
+					return &**this;
+				}
+			};
+			struct iterator : const_iterator
+			{
+				using const_iterator::operator++;
+				using const_iterator::operator!=;
+				T& operator*()
+				{
+					return const_cast<T&>(const_iterator::operator*());
+				}
+				T* operator->()
+				{
+					return &**this;
+				}
+			};
+			iterator begin() noexcept
+			{
+				return iterator{ 0, (T*)data->data() };
+			}
+			iterator end() noexcept
+			{
+				return iterator{ data->size / sizeof(T), (T*)data->data() };
+			}
+
+			const_iterator begin() const noexcept
+			{
+				return const_iterator{ 0, (T*)data->data() };
+			}
+			const_iterator end() const noexcept
+			{
+				return const_iterator{ size(), (T*)data->data() };
+			}
+
+			template<class P>
+			void push(P&& p)
+			{
+				data->push(&p, sizeof(T));
+			}
+			void pop()
+			{
+				data->pop(sizeof(T));
+			}
+			T& last()
+			{
+				((T*)data->data())[size()];
+			}
+			const T& last() const
+			{
+				((const T*)data->data())[size()];
+			}
+			void shrink(uint16_t inlineSize) noexcept
+			{
+				data->shrink(inlineSize);
+			}
+			void reserve(uint16_t newSize) noexcept
+			{
+				if (newSize * sizeof(T) > data->capacity)
+					data->grow(newSize * sizeof(T));
 			}
 		};
 

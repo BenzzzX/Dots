@@ -1868,7 +1868,8 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
-	if (id == InvalidIndex) return nullptr;
+	if (id == InvalidIndex) 
+		return nullptr;
 	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
 
