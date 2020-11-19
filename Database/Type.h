@@ -157,13 +157,13 @@ namespace core
 
 		extern uint32_t metaTimestamp;
 
-		struct i_serializer
+		struct serializer_i
 		{
 			virtual void stream(const void* data, uint32_t bytes) = 0;
 			virtual bool is_serialize() = 0;
 		};
 
-		struct i_patcher
+		struct patcher_i
 		{
 			virtual entity patch(entity e) = 0;
 			virtual void move() {}
@@ -179,7 +179,7 @@ namespace core
 
 		struct component_vtable
 		{
-			void(*patch)(char* data, i_patcher* stream) = nullptr;
+			void(*patch)(char* data, patcher_i* stream) = nullptr;
 		};
 
 		enum track_state : uint8_t

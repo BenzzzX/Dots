@@ -166,17 +166,17 @@ namespace core
 			chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//serialize behavior
-			static void serialize_archetype(archetype* g, i_serializer* s);
-			archetype* deserialize_archetype(i_serializer* s, i_patcher* patcher);
-			std::optional<chunk_slice> deserialize_slice(archetype* g, i_serializer* s);
+			static void serialize_archetype(archetype* g, serializer_i* s);
+			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
+			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
 
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
 			chunk_vector<chunk_slice> instantiate_prefab(entity* src, uint32_t size, uint32_t count);
 			chunk_vector<chunk_slice> instantiate_single(entity src, uint32_t count);
-			void serialize_single(i_serializer* s, entity);
-			chunk_slice deserialize_single(i_serializer* s, i_patcher* patcher);
+			void serialize_single(serializer_i* s, entity);
+			chunk_slice deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
 
 			//ownership utils
@@ -227,8 +227,8 @@ namespace core
 			entity_type get_type(entity) const noexcept; /* note: only owned */
 			//entity/group serialize
 			chunk_vector<entity> gather_reference(entity);
-			void serialize(i_serializer* s, entity);
-			entity deserialize(i_serializer* s, i_patcher* patcher);
+			void serialize(serializer_i* s, entity);
+			entity deserialize(serializer_i* s, patcher_i* patcher);
 
 			/*** per chunk or archetype ***/
 			//query
@@ -248,10 +248,10 @@ namespace core
 
 			/*** per world ***/
 			void move_context(world& src);
-			void patch_chunk(chunk* c, i_patcher* patcher);
+			void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
-			void serialize(i_serializer* s);
-			void deserialize(i_serializer* s);
+			void serialize(serializer_i* s);
+			void deserialize(serializer_i* s);
 			//clear
 			void clear();
 			void gc_meta();
@@ -283,8 +283,8 @@ namespace core
 			static void move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept;
 			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct = true) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
-			static void patch(chunk_slice s, i_patcher* patcher) noexcept;
-			static void serialize(chunk_slice s, i_serializer *stream);
+			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
+			static void serialize(chunk_slice s, serializer_i *stream);
 			size_t get_size();
 			void link(chunk*) noexcept;
 			void unlink() noexcept;

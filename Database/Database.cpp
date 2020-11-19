@@ -433,7 +433,7 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 }
 
 //todo: will compiler inline patcher?
-void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
+void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 {
 	archetype* g = s.c->type;
 	uint32_t* offsets = g->offsets(s.c->ct);
@@ -516,7 +516,7 @@ void chunk::patch(chunk_slice s, i_patcher* patcher) noexcept
 }
 
 //todo: handle transient data?
-void chunk::serialize(chunk_slice s, i_serializer* stream)
+void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
 	archetype* type = s.c->type;
 	uint32_t* offsets = type->offsets(s.c->ct);
@@ -1251,7 +1251,7 @@ void world::release_reference(archetype* g)
 	//todo: does this make sense?
 }
 
-void world::serialize_archetype(archetype* g, i_serializer* s)
+void world::serialize_archetype(archetype* g, serializer_i* s)
 {
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
@@ -1262,7 +1262,7 @@ void world::serialize_archetype(archetype* g, i_serializer* s)
 	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
 
-archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
+archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 {
 	tsize_t tlength;
 	s->stream(&tlength, sizeof(tsize_t));
@@ -1289,7 +1289,7 @@ archetype* world::deserialize_archetype(i_serializer* s, i_patcher* patcher)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> world::deserialize_slice(archetype* g, i_serializer* s)
+std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* s)
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
@@ -1312,7 +1312,7 @@ std::optional<chunk_slice> world::deserialize_slice(archetype* g, i_serializer* 
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
 	//TODO: should we patch meta?
-	struct patcher final : i_patcher
+	struct patcher final : patcher_i
 	{
 		entity* source;
 		uint32_t count;
@@ -1338,7 +1338,7 @@ void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 
 void world::prefab_to_group(entity* members, uint32_t size)
 {
-	struct patcher final : i_patcher
+	struct patcher final : patcher_i
 	{
 		entity* source;
 		uint32_t count;
@@ -1380,7 +1380,7 @@ chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, 
 		}
 	}
 
-	struct patcher final : i_patcher
+	struct patcher final : patcher_i
 	{
 		entity* base;
 		entity* curr;
@@ -1424,7 +1424,7 @@ chunk_vector<chunk_slice> world::instantiate_single(entity src, uint32_t count)
 	return result;
 }
 
-void world::serialize_single(i_serializer* s, entity src)
+void world::serialize_single(serializer_i* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
 	serialize_archetype(data.c->type, s);
@@ -1449,7 +1449,7 @@ void world::structural_change(archetype* g, chunk* c)
 		timestamps[i] = timestamp;
 }
 
-chunk_slice world::deserialize_single(i_serializer* s, i_patcher* patcher)
+chunk_slice world::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
 	auto *g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
@@ -1998,7 +1998,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 	auto group_data = (buffer*)get_component_ro(e, group_id);
 	if (group_data == nullptr)
 	{
-		struct gather final : i_patcher
+		struct gather final : patcher_i
 		{
 			entity source;
 			chunk_vector<entity>* ents;
@@ -2023,7 +2023,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 		uint32_t size = group_data->size / sizeof(entity);
 		stack_array(entity, members, size);
 		memcpy(members, group_data->data(), group_data->size);
-		struct gather final : i_patcher
+		struct gather final : patcher_i
 		{
 			entity* source;
 			uint32_t count;
@@ -2053,7 +2053,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 	}
 }
 
-void world::serialize(i_serializer* s, entity src)
+void world::serialize(serializer_i* s, entity src)
 {
 	auto group_data = (buffer*)get_component_ro(src, group_id);
 	if (group_data == nullptr)
@@ -2078,7 +2078,7 @@ entity first_entity(chunk_slice s)
 	return s.c->get_entities()[s.start];
 }
 
-entity world::deserialize(i_serializer* s, i_patcher* patcher)
+entity world::deserialize(serializer_i* s, patcher_i* patcher)
 {
 	auto slice = deserialize_single(s, patcher);
 	entity src = first_entity(slice);
@@ -2112,7 +2112,7 @@ void world::move_context(world& src)
 			patch[i] = ents.new_entity();
 	sents.clear();
 
-	struct patcher final : i_patcher
+	struct patcher final : patcher_i
 	{
 		uint32_t start;
 		entity* target;
@@ -2145,7 +2145,7 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
-void world::patch_chunk(chunk* c, i_patcher* patcher)
+void world::patch_chunk(chunk* c, patcher_i* patcher)
 {
 	entity* es = (entity*)c->data();
 	forloop(i, 0, c->count)
@@ -2165,7 +2165,7 @@ struct Data
 };
 */
 
-void world::serialize(i_serializer* s)
+void world::serialize(serializer_i* s)
 {
 	s->stream(&ents.datas.size, sizeof(uint32_t));
 
@@ -2183,7 +2183,7 @@ void world::serialize(i_serializer* s)
 	s->stream(0, sizeof(tsize_t));
 }
 
-void world::deserialize(i_serializer* s)
+void world::deserialize(serializer_i* s)
 {
 	clear();
 
