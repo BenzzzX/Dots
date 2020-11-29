@@ -190,16 +190,10 @@ void TransformSystem::SolveParentToWorld(world& ctx)
 		{
 			auto childs = (char*)ctx.get_owned_ro(j, child_id);
 			auto pltw = (transform*)ctx.get_owned_rw(j, local_to_world_id);
-			auto entities = ctx.get_entities(j);
 			auto num = j->get_count();
 			forloop(k, 0, num) //遍历组件
-			{
-				auto cs = (buffer*)(childs + child_size * k);
-				auto ents = (entity*)cs->data();
-				auto count = cs->size / sizeof(entity);
-				forloop(l, 0, count)
-					SolvePTWRecursive(ctx, ents[l], *pltw);
-			}
+				for(auto child : buffer_t<entity>(childs + child_size * k))
+					SolvePTWRecursive(ctx, child, pltw[k]);
 		}
 	}
 }
