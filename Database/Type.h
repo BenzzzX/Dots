@@ -1,4 +1,9 @@
 #pragma once
+#ifdef MAKEDLL
+#  define ECS_API __declspec(dllexport)
+#else
+#  define ECS_API __declspec(dllimport)
+#endif
 #include <cstdint>
 #include <climits>
 #include <memory>
@@ -49,7 +54,7 @@ namespace core
 		static constexpr size_t kSmallBinCapacity = 200;
 		static constexpr size_t kLargeBinCapacity = 80;
 
-		struct chunk_vector_base
+		struct ECS_API chunk_vector_base
 		{
 			size_t chunkSize = 0;
 			size_t size = 0;
@@ -155,7 +160,7 @@ namespace core
 			}
 		};
 
-		extern uint32_t metaTimestamp;
+		ECS_API extern uint32_t metaTimestamp;
 
 		struct i_serializer
 		{
@@ -205,12 +210,12 @@ namespace core
 			const char* name = nullptr;
 		};
 
-		index_t register_type(component_desc desc);
+		ECS_API index_t register_type(component_desc desc);
 
-		extern index_t disable_id;
-		extern index_t cleanup_id;
-		extern index_t group_id;
-		extern index_t mask_id;
+		ECS_API extern index_t disable_id;
+		ECS_API extern index_t cleanup_id;
+		ECS_API extern index_t group_id;
+		ECS_API extern index_t mask_id;
 
 		inline void* buffer_malloc(size_t size)
 		{
@@ -437,7 +442,7 @@ namespace core
 			}
 		};
 
-		static const entity_type EmptyType;
+		ECS_API extern const entity_type EmptyType;
 
 		struct archetype_filter
 		{

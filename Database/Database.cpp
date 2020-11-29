@@ -6,7 +6,6 @@
 using namespace core;
 using namespace database;
 
-uint32_t database::metaTimestamp;
 constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
 struct type_data
@@ -20,10 +19,12 @@ struct type_data
 	component_vtable vtable;
 };
 
-index_t core::database::disable_id = 0;
-index_t core::database::cleanup_id = 1;
-index_t core::database::group_id = 2;
-index_t core::database::mask_id = 3;
+ECS_API const entity_type core::database::EmptyType;
+ECS_API uint32_t core::database::metaTimestamp = 0;
+ECS_API index_t core::database::disable_id = 0;
+ECS_API index_t core::database::cleanup_id = 1;
+ECS_API index_t core::database::group_id = 2;
+ECS_API index_t core::database::mask_id = 3;
 
 struct global_data
 {
@@ -43,7 +44,7 @@ struct global_data
 	void* stacktop = nullptr;
 	size_t stackSize = 0;
 	
-	global_data()
+	void initialize()
 	{
 		component_desc desc{};
 		desc.size = 0;
@@ -2051,6 +2052,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 			chunk::patch({ data.c, data.i, 1 }, &p);
 		}
 	}
+	return result;
 }
 
 void world::serialize(i_serializer* s, entity src)
@@ -2104,7 +2106,7 @@ entity world::deserialize(i_serializer* s, i_patcher* patcher)
 void world::move_context(world& src)
 {
 	auto& sents = src.ents;
-	uint32_t count = sents.datas.size;
+	uint32_t count = (uint32_t)sents.datas.size;
 	adaptive_object _ao_patch(sizeof(entity) * count);
 	entity* patch = (entity*)_ao_patch.self;
 	forloop(i, 0, count)
@@ -2557,4 +2559,9 @@ chunk_vector_base::chunk_vector_base(const chunk_vector_base& r) noexcept
 chunk_vector_base::~chunk_vector_base()
 {
 	shrink(chunkSize);
+}
+
+void core::database::initialize()
+{
+	gd.initialize();
 }
