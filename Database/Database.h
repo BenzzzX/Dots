@@ -20,7 +20,7 @@ namespace core
 			smallbin, fastbin, largebin
 		};
 
-		struct chunk_slice
+		struct ECS_API chunk_slice
 		{
 			chunk* c;
 			uint32_t start;
@@ -31,7 +31,7 @@ namespace core
 				: c(c), start(s), count(count) {}
 		};
 
-		struct archetype
+		struct ECS_API archetype
 		{
 			chunk* firstChunk;
 			chunk* lastChunk;
@@ -88,6 +88,7 @@ namespace core
 
 		class world
 		{
+		private:
 			//entity allocator
 			struct entities
 			{
@@ -186,81 +187,81 @@ namespace core
 
 			friend chunk;
 		public:
-			world(index_t typeCapacity = 4096u);
-			world(const world& other/*todo: ,archetype_filter*/);
-			~world();
+			ECS_API world(index_t typeCapacity = 4096u);
+			ECS_API world(const world& other/*todo: ,archetype_filter*/);
+			ECS_API ~world();
 			
 
 			/*** per chunk slice ***/
 			//create
-			chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
-			chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
+			ECS_API chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
+			ECS_API chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
 
 			//stuctural change
-			void destroy(chunk_slice);
+			ECS_API void destroy(chunk_slice);
 			/* note: return null if trigger chunk move or chunk clean up */
-			chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
-			chunk_vector<chunk_slice> cast(chunk_slice, const entity_type& type);
+			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
+			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, const entity_type& type);
 
 			//query iterators
-			chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
-			chunk_vector<matched_archetype> query(const archetype_filter& filter);
-			chunk_vector<chunk*> query(archetype*, const chunk_filter& filter);
+			ECS_API chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
+			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter);
+			ECS_API chunk_vector<chunk*> query(archetype*, const chunk_filter& filter);
 
 
 			/*** per entity ***/
 			//query
-			const void* get_component_ro(entity, index_t type) const noexcept;
-			const void* get_owned_ro(entity, index_t type) const noexcept;
-			const void* get_shared_ro(entity, index_t type) const noexcept;
-			bool is_a(entity, const entity_type& type) const noexcept;
-			bool share_component(entity, const typeset& type) const;
-			bool has_component(entity, const typeset& type) const noexcept;
-			bool own_component(entity, const typeset& type) const noexcept;
-			bool is_component_enabled(entity, const typeset& type) const noexcept;
-			bool exist(entity) const noexcept;
-			archetype* get_archetype(entity) const noexcept;
+			ECS_API const void* get_component_ro(entity, index_t type) const noexcept;
+			ECS_API const void* get_owned_ro(entity, index_t type) const noexcept;
+			ECS_API const void* get_shared_ro(entity, index_t type) const noexcept;
+			ECS_API bool is_a(entity, const entity_type& type) const noexcept;
+			ECS_API bool share_component(entity, const typeset& type) const;
+			ECS_API bool has_component(entity, const typeset& type) const noexcept;
+			ECS_API bool own_component(entity, const typeset& type) const noexcept;
+			ECS_API bool is_component_enabled(entity, const typeset& type) const noexcept;
+			ECS_API bool exist(entity) const noexcept;
+			ECS_API archetype* get_archetype(entity) const noexcept;
 			//update
-			void* get_owned_rw(entity, index_t type) const noexcept;
-			void enable_component(entity, const typeset& type) const noexcept;
-			void disable_component(entity, const typeset& type) const noexcept;
-			entity_type get_type(entity) const noexcept; /* note: only owned */
+			ECS_API void* get_owned_rw(entity, index_t type) const noexcept;
+			ECS_API void enable_component(entity, const typeset& type) const noexcept;
+			ECS_API void disable_component(entity, const typeset& type) const noexcept;
+			ECS_API entity_type get_type(entity) const noexcept; /* note: only owned */
 			//entity/group serialize
-			chunk_vector<entity> gather_reference(entity);
-			void serialize(serializer_i* s, entity);
-			entity deserialize(serializer_i* s, patcher_i* patcher);
+			ECS_API chunk_vector<entity> gather_reference(entity);
+			ECS_API void serialize(serializer_i* s, entity);
+			ECS_API entity deserialize(serializer_i* s, patcher_i* patcher);
 
 			/*** per chunk or archetype ***/
 			//query
-			const void* get_component_ro(chunk* c, index_t type) const noexcept;
-			const void* get_owned_ro(chunk* c, index_t type) const noexcept;
-			const void* get_shared_ro(chunk* c, index_t type) const noexcept;
-			void* get_owned_rw(chunk* c, index_t type) noexcept;
-			const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
-			void* get_owned_rw_local(chunk* c, index_t type) noexcept;
-			const entity* get_entities(chunk* c) noexcept;
-			uint16_t get_size(chunk* c, index_t type) const noexcept;
-			const void* get_shared_ro(archetype *g, index_t type) const;
-			bool share_component(archetype* g, const typeset& type) const;
-			bool own_component(archetype* g, const typeset& type) const;
-			bool has_component(archetype* g, const typeset& type) const;
+			ECS_API const void* get_component_ro(chunk* c, index_t type) const noexcept;
+			ECS_API const void* get_owned_ro(chunk* c, index_t type) const noexcept;
+			ECS_API const void* get_shared_ro(chunk* c, index_t type) const noexcept;
+			ECS_API void* get_owned_rw(chunk* c, index_t type) noexcept;
+			ECS_API const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
+			ECS_API void* get_owned_rw_local(chunk* c, index_t type) noexcept;
+			ECS_API const entity* get_entities(chunk* c) noexcept;
+			ECS_API uint16_t get_size(chunk* c, index_t type) const noexcept;
+			ECS_API const void* get_shared_ro(archetype *g, index_t type) const;
+			ECS_API bool share_component(archetype* g, const typeset& type) const;
+			ECS_API bool own_component(archetype* g, const typeset& type) const;
+			ECS_API bool has_component(archetype* g, const typeset& type) const;
 
 
 			/*** per world ***/
-			void move_context(world& src);
-			void patch_chunk(chunk* c, patcher_i* patcher);
+			ECS_API void move_context(world& src);
+			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
-			void serialize(serializer_i* s);
-			void deserialize(serializer_i* s);
+			ECS_API void serialize(serializer_i* s);
+			ECS_API void deserialize(serializer_i* s);
 			//clear
-			void clear();
-			void gc_meta();
-			void merge_chunks();
+			ECS_API void clear();
+			ECS_API void gc_meta();
+			ECS_API void merge_chunks();
 			//query
 			uint32_t timestamp;
 		};
 
-		struct chunk
+		struct ECS_API chunk
 		{
 		private:
 			chunk *next, *prev;
@@ -300,6 +301,7 @@ namespace core
 			const entity* get_entities() const { return (entity*)data(); }
 			uint32_t get_timestamp(index_t type) noexcept;
 		};
-
-};
+		
+		ECS_API void initialize();
+	};
 }
