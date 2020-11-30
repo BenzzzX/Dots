@@ -4,7 +4,7 @@
 		<DisplayString Condition="size == 0">Empty</DisplayString>
     <DisplayString Condition="size != 0">{{ size={size} }}</DisplayString>
     <Expand>
-      <IndexListItems Condition="chunkSize != 0">
+      <IndexListItems Condition="size != 0">
         <Size>size</Size>
         <ValueNode>(($T1**)data)[$i / kChunkCapacity][$i % kChunkCapacity]</ValueNode>
       </IndexListItems>

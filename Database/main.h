@@ -4,6 +4,7 @@
 
 using namespace core::database;
 
+/*
 struct parameter
 {
 	index_t type;
@@ -62,6 +63,7 @@ namespace codebase
 		};
 	};
 };
+*/
 
 namespace TransformSystem
 {

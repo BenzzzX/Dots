@@ -425,6 +425,11 @@ namespace core
 				return types == other.types && metatypes == other.metatypes;
 			}
 
+			bool operator!=(const entity_type& other) const
+			{
+				return !(*this == other);
+			}
+
 			struct hash
 			{
 				size_t operator()(const entity_type& key) const

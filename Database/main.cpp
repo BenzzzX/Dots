@@ -8,9 +8,9 @@ namespace Util
 {
 	using namespace core::database;
 	using core::entity;
-	void Cast(world& ctx, std::span<entity> es, type_diff diff)
+	void Cast(world& ctx, entity* es, int n, type_diff diff)
 	{
-		for (auto c : ctx.batch(es.data(), es.size()))
+		for (auto c : ctx.batch(es, n))
 			ctx.cast(c, diff);
 	}
 	void Cast(world& ctx, chunk_slice c, type_diff diff)
@@ -92,8 +92,8 @@ void TransformSystem::UpdateHierachy(world& ctx)
 		//清理删除 Entity 后的层级关系
 
 		auto titer = ctx.query({
-		.all = {.types = {_cleanT,1} },
-		.any = {.types = {_toCleanT,2} } });
+		{ typeset{_cleanT,1} },
+		{ typeset{_toCleanT,2} } });
 		for(auto i : titer)
 		{
 			for(auto j : ctx.query(i.type, {}))
@@ -116,7 +116,7 @@ void TransformSystem::UpdateHierachy(world& ctx)
 						auto cs = (buffer*)(childs + child_size * k);
 						auto ents = (entity*)cs->data();
 						size_t count = cs->size / (uint16_t)sizeof(entity);
-						Util::Cast(ctx, { ents, count }, { .shrink = {.types = {_treeT, 2} } });
+						Util::Cast(ctx, ents, count , { {}, { typeset{_treeT, 2} } });
 					}
 				}
 			}
@@ -125,11 +125,11 @@ void TransformSystem::UpdateHierachy(world& ctx)
 	{
 		//修复丢失的 local to parent
 		auto titer = ctx.query({
-		.all = {.types = {_parentT,1} },
-		.none = {.types = {_ltpT,1} } });
+		{ typeset{_parentT,1} }, {},
+		{ typeset{_ltpT,1} } });
 		for (auto i : titer)
 			for(auto j : ctx.query(i.type, {}))
-				Util::Cast(ctx, j, { .extend = {.types = {_ltpT, 1} } });
+				Util::Cast(ctx, j, { { typeset{_ltpT, 1} } });
 	}
 	//需不需要检查 Parent 和 Child 的合法性？
 }
@@ -174,8 +174,8 @@ void TransformSystem::SolveParentToWorld(world& ctx)
 	index_t _rootT[] = { local_to_world_id, child_id };
 	index_t _treeT[] = { parent_id };
 	archetype_filter fTransformRoot{
-		.all = {.types = {_rootT,2}},
-		.none = {.types = {_treeT,1}}
+		{typeset{_rootT,2}}, {},
+		{typeset{_treeT,1}}
 	};
 	for(auto i : ctx.query(fTransformRoot)) //遍历 Archetype
 	{
@@ -199,15 +199,15 @@ void TransformSystem::Update(world& ctx)
 	{
 		index_t _treeT[] = { local_to_world_id, parent_id, rotation_id, location_id };
 		UpdateLocalToX(ctx, local_to_parent_id, {
-			.all = {.types = {_treeT, 4}} });
+			{ typeset{_treeT, 4}} });
 	}
 	//求解出非根节点的局部坐标
 	{
 		index_t _rootT[] = { local_to_world_id , rotation_id, location_id };
 		index_t _treeT[] = { parent_id };
 		UpdateLocalToX(ctx, local_to_world_id, {
-			.all = {.types = {_rootT,4}},
-			.none = {.types = {_treeT,1}} });
+			{ typeset{_rootT,4}},{},
+			{ typeset{_treeT,1}} });
 	}
 	//递归计算非根节点的世界坐标
 	SolveParentToWorld(ctx);

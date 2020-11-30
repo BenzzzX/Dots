@@ -838,7 +838,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 				stack_array(index_t, cd, cc);
 				auto checking = typeset::merge(f.all.types, f.any.types, cd);
 				mask m = g->get_mask( checking );
-				cache.archetypes.push_back({ .type = g, .matched = m });
+				cache.archetypes.push_back({ g, m });
 			}
 		}
 		cache.includeClean = includeClean;
@@ -884,7 +884,7 @@ void world::update_queries(archetype* g, bool add)
 				gs.pop_back();
 			}
 			else
-				gs.push_back({ .type = g });
+				gs.push_back({ g });
 		}
 	}
 }
@@ -1096,7 +1096,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		_so_phase1_2.emplace(sizeof(entity) * dstMetaSize);
 		dstMetaTypes = (entity*)_so_phase1_2->self;
 		auto key = entity_type::merge(
-			{ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} },
+			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
 			diff.extend, dstTypes, dstMetaTypes);
 		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
 		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
@@ -1153,8 +1153,8 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		_so_phase4_2.emplace(sizeof(entity) * srcMetaSize);
 		dstMetaTypes = (entity*)_so_phase4_2->self;
 		auto key = entity_type::substract(
-			{ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} },
-			{ .types = {shrTypes, shrSize}, .metatypes = diff.shrink.metatypes }, dstTypes, dstMetaTypes);
+			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
+			{ {shrTypes, shrSize}, diff.shrink.metatypes }, dstTypes, dstMetaTypes);
 		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
 		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
 	}
@@ -1162,12 +1162,12 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 5 : check cleaning
 	if (g->cleaning)
 	{
-		entity_type key = { .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} };
+		entity_type key = { {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} };
 		if (is_cleaned(key))
 			return nullptr;
 	}
 
-	return get_archetype({ .types = {srcTypes, srcSize}, .metatypes = {srcMetaTypes, srcMetaSize} });
+	return get_archetype({ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} });
 }
 
 chunk* world::malloc_chunk(alloc_type type)

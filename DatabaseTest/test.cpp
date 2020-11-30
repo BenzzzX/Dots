@@ -169,7 +169,7 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 	core::entity e;
 
 	index_t t[] = { test_id };
-	entity_type type({ .types = {t,1} });
+	entity_type type{typeset{t,1}};
 	for (auto c : ctx.allocate(type))
 	{
 		auto components = (test*)ctx.get_owned_rw(c.c, test_id);
@@ -192,7 +192,7 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 
 	//初始化
 	index_t t[] = { test_track_id };
-	entity_type type({ .types = {t,1} });
+	entity_type type{typeset{t,1}};
 	for (auto c : ctx.allocate(type))
 	{
 		auto components = (test_track*)ctx.get_owned_rw(c.c, test_track_id);
@@ -236,7 +236,7 @@ TEST_F(DatabaseTest, BufferReadWrite)
 	core::entity e;
 
 	index_t t[] = { test_element_id };
-	entity_type type({ .types = {t,1} });
+	entity_type type{ typeset{t,1} };
 	for (auto c : ctx.allocate(type))
 	{
 		auto buffers = (char*)ctx.get_owned_rw(c.c, test_element_id);
@@ -257,7 +257,7 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	core::entity e2;
 
 	index_t t[] = { test_element_id };
-	entity_type type({ .types = {t,1} });
+	entity_type type{ typeset{t,1} };
 	for (auto c : ctx.allocate(type))
 	{
 		auto buffers = (char*)ctx.get_owned_rw(c.c, test_element_id);
@@ -286,7 +286,7 @@ TEST_F(DatabaseTest, Meta)
 
 	{
 		index_t t[] = { test_id };
-		entity_type type({ .types = {t,1} });
+		entity_type type{ typeset{t,1} };
 		for (auto c : ctx.allocate(type))
 		{
 			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
@@ -317,7 +317,7 @@ TEST_F(DatabaseTest, Meta)
 		entity_type type({ {t,1},{} });
 
 		for (auto c : ctx.batch(&e, 1))
-			for (auto s : ctx.cast(c, { .extend = type }))
+			for (auto s : ctx.cast(c, { type }))
 			{
 				auto tests = (test*)ctx.get_owned_rw(s.c, test_id);
 				forloop(i, 0, s.count)
@@ -335,7 +335,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 	using namespace core::database;
 	core::entity es[100];
 	index_t t[] = { test_id };
-	entity_type type({ .types = {t,1} });
+	entity_type type{ typeset{t,1} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
@@ -350,7 +350,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 		ctx.destroy(c);
 	int counter = 0;
 
-	for (auto i : ctx.query({ .all = type })) //遍历 Archetype
+	for (auto i : ctx.query({ type })) //遍历 Archetype
 	{
 		for (auto j : ctx.query(i.type, {})) //遍历 Chunk
 		{
@@ -370,7 +370,7 @@ TEST_F(DatabaseTest, DisableMask)
 	index_t t[] = { mask_id, test_id };
 	std::sort(t, t + 2);
 	index_t dt[] = { test_id };
-	entity_type type({ .types = {t,2} });
+	entity_type type{ typeset{t,2} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100)) //遍历创建 Entity
@@ -394,7 +394,7 @@ TEST_F(DatabaseTest, DisableMask)
 
 	{
 		int counter = 0;
-		for (auto i : ctx.query({ .all = type }))
+		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type, {}))
 			{
 				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
@@ -412,9 +412,9 @@ TEST_F(DatabaseTest, DisableMask)
 
 	{
 		index_t qt[] = { mask_id };
-		entity_type queryType({ .types = {qt, 1} });
+		entity_type queryType{ typeset{qt,1} };
 		int counter = 0;
-		for (auto i : ctx.query({ .all = queryType })) // 空 Query
+		for (auto i : ctx.query({ queryType })) // 空 Query
 			for (auto j : ctx.query(i.type, {})) 
 			{
 				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
@@ -431,7 +431,7 @@ TEST_F(DatabaseTest, DisableMask)
 	{
 		mask enableMask;
 		int counter = 0;
-		for (auto i : ctx.query({ .all = type }))
+		for (auto i : ctx.query({ type }))
 		{
 			auto mymask = i.matched & ~i.type->get_mask({ dt, 1 }); //关闭检查
 			for (auto j : ctx.query(i.type, {}))
