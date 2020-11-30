@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
-#include <variant>
+#include <memory>
+#include <algorithm>
 #undef max
 namespace core
 {
@@ -26,14 +27,18 @@ namespace core
 		constexpr handle(T t) : value(t) { }
 		constexpr handle(T i, T v) : id(i), version(v) { }
 		constexpr bool is_transient() { return version == ((1 << B) - 1); }
-		constexpr static handle make_transient(T i) { return { i, TransientMagicNumber }; }
-		constexpr static T recycle(T version) 
+		constexpr static T make_transient(T i) { return handle{ i, TransientMagicNumber }.value; }
+		constexpr static T recycle(T version)
 		{
 			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
 		}
 	};
 
-	using entity = handle<24, 8>;
+	struct entity : handle<24, 8>
+	{
+		using ut = handle<24, 8>;
+		using ut::handle;
+	};
 	constexpr entity NullEntity = std::numeric_limits<uint32_t>::max();
 
 
