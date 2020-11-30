@@ -7,6 +7,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Database", "Database\Databa
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DatabaseTest", "DatabaseTest\DatabaseTest.vcxproj", "{79E0066B-DFD9-42A3-8EE7-2A985E6E0A28}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Visualizers", "Visualizers", "{80AFA1FD-E872-4B4D-872B-AC195FE9F525}"
+	ProjectSection(SolutionItems) = preProject
+		Database\Database.natvis = Database\Database.natvis
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64

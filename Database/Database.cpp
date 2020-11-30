@@ -427,8 +427,17 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 			continue;
 		const char* s = srcData;
 		char* d = dstData;
+		memdup(dstData, srcData, sizes[i], dst.count);
 		forloop(j, 0, dst.count)
-			new(d + (size_t)sizes[i]*j) buffer{ *(buffer*)s };
+		{
+			buffer* b = (buffer*)((size_t)j * sizes[i] + d);
+			if (b->d != nullptr)
+			{
+				char* clonedData = (char*)buffer_malloc(b->size);
+				memcpy(clonedData, b->d, b->size);
+				b->d = clonedData;
+			}
+		}
 		dstI++;
 	}
 }
@@ -2109,9 +2118,18 @@ void world::move_context(world& src)
 	uint32_t count = (uint32_t)sents.datas.size;
 	adaptive_object _ao_patch(sizeof(entity) * count);
 	entity* patch = (entity*)_ao_patch.self;
+	int validCount = 0;
 	forloop(i, 0, count)
 		if (sents.datas[i].c != nullptr)
-			patch[i] = ents.new_entity();
+			validCount++;
+	adaptive_object _ao_entities(sizeof(entity) * validCount);
+	entity* entities = (entity*)_ao_entities.self;
+	//batch new to trigger fast path
+	ents.new_entities(entities, validCount);
+	validCount = 0;
+	forloop(i, 0, count)
+		if (sents.datas[i].c != nullptr)
+			patch[i] = entities[validCount++];
 	sents.clear();
 
 	struct patcher final : patcher_i
@@ -2379,26 +2397,68 @@ void world::entities::clear()
 void world::entities::new_entities(chunk_slice s)
 {
 	entity* dst = (entity*)s.c->data() + s.start;
-	forloop(i, 0, s.count)
+	uint32_t i = 0;
+	while (i < s.count && free != 0)
 	{
-		entity newE = new_entity();
+		uint32_t id = free;
+		free = datas[free].nextFree;
+		entity newE = { id, datas[id].v };
 		dst[i] = newE;
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
+		i++;
+	}
+	if (i == s.count)
+		return;
+	//fast path
+	uint32_t newId = datas.size;
+	datas.resize(datas.size + s.count - i);
+	while (i < s.count)
+	{
+		entity newE( newId, datas[newId].v );
+		dst[i] = newE;
+		datas[newE.id].c = s.c;
+		datas[newE.id].i = s.start + i;
+		i++;
+		newId++;
 	}
 }
 
-entity world::entities::new_prefab()
+void world::entities::new_entities(entity* dst, uint32_t count)
 {
+	uint32_t i = 0;
+	while (i < count && free != 0)
+	{
+		uint32_t id = free;
+		free = datas[free].nextFree;
+		dst[i] = { id, datas[id].v };
+		i++;
+	}
+	if (i == count)
+		return;
+	//fast path
+	uint32_t newId = datas.size;
+	datas.resize(datas.size + count - i);
+	while (i < count)
+	{
+		dst[i] = { newId, datas[newId].v };
+		i++;
+		newId++;
+	}
+}
+
+entity world::entities::new_prefab(int sizeHint)
+{
+	datas.reserve(datas.size + sizeHint);  
 	uint32_t id = (uint32_t)datas.size;
 	datas.push();
 	return { id, datas[id].v };
 }
 
-entity world::entities::new_entity()
+entity world::entities::new_entity(int sizeHint)
 {
 	if (free == 0)
-		return new_prefab();
+		return new_prefab(sizeHint);
 	else
 	{
 		uint32_t id = free;

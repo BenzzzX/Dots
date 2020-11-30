@@ -122,6 +122,14 @@ namespace core
 
 			const_iterator begin() const noexcept { return const_iterator{ 0, data }; }
 			const_iterator end() const noexcept { return const_iterator{ size, data }; }
+			void resize(int newSize)
+			{
+				size = newSize;
+				if (newSize > chunkSize * kChunkCapacity)
+					reserve(newSize);
+				else
+					shrink();
+			}
 			template<class... Ts>
 			void push(Ts&&... args)
 			{
@@ -139,7 +147,7 @@ namespace core
 			}
 			void reserve(size_t n)
 			{
-				while (n < chunkSize * kChunkCapacity)
+				while (n > chunkSize * kChunkCapacity)
 					grow();
 			}
 			T& operator[](size_t i) noexcept { return *get(data, i); }
@@ -311,7 +319,7 @@ namespace core
 			buffer* data;
 
 		public:
-			buffer_t(void* inData)
+			buffer_t(const void* inData)
 				:data((buffer*)inData) {}
 			T& operator[](int i)
 			{
