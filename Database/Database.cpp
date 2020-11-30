@@ -43,7 +43,7 @@ struct global_data
 	char* stackbuffer = nullptr;
 	void* stacktop = nullptr;
 	size_t stackSize = 0;
-	
+
 	void initialize()
 	{
 		component_desc desc{};
@@ -59,8 +59,8 @@ struct global_data
 		desc.hash = 2;
 		desc.isElement = true;
 		desc.elementSize = sizeof(entity);
-		static intptr_t entityRefs[] = { (intptr_t)offsetof(group, e) };
-		desc.entityRefs = entityRefs;
+		static intptr_t ers[] = { (intptr_t)offsetof(group, e) };
+		desc.entityRefs = ers;
 		desc.entityRefCount = 1;
 		desc.name = "group";
 		group_id = register_type(desc);
@@ -233,7 +233,7 @@ index_t database::register_type(component_desc desc)
 		forloop(i, 0, desc.entityRefCount)
 			gd.entityRefs.push_back(desc.entityRefs[i]);
 	}
-	
+
 	index_t id = (index_t)gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
@@ -248,13 +248,13 @@ index_t database::register_type(component_desc desc)
 
 	if (desc.need_copy)
 	{
-		index_t id = (index_t)gd.infos.size();
-		id = tagged_index{ id, desc.isElement, desc.size == 0 };
-		type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
+		index_t id2 = (index_t)gd.infos.size();
+		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
+		type_data i2{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
-		gd.infos.push_back(i);
+		gd.infos.push_back(i2);
 	}
-	
+
 	return id;
 }
 
@@ -402,7 +402,7 @@ tagged_index to_valid_type(tagged_index t)
 void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept
 {
 	archetype* type = src->type;
-	archetype *dstType = dst.c->type;
+	archetype* dstType = dst.c->type;
 	tsize_t dstI = 0;
 	uint32_t* offsets = type->offsets(src->ct);
 	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
@@ -412,7 +412,7 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	{
 		tagged_index st = to_valid_type(type->types()[i]);
 		tagged_index dt = to_valid_type(dstType->types()[dstI]);
-		
+
 		if (st != dt)
 			continue;
 		memdup(dstData, srcData, sizes[i], dst.count);
@@ -452,7 +452,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 	forloop(i, 0, g->firstBuffer)
 	{
 		const auto& t = gd.infos[types[i].index()];
-		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i]*s.start;
+		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		auto f = t.vtable.patch;
 		if (f != nullptr)
 		{
@@ -490,7 +490,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
-			buffer *b =(buffer*)(arr + (size_t)sizes[i] * j);
+			buffer* b = (buffer*)(arr + (size_t)sizes[i] * j);
 			uint16_t n = b->size / t.elementSize;
 			auto f = t.vtable.patch;
 			if (f != nullptr)
@@ -533,7 +533,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
 	stream->stream(&s.count, sizeof(uint32_t));
-	stream->stream(s.c->get_entities()+s.start, sizeof(entity) * s.count);
+	stream->stream(s.c->get_entities() + s.start, sizeof(entity) * s.count);
 
 	forloop(i, 0, type->firstTag)
 	{
@@ -619,9 +619,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
 		if (st < dt) //destruct 
 		{
-			if(destruct)
+			if (destruct)
 				forloop(j, 0, count)
-					((buffer*)((size_t)j * srcSizes[srcI] + s))->~buffer();
+				((buffer*)((size_t)j * srcSizes[srcI] + s))->~buffer();
 			srcI++;
 		}
 		else if (st > dt) //construct
@@ -676,7 +676,7 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 				else if (st > dt) //construct
 					d[i].set(dstI);
 				else //move
-					if(s[i].test(srcI))
+					if (s[i].test(srcI))
 						d[i].set(dstI);
 			}
 			while (dstI < dstType->componentCount)
@@ -837,7 +837,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 				auto cc = f.all.types.length + f.any.types.length;
 				stack_array(index_t, cd, cc);
 				auto checking = typeset::merge(f.all.types, f.any.types, cd);
-				mask m = g->get_mask( checking );
+				mask m = g->get_mask(checking);
 				cache.archetypes.push_back({ g, m });
 			}
 		}
@@ -877,10 +877,10 @@ void world::update_queries(archetype* g, bool add)
 			auto& gs = cache.archetypes;
 			if (add)
 			{
-				int i = 0;
-				for (; gs[i].type != g; ++i);
-				if (i != (gs.size() - 1))
-					std::swap(gs[i], gs[gs.size() - 1]);
+				int j = 0;
+				for (; gs[j].type != g; ++j);
+				if (j != (gs.size() - 1))
+					std::swap(gs[j], gs[gs.size() - 1]);
 				gs.pop_back();
 			}
 			else
@@ -977,7 +977,7 @@ archetype* world::get_archetype(const entity_type& key)
 	if (entitySize == sizeof(entity))
 		g->zerosize = true;
 	g->entitySize = entitySize;
-	size_t Caps[] = {kSmallBinSize, kFastBinSize, kLargeBinSize};
+	size_t Caps[] = { kSmallBinSize, kFastBinSize, kLargeBinSize };
 	std::sort(stableOrder, stableOrder + firstTag, [&](tsize_t lhs, tsize_t rhs)
 		{
 			return hash[lhs] < hash[rhs];
@@ -1022,7 +1022,7 @@ archetype* world::get_cleaning(archetype* g)
 	{
 		auto type = (tagged_index)types[i];
 		auto stage = gd.tracks[type.index()];
-		if((stage & NeedCleaning) != 0)
+		if ((stage & NeedCleaning) != 0)
 			dstTypes[k++] = type;
 	}
 	std::sort(dstTypes, dstTypes + k);
@@ -1225,7 +1225,7 @@ void world::remove_chunk(archetype* g, chunk* c)
 	g->size -= c->count;
 	g->chunkCount--;
 	chunk* h = g->firstChunk;
-	if (c == g->firstFree) 
+	if (c == g->firstFree)
 		g->firstFree = c->next;
 	remove(g->firstChunk, g->lastChunk, c);
 	c->type = nullptr;
@@ -1290,9 +1290,9 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	s->stream(&mlength, sizeof(tsize_t));
 	stack_array(entity, metatypes, mlength);
 	s->stream(metatypes, mlength);
-	if(patcher)
+	if (patcher)
 		forloop(i, 0, mlength)
-			metatypes[i] = patcher->patch(metatypes[i]);
+		metatypes[i] = patcher->patch(metatypes[i]);
 	std::sort(types, types + tlength);
 	std::sort(metatypes, metatypes + mlength);
 	entity_type type = { {types, tlength}, {metatypes, mlength} };
@@ -1385,8 +1385,8 @@ chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, 
 		for (auto s : g)
 		{
 			allSlices.push(s);
-			forloop(i, 0, s.count)
-				ret[k++ * size] = s.c->get_entities()[s.start + i];
+			forloop(j, 0, s.count)
+				ret[k++ * size] = s.c->get_entities()[s.start + j];
 		}
 	}
 
@@ -1444,7 +1444,7 @@ void world::serialize_single(serializer_i* s, entity src)
 void world::structural_change(archetype* g, chunk* c)
 {
 	entity_type t = g->get_type();
-	
+
 	if (g->timestamp != timestamp)
 	{
 		g->timestamp = timestamp;
@@ -1461,7 +1461,7 @@ void world::structural_change(archetype* g, chunk* c)
 
 chunk_slice world::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
-	auto *g = deserialize_archetype(s, patcher);
+	auto* g = deserialize_archetype(s, patcher);
 	auto slice = deserialize_slice(g, s);
 	ents.new_entities(*slice);
 	chunk::patch(*slice, patcher);
@@ -1508,7 +1508,7 @@ void world::resize_chunk(chunk* c, uint32_t count)
 	{
 		if (count == g->chunkCapacity[(int)c->ct])
 			unmark_free(g, c);
-		else if(c->count == g->chunkCapacity[(int)c->ct])
+		else if (c->count == g->chunkCapacity[(int)c->ct])
 			mark_free(g, c);
 		c->count = count;
 	}
@@ -1550,7 +1550,7 @@ void world::merge_chunks(archetype* g)
 			iter = iter->next;
 		}
 	}
-	if(toSort != nullptr)
+	if (toSort != nullptr)
 		g->lastChunk = toSort;
 
 	//merge into large chunk if can
@@ -1878,7 +1878,7 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
-	if (id == InvalidIndex) 
+	if (id == InvalidIndex)
 		return nullptr;
 	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
@@ -1909,7 +1909,7 @@ const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 {
 	archetype* g = c->type;
 	tsize_t id = g->index(t);
-	if (id == InvalidIndex) 
+	if (id == InvalidIndex)
 		return get_shared_ro(g, t);
 	return c->data() + c->type->offsets(c->ct)[id];
 }
@@ -2014,7 +2014,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 			chunk_vector<entity>* ents;
 			entity patch(entity e) override
 			{
-				if(e!=source)
+				if (e != source)
 					ents->push(e);
 				return e;
 			}
@@ -2053,11 +2053,11 @@ chunk_vector<entity> world::gather_reference(entity e)
 		forloop(i, 0, size)
 		{
 			e = members[i];
-			auto& data = ents.datas[e.id]; 
+			auto& data = ents.datas[e.id];
 			auto g = data.c->type;
 			auto mt = g->metatypes();
-			forloop(i, 0, g->metaCount)
-				p.patch(mt[i]);
+			forloop(j, 0, g->metaCount)
+				p.patch(mt[j]);
 			chunk::patch({ data.c, data.i, 1 }, &p);
 		}
 	}
@@ -2195,7 +2195,7 @@ void world::serialize(serializer_i* s)
 		if (g->cleaning)
 			continue;
 		serialize_archetype(g, s);
-		for (chunk* c = g->firstChunk; c; c= c->next)
+		for (chunk* c = g->firstChunk; c; c = c->next)
 			chunk::serialize({ c, 0, c->count }, s);
 
 		s->stream(0, sizeof(tsize_t));
@@ -2385,7 +2385,7 @@ bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 
 bool world::exist(entity e) const noexcept
 {
-	return e.id < ents.datas.size && e.version == ents.datas[e.id].v;
+	return e.id < ents.datas.size&& e.version == ents.datas[e.id].v;
 }
 
 void world::entities::clear()
@@ -2415,7 +2415,7 @@ void world::entities::new_entities(chunk_slice s)
 	datas.resize(datas.size + s.count - i);
 	while (i < s.count)
 	{
-		entity newE( newId, datas[newId].v );
+		entity newE(newId, datas[newId].v);
 		dst[i] = newE;
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
@@ -2449,7 +2449,7 @@ void world::entities::new_entities(entity* dst, uint32_t count)
 
 entity world::entities::new_prefab(int sizeHint)
 {
-	datas.reserve(datas.size + sizeHint);  
+	datas.reserve(datas.size + sizeHint);
 	uint32_t id = (uint32_t)datas.size;
 	datas.push();
 	return { id, datas[id].v };
@@ -2521,7 +2521,7 @@ chunk_vector<matched_archetype> world::query(const archetype_filter& filter)
 	return result;
 }
 
-chunk_vector<chunk*> world::query(archetype* type , const chunk_filter& filter)
+chunk_vector<chunk*> world::query(archetype* type, const chunk_filter& filter)
 {
 	chunk_vector<chunk*> result;
 	auto iter = type->firstChunk;
