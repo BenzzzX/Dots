@@ -20,7 +20,9 @@ namespace core
 	{
 		class tagged_index
 		{
+#if __cplusplus >= 201703L
 			static_assert(sizeof(index_t) * 8 == 32);
+#endif
 			union
 			{
 				index_t value;

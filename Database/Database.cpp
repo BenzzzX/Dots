@@ -1299,13 +1299,13 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	return get_archetype(type);
 }
 
-std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* s)
+bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
 	g->size += count;
 	if (count == 0)
-		return {};
+		return false;
 	chunk* c;
 	c = g->firstFree;
 	while (c && c->count + count > g->chunkCapacity[(int)c->ct])
@@ -1314,9 +1314,9 @@ std::optional<chunk_slice> world::deserialize_slice(archetype* g, serializer_i* 
 		c = new_chunk(g, count);
 	uint32_t start = c->count;
 	resize_chunk(c, start + count);
-	chunk_slice slice = { c, start, count };
+	slice = { c, start, count };
 	chunk::serialize(slice, s);
-	return slice;
+	return true;
 }
 
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
@@ -1462,10 +1462,11 @@ void world::structural_change(archetype* g, chunk* c)
 chunk_slice world::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
 	auto* g = deserialize_archetype(s, patcher);
-	auto slice = deserialize_slice(g, s);
-	ents.new_entities(*slice);
-	chunk::patch(*slice, patcher);
-	return *slice;
+	chunk_slice slice;
+	deserialize_slice(g, s, slice);
+	ents.new_entities(slice);
+	chunk::patch(slice, patcher);
+	return slice;
 }
 
 void world::destroy_single(chunk_slice s)
@@ -2211,19 +2212,19 @@ void world::deserialize(serializer_i* s)
 
 	//reallocate entity data buffer
 	ents.datas.reserve(ents.datas.size);
-
+	chunk_slice slice;
 	//todo: multithread?
 	for (archetype* g = deserialize_archetype(s, nullptr); g != nullptr; g = deserialize_archetype(s, nullptr))
-		for (auto slice = deserialize_slice(g, s); slice; slice = deserialize_slice(g, s))
+		while (deserialize_slice(g, s, slice))
 		{
 			//reinitialize entity data
-			auto ref = get_entities(slice->c);
-			forloop(i, 0, slice->count)
+			auto ref = get_entities(slice.c);
+			forloop(i, 0, slice.count)
 			{
-				auto index = i + slice->start;
+				auto index = i + slice.start;
 				auto e = ref[index];
 				auto& data = ents.datas[e.id];
-				data.c = slice->c;
+				data.c = slice.c;
 				data.i = index;
 				data.v = e.version;
 			}

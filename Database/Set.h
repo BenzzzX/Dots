@@ -8,7 +8,9 @@ namespace core
 	struct handle
 	{
 		using underlying_type = T;
+#if __cplusplus >= 201703L
 		static_assert(A + B == sizeof(T) * 8);
+#endif
 		union
 		{
 			T value;
@@ -62,7 +64,9 @@ namespace core
 		template <class T>
 		inline size_t hash_array(const T* const data, const size_t length, const size_t basis = _FNV_offset_basis) noexcept
 		{ // bitwise hashes the representation of an array
+#if __cplusplus >= 201703L
 			static_assert(std::is_trivial_v<T>, "Only trivial types can be directly hashed.");
+#endif
 			return hash_append(
 				basis, reinterpret_cast<const unsigned char*>(data), length * sizeof(T));
 		}

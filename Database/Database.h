@@ -26,7 +26,7 @@ namespace core
 			uint32_t start;
 			uint32_t count;
 			bool full();
-			chunk_slice(chunk* c);
+			chunk_slice(chunk* c = nullptr);
 			chunk_slice(chunk* c, uint32_t s, uint32_t count)
 				: c(c), start(s), count(count) {}
 		};
@@ -170,7 +170,7 @@ namespace core
 			//serialize behavior
 			static void serialize_archetype(archetype* g, serializer_i* s);
 			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
-			std::optional<chunk_slice> deserialize_slice(archetype* g, serializer_i* s);
+			bool deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice);
 
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
