@@ -362,6 +362,8 @@ namespace core
 			};
 			struct iterator : const_iterator
 			{
+				iterator(size_t i, T* data)
+					: const_iterator{ i, data } {}
 				using const_iterator::operator++;
 				using const_iterator::operator!=;
 				T& operator*()

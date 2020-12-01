@@ -875,12 +875,15 @@ void world::update_queries(archetype* g, bool add)
 		if (match_cache(cache))
 		{
 			auto& gs = cache.archetypes;
-			if (add)
+			if (!add)
 			{
 				int j = 0;
-				for (; gs[j].type != g; ++j);
-				if (j != (gs.size() - 1))
-					std::swap(gs[j], gs[gs.size() - 1]);
+				int count = gs.size();
+				for (; j < count && gs[j].type != g; ++j);
+				if(j != count)
+					continue;
+				if (j != (count - 1))
+					std::swap(gs[j], gs[count - 1]);
 				gs.pop_back();
 			}
 			else

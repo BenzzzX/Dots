@@ -1,12 +1,12 @@
 #include <iostream>
 #include <assert.h>
-#include "main.h"
+#include "pch.h"
+#include "transform.h"
 
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 
 namespace Util
 {
-	using namespace core::database;
 	using core::entity;
 	void Cast(world& ctx, entity* es, int n, type_diff diff)
 	{
