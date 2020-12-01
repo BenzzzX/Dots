@@ -37,7 +37,7 @@ namespace core
 		using ut = handle<24, 8>;
 		using ut::handle;
 	};
-	constexpr entity NullEntity = std::numeric_limits<uint32_t>::max();
+	constexpr entity NullEntity = UINT_MAX;
 
 
 	namespace database

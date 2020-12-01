@@ -226,6 +226,7 @@ namespace core
 		ECS_API extern index_t cleanup_id;
 		ECS_API extern index_t group_id;
 		ECS_API extern index_t mask_id;
+		constexpr uint32_t GroupBufferSize = sizeof(entity) * 5;
 
 		inline void* buffer_malloc(size_t size)
 		{
@@ -318,22 +319,22 @@ namespace core
 		template<class T>
 		class buffer_t
 		{
-			buffer* data;
+			buffer* _data;
 
 		public:
 			buffer_t(const void* inData)
-				:data((buffer*)inData) {}
+				:_data((buffer*)inData) {}
 			T& operator[](int i)
 			{
-				return ((T*)data->data())[i];
+				return ((T*)_data->data())[i];
 			}
 			const T& operator[](int i) const
 			{
-				return ((const T*)data->data())[i];
+				return ((const T*)_data->data())[i];
 			}
 			uint16_t size() const
 			{
-				return data->size / sizeof(T);
+				return _data->size / sizeof(T);
 			}
 			struct const_iterator
 			{
@@ -375,47 +376,56 @@ namespace core
 			};
 			iterator begin() noexcept
 			{
-				return iterator{ 0, (T*)data->data() };
+				return iterator{ 0, (T*)_data->data() };
 			}
 			iterator end() noexcept
 			{
-				return iterator{ data->size / sizeof(T), (T*)data->data() };
+				return iterator{ _data->size / sizeof(T), (T*)_data->data() };
 			}
 
 			const_iterator begin() const noexcept
 			{
-				return const_iterator{ 0, (T*)data->data() };
+				return const_iterator{ 0, (T*)_data->data() };
 			}
 			const_iterator end() const noexcept
 			{
-				return const_iterator{ size(), (T*)data->data() };
+				return const_iterator{ size(), (T*)_data->data() };
 			}
 
 			template<class P>
 			void push(P&& p)
 			{
-				data->push(&p, sizeof(T));
+				_data->push(&p, sizeof(T));
 			}
 			void pop()
 			{
-				data->pop(sizeof(T));
+				_data->pop(sizeof(T));
 			}
 			T& last()
 			{
-				((T*)data->data())[size()];
+				((T*)_data->data())[size()];
 			}
 			const T& last() const
 			{
-				((const T*)data->data())[size()];
+				((const T*)_data->data())[size()];
 			}
 			void shrink(uint16_t inlineSize) noexcept
 			{
-				data->shrink(inlineSize);
+				_data->shrink(inlineSize);
 			}
 			void reserve(uint16_t newSize) noexcept
 			{
-				if (newSize * sizeof(T) > data->capacity)
-					data->grow(newSize * sizeof(T));
+				if (newSize * sizeof(T) > _data->capacity)
+					_data->grow(newSize * sizeof(T));
+			}
+			T* data()
+			{
+				return (T*)_data->data();
+			}
+			void resize(uint16_t newSize) noexcept
+			{
+				reserve(newSize);
+				_data->size = newSize*sizeof(T);
 			}
 		};
 

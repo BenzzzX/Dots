@@ -1,7 +1,10 @@
 #include "Database.h"
 #include <iostream>
 #define cat(a, b) a##b
-#define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
+#define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
+#define AO(type, name, size) \
+adaptive_object _ao_##name{(size)*sizeof(type)}; \
+type* name = (type*)_ao_##name.self;
 
 using namespace core;
 using namespace database;
@@ -504,7 +507,6 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 						e = patcher->patch(e);
 					}
 					f(data, patcher);
-					patcher->move();
 				}
 			}
 			else
@@ -517,9 +519,9 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 						entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
 						e = patcher->patch(e);
 					}
-					patcher->move();
 				}
 			}
+			patcher->move();
 		}
 		patcher->reset();
 	}
@@ -1376,9 +1378,10 @@ void world::prefab_to_group(entity* members, uint32_t size)
 chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uint32_t count)
 {
 	chunk_vector<chunk_slice> allSlices;
-
-	adaptive_object object(sizeof(entity) * size * count);
-	auto ret = (entity*)object.self;
+	
+	AO(entity, ret, size * count);
+	AO(uint32_t, scount, size);
+	memset(scount, 0, sizeof(uint32_t) * size);
 
 	forloop(i, 0, size)
 	{
@@ -1388,8 +1391,9 @@ chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, 
 		for (auto s : g)
 		{
 			allSlices.push(s);
+			scount[i]++;
 			forloop(j, 0, s.count)
-				ret[k++ * size] = s.c->get_entities()[s.start + j];
+				ret[k++ * size + i] = s.c->get_entities()[s.start + j];
 		}
 	}
 
@@ -1399,7 +1403,7 @@ chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, 
 		entity* curr;
 		uint32_t count;
 		void move() override { curr += count; }
-		void reset() override { base = curr; }
+		void reset() override { curr = base; }
 		entity patch(entity e) override
 		{
 			if (e.id > count || !e.is_transient())
@@ -1409,13 +1413,18 @@ chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, 
 		}
 	} p;
 	p.count = size;
-	uint32_t k = 0;
+	uint32_t x = 0;
 	//todo: multithread?
-	for (auto& s : allSlices)
+	forloop(i, 0, size)
 	{
-		p.curr = p.base = &ret[(k % count) * size + (k / count)];
-		chunk::patch(s, &p);
-		k += s.count;
+		uint32_t k = 0;
+		forloop(j, 0, scount[i])
+		{
+			auto s = allSlices[x++];
+			p.curr = p.base = &ret[k * size];
+			chunk::patch(s, &p);
+			k += s.count;
+		}
 	}
 	return allSlices;
 }
@@ -1769,12 +1778,12 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	else
 	{
 		uint32_t size = group_data->size / sizeof(entity);
-		adaptive_object _ao_members(group_data->size);
-		entity* members = (entity*)_ao_members.self;
+		AO(entity, members, group_data->size);
 		memcpy(members, group_data->data(), group_data->size);
 		group_to_prefab(members, size);
-		return instantiate_prefab(members, size, count);
+		auto result = instantiate_prefab(members, size, count);
 		prefab_to_group(members, size);
+		return result;
 	}
 }
 
@@ -2120,14 +2129,12 @@ void world::move_context(world& src)
 {
 	auto& sents = src.ents;
 	uint32_t count = (uint32_t)sents.datas.size;
-	adaptive_object _ao_patch(sizeof(entity) * count);
-	entity* patch = (entity*)_ao_patch.self;
+	AO(entity, patch, count);
 	int validCount = 0;
 	forloop(i, 0, count)
 		if (sents.datas[i].c != nullptr)
 			validCount++;
-	adaptive_object _ao_entities(sizeof(entity) * validCount);
-	entity* entities = (entity*)_ao_entities.self;
+	AO(entity, entities, validCount);
 	//batch new to trigger fast path
 	ents.new_entities(entities, validCount);
 	validCount = 0;
@@ -2160,10 +2167,11 @@ void world::move_context(world& src)
 		{
 			chunk* next = c->next;
 			add_chunk(dstG, c);
-			c = next;
 			patch_chunk(c, &p);
+			c = next;
 		}
-		release_reference(g);
+		src.update_queries(g, false);
+		src.release_reference(g);
 		free(g);
 	}
 	src.archetypes.clear();

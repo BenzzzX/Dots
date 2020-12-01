@@ -10,4 +10,20 @@
       </IndexListItems>
     </Expand>
 	</Type>
+  <Type Name="core::database::buffer_t&lt;*&gt;">
+    <DisplayString Condition="_data-&gt;size == 0">Empty</DisplayString>
+    <DisplayString Condition="_data-&gt;size != 0">{{ size={_data-&gt;size/sizeof($T1)} }}</DisplayString>
+    <Expand>
+      <ArrayItems Condition="_data-&gt;size != 0">
+        <Size>_data-&gt;size/sizeof($T1)</Size>
+        <ValuePointer Condition="_data-&gt;d!=nullptr">($T1*)_data-&gt;d</ValuePointer>
+        <ValuePointer Condition="_data-&gt;d==nullptr">($T1*)(_data+1)</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name ="core::entity">
+    <DisplayString Condition="version == TransientMagicNumber">{{TRANSIENT id={id}, generation={version}}}</DisplayString>
+    <DisplayString Condition="value == 0xffffffff">Null</DisplayString>
+    <DisplayString>{{id={id}, generation={version}}}</DisplayString>
+  </Type>
 </AutoVisualizer>
