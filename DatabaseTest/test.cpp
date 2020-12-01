@@ -603,8 +603,168 @@ TEST_F(DatabaseTest, Group)
 	}
 }
 
-//TEST_F(DatabaseTest, Deserialize) {}
-//TEST_F(DatabaseTest, EntityDeserialize) {}
+struct buffer_serializer : core::database::serializer_i
+{
+	std::vector<char>& buffer;
+	buffer_serializer(std::vector<char>& buffer)
+		: buffer(buffer) {}
+	void stream(const void* data, uint32_t bytes) override
+	{
+		if (bytes == 0)
+			return;
+		size_t size = buffer.size();
+		buffer.resize(size + bytes);
+		memcpy(&buffer[size], data, bytes);
+	}
+	bool is_serialize() override { return true; }
+};
+struct buffer_deserializer : core::database::serializer_i
+{
+	std::vector<char>& buffer;
+	size_t offset = 0;
+	int i = 0;
+	buffer_deserializer(std::vector<char>& buffer)
+		: buffer(buffer) {}
+	void stream(const void* data, uint32_t bytes) override
+	{
+		void* mdata = const_cast<void*>(data);
+		if (bytes == 0)
+			return;
+		memcpy(mdata, &buffer[offset], bytes);
+		offset += bytes;
+	}
+	bool is_serialize() override { return false; }
+};
+
+TEST_F(DatabaseTest, Deserialize) 
+{
+	using namespace core::database;
+	index_t t[] = { test_id };
+	entity_type type{ typeset{t,1} };
+	{
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 100))
+		{
+			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			forloop(i, 0, c.count)
+				components[c.start + i].v = counter++;
+		}
+	}
+	int counter = 0;
+
+	for (auto i : ctx.query({ type }))
+		for (auto j : ctx.query(i.type, {}))
+		{
+			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto num = j->get_count();
+			forloop(k, 0, num)
+				counter += tests[k].v;
+		}
+	EXPECT_EQ(counter, 5050);
+	std::vector<char> buffer;
+	buffer_serializer bs{ buffer };
+	buffer_deserializer ds{ buffer };
+	ctx.serialize(&bs);
+	world ctx2;
+	ctx2.deserialize(&ds);
+	int counter2 = 0;
+	for (auto i : ctx2.query({ type }))
+		for (auto j : ctx2.query(i.type, {}))
+		{
+			auto tests = (test*)ctx2.get_owned_ro(j, test_id);
+			auto num = j->get_count();
+			forloop(k, 0, num)
+				counter2 += tests[k].v;
+		}
+	EXPECT_EQ(counter2, 5050);
+}
+
+TEST_F(DatabaseTest, EntityDeserialize) 
+{
+	using namespace core::database;
+	index_t t[] = { test_id };
+	entity_type type{ typeset{t,1} };
+	auto e = pick(ctx.allocate(type));
+	((test*)ctx.get_owned_rw(e, test_id))->v = -1.f;
+	std::vector<char> buffer;
+	buffer_serializer bs{ buffer };
+	buffer_deserializer ds{ buffer };
+	ctx.serialize(&bs, e);
+	auto e2 = ctx.deserialize(&ds, nullptr);
+	EXPECT_EQ(((test*)ctx.get_component_ro(e2, test_id))->v, -1.f);
+}
+
+TEST_F(DatabaseTest, GroupDeserialize)
+{
+	using namespace core::database;
+	core::entity es[10];
+	{
+		index_t t[] = { test_id };
+		entity_type type{ typeset{t,1} };
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 10))
+		{
+			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto entities = ctx.get_entities(c.c);
+			memcpy(es + counter - 1, entities, c.count * sizeof(core::entity));
+			forloop(i, 0, c.count)
+				components[c.start + i].v = counter++;
+		}
+	}
+	{
+		index_t t[] = { group_id };
+		entity_type type{ typeset{t,1} };
+		type_diff addGroup{ type };
+		for (auto s : ctx.batch(es, 1))
+			ctx.cast(s, addGroup);
+		auto group = buffer_t<core::entity>(ctx.get_owned_rw(es[0], group_id));
+		group.resize(10);
+		memcpy(group.data(), es, sizeof(core::entity) * group.size());
+	}
+	{
+		index_t t[] = { test_ref_id };
+		entity_type type{ typeset{t,1} };
+		type_diff addRef{ type };
+		for (auto s : ctx.batch(es + 1, 1))
+			ctx.cast(s, addRef);
+		auto ref = (test_ref*)ctx.get_owned_rw(es[1], test_ref_id);
+		ref->ref = es[0];
+	}
+	{
+		core::entity newE;
+		{
+
+			std::vector<char> buffer;
+			buffer_serializer bs{ buffer };
+			buffer_deserializer ds{ buffer };
+			ctx.serialize(&bs, es[0]);
+			newE = ctx.deserialize(&ds, nullptr);
+		}
+		{
+			index_t t[] = { group_id };
+			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
+		}
+
+		index_t t[] = { test_id };
+		entity_type type{ typeset{t,1} };
+		int counter = 0;
+		for (auto i : ctx.query({ type }))
+			for (auto j : ctx.query(i.type, {}))
+			{
+				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto num = j->get_count();
+				forloop(k, 0, num)
+					counter += tests[k].v;
+			}
+		EXPECT_EQ(counter, 110);
+		{
+			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, group_id));
+			EXPECT_EQ(group[0], newE);
+			auto ref = (test_ref*)ctx.get_component_ro(group[1], test_ref_id);
+			EXPECT_EQ(ref->ref, newE);
+		}
+	}
+}
 
 void install_test_components()
 {

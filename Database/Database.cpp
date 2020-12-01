@@ -261,7 +261,7 @@ index_t database::register_type(component_desc desc)
 	return id;
 }
 
-inline bool chunk_slice::full() { return start == 0 && count == c->get_count(); }
+inline bool chunk_slice::full() { return c != nullptr && start == 0 && count == c->get_count(); }
 
 inline chunk_slice::chunk_slice(chunk* c) : c(c), start(0), count(c->get_count()) {}
 
@@ -534,7 +534,6 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 	uint32_t* offsets = type->offsets(s.c->ct);
 	uint16_t* sizes = type->sizes();
 	tagged_index* types = (tagged_index*)type->types();
-	stream->stream(&s.count, sizeof(uint32_t));
 	stream->stream(s.c->get_entities() + s.start, sizeof(entity) * s.count);
 
 	forloop(i, 0, type->firstTag)
@@ -542,14 +541,31 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		stream->stream(arr, sizes[i] * s.count);
 	}
-
-	forloop(i, type->firstBuffer, type->firstTag)
+	
+	if (stream->is_serialize())
 	{
-		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
-		forloop(j, 0, s.count)
+		forloop(i, type->firstBuffer, type->firstTag)
 		{
-			buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
-			stream->stream(b->data(), b->size);
+			char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
+			forloop(j, 0, s.count)
+			{
+				buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
+				stream->stream(b->data(), b->size);
+			}
+		}
+	}
+	else
+	{
+		forloop(i, type->firstBuffer, type->firstTag)
+		{
+			char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
+			forloop(j, 0, s.count)
+			{
+				buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
+				if (b->d != nullptr)
+					b->d = (char*)malloc(b->capacity);
+				stream->stream(b->data(), b->size);
+			}
 		}
 	}
 }
@@ -1294,7 +1310,7 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	tsize_t mlength;
 	s->stream(&mlength, sizeof(tsize_t));
 	stack_array(entity, metatypes, mlength);
-	s->stream(metatypes, mlength);
+	s->stream(metatypes, mlength * sizeof(entity));
 	if (patcher)
 		forloop(i, 0, mlength)
 		metatypes[i] = patcher->patch(metatypes[i]);
@@ -1322,6 +1338,12 @@ bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
 	slice = { c, start, count };
 	chunk::serialize(slice, s);
 	return true;
+}
+
+void world::serialize_slice(const chunk_slice& slice, serializer_i* s)
+{
+	s->stream(&slice.count, sizeof(uint32_t));
+	chunk::serialize(slice, s);
 }
 
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
@@ -1450,7 +1472,7 @@ void world::serialize_single(serializer_i* s, entity src)
 {
 	const auto& data = ents.datas[src.id];
 	serialize_archetype(data.c->type, s);
-	chunk::serialize({ data.c, data.i, 1 }, s);
+	serialize_slice({ data.c, data.i, 1 }, s);
 }
 
 void world::structural_change(archetype* g, chunk* c)
@@ -1477,7 +1499,8 @@ chunk_slice world::deserialize_single(serializer_i* s, patcher_i* patcher)
 	chunk_slice slice;
 	deserialize_slice(g, s, slice);
 	ents.new_entities(slice);
-	chunk::patch(slice, patcher);
+	if(patcher)
+		chunk::patch(slice, patcher);
 	return slice;
 }
 
@@ -2196,7 +2219,7 @@ struct Data
 	Section sections[m];
 };
 */
-
+const int ZeroValue = 0;
 void world::serialize(serializer_i* s)
 {
 	s->stream(&ents.datas.size, sizeof(uint32_t));
@@ -2208,11 +2231,11 @@ void world::serialize(serializer_i* s)
 			continue;
 		serialize_archetype(g, s);
 		for (chunk* c = g->firstChunk; c; c = c->next)
-			chunk::serialize({ c, 0, c->count }, s);
+			serialize_slice({ c, 0, c->count }, s);
 
-		s->stream(0, sizeof(tsize_t));
+		s->stream(&ZeroValue, sizeof(uint32_t));
 	}
-	s->stream(0, sizeof(tsize_t));
+	s->stream(&ZeroValue, sizeof(tsize_t));
 }
 
 void world::deserialize(serializer_i* s)
