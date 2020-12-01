@@ -363,6 +363,41 @@ TEST_F(DatabaseTest, DistroyMiddle)
 	EXPECT_EQ(counter, (5050 - 34));
 }
 
+
+TEST_F(DatabaseTest, SimpleLoop)
+{
+	using namespace core::database;
+	for (int x = 0; x < 5; x++)
+	{
+		index_t t[] = { test_id };
+		entity_type type{ typeset{t,1} };
+		{
+			int counter = 1;
+			for (auto c : ctx.allocate(type, 100))
+			{
+				auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+				forloop(i, 0, c.count)
+					components[c.start + i].v = counter++;
+			}
+		}
+		int counter = 0;
+
+		for (auto i : ctx.query({ type }))
+			for (auto j : ctx.query(i.type, {}))
+			{
+				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto num = j->get_count();
+				forloop(k, 0, num) //遍历组件
+					counter += tests[k].v;
+			}
+
+		for (auto i : ctx.query({ type }))
+			for (auto j : ctx.query(i.type, {}))
+				ctx.destroy(j);
+		EXPECT_EQ(counter, 5050);
+	}
+}
+
 TEST_F(DatabaseTest, DisableMask) 
 {
 	using namespace core::database;

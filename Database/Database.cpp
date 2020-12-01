@@ -880,7 +880,7 @@ void world::update_queries(archetype* g, bool add)
 				int j = 0;
 				int count = gs.size();
 				for (; j < count && gs[j].type != g; ++j);
-				if(j != count)
+				if(j == count)
 					continue;
 				if (j != (count - 1))
 					std::swap(gs[j], gs[count - 1]);
