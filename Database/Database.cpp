@@ -1273,8 +1273,9 @@ void world::unmark_free(archetype* g, chunk* c)
 	remove(g->firstFree, g->lastChunk, c);
 	if (g->lastChunk == nullptr)
 		g->lastChunk = c;
-	if (c->next != g->firstFree)
-		g->firstChunk->link(c);
+	if (g->firstChunk != c)
+		if(g->firstFree == nullptr || c->next != g->firstFree)
+			g->firstChunk->link(c);
 }
 
 void world::release_reference(archetype* g)
