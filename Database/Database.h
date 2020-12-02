@@ -303,6 +303,7 @@ namespace core
 			ECS_API mask get_mask(const typeset& ts) { return type->get_mask(ts); }
 			ECS_API const entity* get_entities() const { return (entity*)data(); }
 			ECS_API uint32_t get_timestamp(index_t type) noexcept;
+			ECS_API archetype* get_type() noexcept { return type; }
 		};
 		
 		ECS_API void initialize();

@@ -429,6 +429,31 @@ namespace core
 			}
 		};
 
+		struct stack_allocator
+		{
+			char* stackbuffer = nullptr;
+			void* stacktop = nullptr;
+			size_t stackSize = 0;
+			void* alloc(size_t size, size_t align = alignof(int));
+			void free(void* ptr, size_t size);
+			void init(size_t size)
+			{
+				stackSize = size;
+				stacktop = stackbuffer = (char*)::malloc(10000);
+			}
+			void reset()
+			{
+				if (stackbuffer != nullptr)
+					::free(stackbuffer);
+				stacktop = stackbuffer = nullptr;
+				stackSize = 0;
+			}
+			~stack_allocator()
+			{
+				reset();
+			}
+		};
+
 		struct entity_type
 		{
 			typeset types;

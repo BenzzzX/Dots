@@ -30,25 +30,39 @@ namespace core
 			void** values;
 		};
 
-		class kernel
+		struct task_group
 		{
+			const kernel& ctx;
+			mask matched;
+			int startIndex;
+			int numTasks;
+			void** values;
+			task_group** dependencies;
+		};
 
-			struct match_info
-			{
-				int chunkSize;
-				mask matched;
-				index_t* localType;
-			};
+		struct kernel
+		{
 			world& ctx;
-			chunk_vector<match_info> matcheds;
+
+			archetype** archetypes;
+			mask* matched;
+			index_t* localType;
+			int archetypeCount;
 			chunk_vector<chunk*> chunks;
 			index_t* types;
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
 			bool withEntityFilter;
+		};
 
-			task get(int i);
+		class pipeline //计算管线，处于两个 sync point 之间
+		{
+			//std::map<archetype*,std::vector<task_group*>> ownership;
+			stack_allocator kernelStack;
+			stack_allocator taskStack;
+			kernel* create_kernel(world& w, const view& v);
+			task* create_task(const kernel& k, int index);
 		};
 	}
 }

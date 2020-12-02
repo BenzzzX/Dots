@@ -29,6 +29,30 @@ ECS_API index_t core::database::cleanup_id = 1;
 ECS_API index_t core::database::group_id = 2;
 ECS_API index_t core::database::mask_id = 3;
 
+void* stack_allocator::alloc(size_t size, size_t align = alignof(int))
+{
+	auto offset = uint32_t((char*)stacktop - stackbuffer);
+	stacktop = (uint32_t*)stacktop + 1;
+	if (std::align(align, size, stacktop, stackSize))
+	{
+		*((uint32_t*)stacktop - 1) = offset;
+		auto result = stacktop;
+		stacktop = (char*)stacktop + size;
+		stackSize -= size + sizeof(uint32_t);
+		return result;
+	}
+	return nullptr;
+}
+
+
+void stack_allocator::free(void* ptr, size_t size)
+{
+	auto offset = uint32_t((char*)stacktop - stackbuffer);
+	auto oldOffset = *((uint32_t*)ptr - 1);
+	stackSize += offset - oldOffset;
+	stacktop = stackbuffer + oldOffset;
+}
+
 struct global_data
 {
 	std::vector<type_data> infos;
@@ -43,9 +67,7 @@ struct global_data
 	size_t smallbinSize = 0;
 	size_t largebinSize = 0;
 
-	char* stackbuffer = nullptr;
-	void* stacktop = nullptr;
-	size_t stackSize = 0;
+	stack_allocator stack;
 
 	void initialize()
 	{
@@ -74,32 +96,17 @@ struct global_data
 		desc.entityRefCount = 0;
 		mask_id = register_type(desc);
 
-		stackbuffer = (char*)::malloc(10000);
-		stackSize = 10000;
-		stacktop = stackbuffer;
+		stack.init(10000);
 	}
 
 	void* stack_alloc(size_t size, size_t align = alignof(int))
 	{
-		auto offset = uint32_t((char*)stacktop - stackbuffer);
-		stacktop = (uint32_t*)stacktop + 1;
-		if (std::align(align, size, stacktop, stackSize))
-		{
-			*((uint32_t*)stacktop - 1) = offset;
-			auto result = stacktop;
-			stacktop = (char*)stacktop + size;
-			stackSize -= size + sizeof(uint32_t);
-			return result;
-		}
-		return nullptr;
+		return stack.alloc(size, align);
 	}
 
 	void stack_free(void* ptr, size_t size)
 	{
-		auto offset = uint32_t((char*)stacktop - stackbuffer);
-		auto oldOffset = *((uint32_t*)ptr - 1);
-		stackSize += offset - oldOffset;
-		stacktop = stackbuffer + oldOffset;
+		return stack.free(ptr, size);
 	}
 
 	void free(alloc_type type, void* data)
@@ -189,7 +196,7 @@ struct adaptive_object
 	adaptive_object(size_t size)
 		:size(size), self(nullptr)
 	{
-		if (gd.stackSize - size > 1024)
+		if (gd.stack.stackSize - size > 1024)
 		{
 			self = gd.stack_alloc(size);
 			type = Stack;
