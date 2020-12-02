@@ -766,6 +766,11 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	}
 }
 
+TEST_F(DatabaseTest, FormatTest)
+{
+
+}
+
 void install_test_components()
 {
 	using namespace core::database;

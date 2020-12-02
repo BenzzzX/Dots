@@ -549,20 +549,22 @@ namespace core
 		//todo: should mask support none filter?
 		struct entity_filter
 		{
-			typeset disabeld;
+			typeset inverseMask;
 
 			struct hash
 			{
 				size_t operator()(const entity_filter& key) const
 				{
-					size_t hash = hash_array(key.disabeld.data, key.disabeld.length);
+					size_t hash = hash_array(key.inverseMask.data, key.inverseMask.length);
 					return hash;
 				}
 			};
 
+			void apply(struct matched_archetype& ma) const;
+
 			bool operator==(const entity_filter& other) const
 			{
-				return disabeld == other.disabeld;
+				return inverseMask == other.inverseMask;
 			}
 		};
 	}

@@ -264,7 +264,7 @@ namespace core
 			uint32_t timestamp;
 		};
 
-		struct ECS_API chunk
+		struct chunk
 		{
 		private:
 			chunk *next, *prev;
@@ -299,10 +299,10 @@ namespace core
 			friend archetype;
 			friend world::entities;
 		public:
-			uint32_t get_count() { return count; }
-			mask get_mask(const typeset& ts) { return type->get_mask(ts); }
-			const entity* get_entities() const { return (entity*)data(); }
-			uint32_t get_timestamp(index_t type) noexcept;
+			ECS_API uint32_t get_count() { return count; }
+			ECS_API mask get_mask(const typeset& ts) { return type->get_mask(ts); }
+			ECS_API const entity* get_entities() const { return (entity*)data(); }
+			ECS_API uint32_t get_timestamp(index_t type) noexcept;
 		};
 		
 		ECS_API void initialize();
