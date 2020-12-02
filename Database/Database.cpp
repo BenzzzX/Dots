@@ -354,7 +354,9 @@ void chunk::construct(chunk_slice s) noexcept
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
-			new((size_t)j * sizes[i] + src) buffer{ sizes[i] - sizeof(buffer) };
+			new((size_t)j * sizes[i] + src) buffer{ 
+				static_cast<uint16_t>( static_cast<size_t>(sizes[i]) - sizeof(buffer) )
+			};
 	}
 
 	tsize_t maskId = type->index(mask_id);
@@ -645,7 +647,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 		else if (st > dt) //construct
 		{
 			forloop(j, 0, count)
-				new((size_t)j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
+				new((size_t)j * dstSizes[dstI] + d) buffer{ 
+					static_cast<uint16_t>( static_cast<size_t>(dstSizes[dstI]) - sizeof(buffer) )
+				};
 			dstI++;
 		}
 		else //move
@@ -669,7 +673,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	{
 		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
 		forloop(j, 0, count)
-			new((size_t)j * dstSizes[dstI] + d) buffer{ dstSizes[dstI] - sizeof(buffer) };
+			new((size_t)j * dstSizes[dstI] + d) buffer{ 
+				static_cast<uint16_t>( static_cast<size_t>(dstSizes[dstI]) - sizeof(buffer) )
+			};
 		dstI++;
 	}
 
