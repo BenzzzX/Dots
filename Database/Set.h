@@ -44,14 +44,12 @@ namespace core
 	{
 		using index_t = uint32_t;
 		using tsize_t = uint16_t;
-#if _WIN64
-		constexpr size_t _FNV_offset_basis = 14695981039346656037ULL;
-		constexpr size_t _FNV_prime = 1099511628211ULL;
-#elif _WIN32
+#ifdef __EMSCRIPTEN__
 		constexpr size_t _FNV_offset_basis = 2166136261U;
 		constexpr size_t _FNV_prime = 16777619U;
 #else
-#error Unknown platform
+		constexpr size_t _FNV_offset_basis = sizeof(size_t) == sizeof(uint32_t) ? 2166136261U : 14695981039346656037ULL;
+		constexpr size_t _FNV_prime = sizeof(uint32_t) ? 16777619U : 1099511628211ULL;
 #endif
 
 		inline size_t hash_append(size_t val, const unsigned char* const data, const size_t length) noexcept

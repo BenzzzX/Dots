@@ -66,9 +66,9 @@ namespace core
 			inline uint32_t* offsets(alloc_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
 			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + accessor().get_offset(4)); }
 			inline entity* metatypes() noexcept { return (entity*)(data() + accessor().get_offset(5)); }
-			inline uint32_t* timestamps(chunk* c) noexcept;
-			inline tsize_t index(index_t type) noexcept;
-			inline mask get_mask(const typeset& subtype) noexcept;
+			uint32_t* timestamps(chunk* c) noexcept;
+			tsize_t index(index_t type) noexcept;
+			mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type();
 
