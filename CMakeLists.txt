@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.19)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+option(DOTS_BUILD_CODEBASE FALSE)
+
 project(Dots )
 
 ## Glob database files.
@@ -26,26 +28,29 @@ target_compile_definitions(DotsDatabase
     PRIVATE MAKEDLL 
 )
 
-## Glob codebase files.
-file(GLOB_RECURSE 
-    DotsCodebaseSource
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cxx
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hxx
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.inl
-    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.natvis
-    ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
-)
+if(DOTS_BUILD_CODEBASE)
+    ## Glob codebase files.
+    file(GLOB_RECURSE 
+        DotsCodebaseSource
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cxx
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hxx
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.inl
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.natvis
+        ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
+    )
 
-add_library(DotsCodebase SHARED ${DotsCodebaseSource})
-target_compile_definitions(DotsCodebase
-    PRIVATE MAKEDLL 
-)
-target_include_directories(DotsCodebase
-    PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/Database
-)
+    add_library(DotsCodebase SHARED ${DotsCodebaseSource})
+    target_compile_definitions(DotsCodebase
+        PRIVATE MAKEDLL 
+    )
+    target_include_directories(DotsCodebase
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Database
+    )
+    target_link_libraries(DotsCodebase PUBLIC DotsDatabase)
+endif(DOTS_BUILD_CODEBASE)
