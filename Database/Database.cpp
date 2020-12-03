@@ -29,7 +29,7 @@ ECS_API index_t core::database::cleanup_id = 1;
 ECS_API index_t core::database::group_id = 2;
 ECS_API index_t core::database::mask_id = 3;
 
-void* stack_allocator::alloc(size_t size, size_t align = alignof(int))
+void* stack_allocator::alloc(size_t size, size_t align)
 {
 	auto offset = uint32_t((char*)stacktop - stackbuffer);
 	stacktop = (uint32_t*)stacktop + 1;
