@@ -3,6 +3,9 @@
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 
 
+template<class T>
+core::database::index_t tid = 0;
+
 struct test
 {
 	int v;
@@ -25,12 +28,6 @@ struct test_ref
 };
 
 struct test_tag {};
-
-core::database::index_t test_id;
-core::database::index_t test_track_id;
-core::database::index_t test_element_id;
-core::database::index_t test_ref_id;
-core::database::index_t test_tag_id;
 
 TEST(MetaTest, Equal) 
 {
@@ -99,7 +96,7 @@ TEST_F(DatabaseTest, AllocateMillion2)
 TEST_F(DatabaseTest, Instatiate)
 {
 	using namespace core::database;
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ {t, 1} };
 	core::entity e[2];
 	e[0] = pick(ctx.allocate(type));
@@ -125,7 +122,7 @@ TEST_F(DatabaseTest, Cast)
 	core::entity e = pick(ctx.allocate(emptyType));
 	EXPECT_TRUE(ctx.exist(e));
 
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ {t, 1} };
 	for (auto c : ctx.batch(&e, 1))
 		ctx.cast(c, type);
@@ -139,7 +136,7 @@ TEST_F(DatabaseTest, CastDiff)
 	core::entity e = pick(ctx.allocate(emptyType));
 	EXPECT_TRUE(ctx.exist(e));
 
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ {t, 1} };
 	type_diff diff = { type };
 	for (auto c : ctx.batch(&e, 1))
@@ -170,20 +167,20 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{typeset{t,1}};
 	//就地初始化，避免多次查询
 	for (auto c : ctx.allocate(type))
 	{
-		auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+		auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 		e = ctx.get_entities(c.c)[c.start];
 		forloop(i, 0, c.count)
 			components[c.start + i].f = -1.f;
 	}
-	auto component = (test*)ctx.get_component_ro(e, test_id);
+	auto component = (test*)ctx.get_component_ro(e, tid<test>);
 	EXPECT_EQ(component->f, -1.f);
-	((test*)ctx.get_owned_rw(e, test_id))->f = 1.f;
-	component = (test*)ctx.get_component_ro(e, test_id);
+	((test*)ctx.get_owned_rw(e, tid<test>))->f = 1.f;
+	component = (test*)ctx.get_component_ro(e, tid<test>);
 	EXPECT_EQ(component->f, 1.f);
 }
 
@@ -192,12 +189,12 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 	using namespace core::database;
 
 	//初始化
-	index_t t[] = { test_track_id };
+	index_t t[] = { tid<test_track> };
 	entity_type type{typeset{t,1}};
 	core::entity e = pick(ctx.allocate(type));
 	{
 		//非就地初始化，更容易书写
-		auto component = (test_track*)ctx.get_owned_rw(e, test_track_id);
+		auto component = (test_track*)ctx.get_owned_rw(e, tid<test_track>);
 		component->v = 2;
 	}
 
@@ -210,7 +207,7 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 	EXPECT_TRUE(ctx.exist(e));
 	EXPECT_TRUE(ctx.has_component(e, { t,1 }));
 	{
-		auto component = (test_track*)ctx.get_component_ro(e, test_track_id);
+		auto component = (test_track*)ctx.get_component_ro(e, tid<test_track>);
 		EXPECT_EQ(component->v, 2);
 	}
 	//清理待销毁组件，完成销毁
@@ -222,7 +219,7 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 	//待克隆状态
 	EXPECT_TRUE(!ctx.has_component(e2, { t,1 }));
 	{
-		auto component = (test_track*)ctx.get_component_ro(e2, test_track_id + 1);
+		auto component = (test_track*)ctx.get_component_ro(e2, tid<test_track> + 1);
 		EXPECT_EQ(component->v, 2);
 	}
 	type_diff addtrack{ type };
@@ -237,17 +234,17 @@ TEST_F(DatabaseTest, BufferReadWrite)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { test_element_id };
+	index_t t[] = { tid<test_element> };
 	entity_type type{ typeset{t,1} };
 	for (auto c : ctx.allocate(type))
 	{
-		auto buffers = (char*)ctx.get_owned_rw(c.c, test_element_id);
+		auto buffers = (char*)ctx.get_owned_rw(c.c, tid<test_element>);
 		e = ctx.get_entities(c.c)[c.start];
 		test_element v{ 3 };
 		forloop(i, 0, c.count)
 			buffer_t<test_element>(buffers + 128*i).push(v);
 	}
-	auto b = buffer_t<test_element>(ctx.get_component_ro(e, test_element_id));
+	auto b = buffer_t<test_element>(ctx.get_component_ro(e, tid<test_element>));
 
 	EXPECT_EQ(b[0].v, 3);
 }
@@ -257,11 +254,11 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { test_element_id };
+	index_t t[] = { tid<test_element> };
 	entity_type type{ typeset{t,1} };
 	for (auto c : ctx.allocate(type))
 	{
-		auto buffers = (char*)ctx.get_owned_rw(c.c, test_element_id);
+		auto buffers = (char*)ctx.get_owned_rw(c.c, tid<test_element>);
 		e = ctx.get_entities(c.c)[c.start];
 		test_element v{ 3 };
 		forloop(i, 0, c.count)
@@ -269,11 +266,11 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	}
 
 	core::entity e2 = pick(ctx.instantiate(e));
-	auto b = buffer_t<test_element>(ctx.get_component_ro(e, test_element_id));
+	auto b = buffer_t<test_element>(ctx.get_component_ro(e, tid<test_element>));
 	EXPECT_EQ(b[0].v, 3);
 	ctx.destroy(ctx.batch(&e, 1)[0]);
 
-	auto b2 = buffer_t<test_element>(ctx.get_component_ro(e2, test_element_id));
+	auto b2 = buffer_t<test_element>(ctx.get_component_ro(e2, tid<test_element>));
 	EXPECT_EQ(b2[0].v, 3);
 	ctx.destroy(ctx.batch(&e2, 1)[0]); //ctx.destroy(e2);
 }
@@ -285,11 +282,11 @@ TEST_F(DatabaseTest, Meta)
 	core::entity e;
 
 	{
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		for (auto c : ctx.allocate(type))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			metae = ctx.get_entities(c.c)[c.start];
 			forloop(i, 0, c.count)
 				components[c.start + i].f = -1.f;
@@ -307,24 +304,24 @@ TEST_F(DatabaseTest, Meta)
 			ctx.cast(c, addmeta);
 	}
 	{
-		auto component = (test*)ctx.get_component_ro(metae, test_id);
+		auto component = (test*)ctx.get_component_ro(metae, tid<test>);
 		EXPECT_EQ(component->f, -1.f); // Shared
 	}
 
 	{
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type({ {t,1},{} });
 
 		for (auto c : ctx.batch(&e, 1))
 			for (auto s : ctx.cast(c, { type }))
 			{
-				auto tests = (test*)ctx.get_owned_rw(s.c, test_id);
+				auto tests = (test*)ctx.get_owned_rw(s.c, tid<test>);
 				forloop(i, 0, s.count)
 					tests[s.start + i].f = -2.f;
 			}
 	}
 	{
-		auto component = (test*)ctx.get_component_ro(e, test_id);
+		auto component = (test*)ctx.get_component_ro(e, tid<test>);
 		EXPECT_EQ(component->f, -2.f); //Shared shadowed by owned
 	}
 }
@@ -333,13 +330,13 @@ TEST_F(DatabaseTest, DistroyMiddle)
 {
 	using namespace core::database;
 	core::entity es[100];
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ typeset{t,1} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count)
 				components[c.start + i].v = counter++;
@@ -353,7 +350,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 	{
 		for (auto j : ctx.query(i.type, {})) //遍历 Chunk
 		{
-			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num) //遍历组件
 				counter += tests[k].v;
@@ -368,13 +365,13 @@ TEST_F(DatabaseTest, SimpleLoop)
 	using namespace core::database;
 	for (int x = 0; x < 5; x++)
 	{
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		{
 			int counter = 1;
 			for (auto c : ctx.allocate(type, 100))
 			{
-				auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+				auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 				forloop(i, 0, c.count)
 					components[c.start + i].v = counter++;
 			}
@@ -384,7 +381,7 @@ TEST_F(DatabaseTest, SimpleLoop)
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type, {}))
 			{
-				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
 				forloop(k, 0, num) //遍历组件
 					counter += tests[k].v;
@@ -401,16 +398,16 @@ TEST_F(DatabaseTest, DisableMask)
 {
 	using namespace core::database;
 	core::entity es[100];
-	index_t t[] = { mask_id, test_id };
+	index_t t[] = { mask_id, tid<test> };
 	std::sort(t, t + 2);
-	index_t dt[] = { test_id };
+	index_t dt[] = { tid<test> };
 	entity_type type{ typeset{t,2} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100)) //遍历创建 Entity
 		{
 			mask disableMask = c.c->get_mask({ dt, 1 });
-			auto tests = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto tests = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			auto masks = (mask*)ctx.get_owned_ro(c.c, mask_id);
 			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count) //初始化 Component
@@ -486,13 +483,13 @@ TEST_F(DatabaseTest, DisableMask)
 TEST_F(DatabaseTest, MoveContext) 
 {
 	using namespace core::database;
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ typeset{t,1} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			forloop(i, 0, c.count)
 				components[c.start + i].v = counter++;
 		}
@@ -502,7 +499,7 @@ TEST_F(DatabaseTest, MoveContext)
 	for (auto i : ctx.query({ type }))
 		for (auto j : ctx.query(i.type, {}))
 		{
-			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num) 
 				counter += tests[k].v;
@@ -515,7 +512,7 @@ TEST_F(DatabaseTest, MoveContext)
 	for (auto i : ctx2.query({ type }))
 		for (auto j : ctx2.query(i.type, {}))
 		{
-			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num) 
 				counter2 += tests[k].v;
@@ -527,7 +524,7 @@ TEST_F(DatabaseTest, MoveContext)
 	for (auto i : ctx.query({ type }))
 		for (auto j : ctx.query(i.type, {}))
 		{
-			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num) 
 				counter3 += tests[k].v;
@@ -540,12 +537,12 @@ TEST_F(DatabaseTest, Group)
 	using namespace core::database;
 	core::entity es[10];
 	{
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			auto entities = ctx.get_entities(c.c);
 			memcpy(es + counter - 1, entities, c.count * sizeof(core::entity));
 			forloop(i, 0, c.count)
@@ -563,12 +560,12 @@ TEST_F(DatabaseTest, Group)
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
 	{
-		index_t t[] = { test_ref_id };
+		index_t t[] = { tid<test_ref> };
 		entity_type type{ typeset{t,1} };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es+1, 1))
 			ctx.cast(s, addRef);
-		auto ref = (test_ref*)ctx.get_owned_rw(es[1], test_ref_id);
+		auto ref = (test_ref*)ctx.get_owned_rw(es[1], tid<test_ref>);
 		ref->ref = es[0];
 	}
 	{
@@ -582,13 +579,13 @@ TEST_F(DatabaseTest, Group)
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type, {}))
 			{
-				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
 				forloop(k, 0, num) 
 					counter += tests[k].v;
@@ -597,7 +594,7 @@ TEST_F(DatabaseTest, Group)
 		{
 			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, group_id));
 			EXPECT_EQ(group[0], newE);
-			auto ref = (test_ref*) ctx.get_component_ro(group[1], test_ref_id);
+			auto ref = (test_ref*) ctx.get_component_ro(group[1], tid<test_ref>);
 			EXPECT_EQ(ref->ref, newE);
 		}
 	}
@@ -639,13 +636,13 @@ struct buffer_deserializer : core::database::serializer_i
 TEST_F(DatabaseTest, Deserialize) 
 {
 	using namespace core::database;
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ typeset{t,1} };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			forloop(i, 0, c.count)
 				components[c.start + i].v = counter++;
 		}
@@ -655,7 +652,7 @@ TEST_F(DatabaseTest, Deserialize)
 	for (auto i : ctx.query({ type }))
 		for (auto j : ctx.query(i.type, {}))
 		{
-			auto tests = (test*)ctx.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num)
 				counter += tests[k].v;
@@ -671,7 +668,7 @@ TEST_F(DatabaseTest, Deserialize)
 	for (auto i : ctx2.query({ type }))
 		for (auto j : ctx2.query(i.type, {}))
 		{
-			auto tests = (test*)ctx2.get_owned_ro(j, test_id);
+			auto tests = (test*)ctx2.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
 			forloop(k, 0, num)
 				counter2 += tests[k].v;
@@ -682,16 +679,16 @@ TEST_F(DatabaseTest, Deserialize)
 TEST_F(DatabaseTest, EntityDeserialize) 
 {
 	using namespace core::database;
-	index_t t[] = { test_id };
+	index_t t[] = { tid<test> };
 	entity_type type{ typeset{t,1} };
 	auto e = pick(ctx.allocate(type));
-	((test*)ctx.get_owned_rw(e, test_id))->v = -1.f;
+	((test*)ctx.get_owned_rw(e, tid<test>))->v = -1.f;
 	std::vector<char> buffer;
 	buffer_serializer bs{ buffer };
 	buffer_deserializer ds{ buffer };
 	ctx.serialize(&bs, e);
 	auto e2 = ctx.deserialize(&ds, nullptr);
-	EXPECT_EQ(((test*)ctx.get_component_ro(e2, test_id))->v, -1.f);
+	EXPECT_EQ(((test*)ctx.get_component_ro(e2, tid<test>))->v, -1.f);
 }
 
 TEST_F(DatabaseTest, GroupDeserialize)
@@ -699,12 +696,12 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	using namespace core::database;
 	core::entity es[10];
 	{
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
 		{
-			auto components = (test*)ctx.get_owned_rw(c.c, test_id);
+			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
 			auto entities = ctx.get_entities(c.c);
 			memcpy(es + counter - 1, entities, c.count * sizeof(core::entity));
 			forloop(i, 0, c.count)
@@ -722,12 +719,12 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
 	{
-		index_t t[] = { test_ref_id };
+		index_t t[] = { tid<test_ref> };
 		entity_type type{ typeset{t,1} };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es + 1, 1))
 			ctx.cast(s, addRef);
-		auto ref = (test_ref*)ctx.get_owned_rw(es[1], test_ref_id);
+		auto ref = (test_ref*)ctx.get_owned_rw(es[1], tid<test_ref>);
 		ref->ref = es[0];
 	}
 	{
@@ -745,13 +742,13 @@ TEST_F(DatabaseTest, GroupDeserialize)
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
-		index_t t[] = { test_id };
+		index_t t[] = { tid<test> };
 		entity_type type{ typeset{t,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type, {}))
 			{
-				auto tests = (test*)ctx.get_owned_ro(j, test_id);
+				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
 				forloop(k, 0, num)
 					counter += tests[k].v;
@@ -760,7 +757,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		{
 			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, group_id));
 			EXPECT_EQ(group[0], newE);
-			auto ref = (test_ref*)ctx.get_component_ro(group[1], test_ref_id);
+			auto ref = (test_ref*)ctx.get_component_ro(group[1], tid<test_ref>);
 			EXPECT_EQ(ref->ref, newE);
 		}
 	}
@@ -771,22 +768,29 @@ TEST_F(DatabaseTest, FormatTest)
 
 }
 
+
+TEST_F(DatabaseTest, Flag)
+{
+
+}
+
 void install_test_components()
 {
 	using namespace core::database;
-	test_id = register_type({ false, false, false, 10, sizeof(test) });
-	test_track_id = register_type({ false, true, true, 11, sizeof(test_track) });
-	test_element_id = register_type({ true, false, false, 12, 128, sizeof(test_element) });
+	
+	tid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
+	tid<test_track> = register_type({ false, true, true, typeid(test_track).hash_code(), sizeof(test_track) });
+	tid<test_element> = register_type({ true, false, false, typeid(test_track).hash_code(), 128, sizeof(test_element) });
 	{
 		component_desc desc;
-		desc.isElement = false; desc.need_copy = false;
-		desc.need_clean = false; desc.hash = 14;
+		desc.isElement = false; desc.manualCopy = false;
+		desc.manualClean = false; desc.hash = typeid(test_element).hash_code();
 		desc.size = sizeof(test_ref); desc.elementSize = 0;
 		intptr_t refs[] = { offsetof(test_ref, ref) };
 		desc.entityRefs = refs; desc.entityRefCount = 1;
-		test_ref_id = register_type(desc);
+		tid<test_ref> = register_type(desc);
 	}
-	test_tag_id = register_type({ false, false, false, 13, 0 });
+	tid<test_tag> = register_type({ false, false, false, typeid(test_tag).hash_code(), 0 });
 }
 
 int main(int argc, char** argv)

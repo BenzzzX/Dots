@@ -44,11 +44,10 @@ namespace core
 			constexpr operator index_t() const { return value; }
 		};
 
-		//system overhead
-		static constexpr size_t kFastBinSize = 64 * 1024 - 256;
+		static constexpr size_t kFastBinSize = 64 * 1024;
 		static constexpr size_t kSmallBinThreshold = 8;
-		static constexpr size_t kSmallBinSize = 1024 - 256;
-		static constexpr size_t kLargeBinSize = 1024 * 1024 - 256;
+		static constexpr size_t kSmallBinSize = 1024;
+		static constexpr size_t kLargeBinSize = 1024 * 1024;
 
 		static constexpr size_t kFastBinCapacity = 800;
 		static constexpr size_t kSmallBinCapacity = 200;
@@ -69,10 +68,101 @@ namespace core
 			~chunk_vector_base();
 		};
 
+		namespace chunk_vector_detail
+		{
+			template<class V>
+			struct const_iterator
+			{
+				using iterator_category = std::random_access_iterator_tag;
+
+				using value_type = typename V::value_type;
+				using difference_type = typename V::difference_type;
+				using pointer = typename V::pointer;
+				using reference = typename V::reference;
+
+
+				size_t i;
+				void** c;
+
+				const_iterator& operator++() noexcept { ++i; return *this; }
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const const_iterator& right) const noexcept { return i == right.i && c == right.c; }
+				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
+				const_iterator& operator+=(difference_type d) { i += d; return *this; }
+				const_iterator& operator-=(difference_type d) { i -= d; return *this; }
+				friend const_iterator operator+(const const_iterator& lhs, difference_type rhs) { auto result = lhs; return result += rhs; }
+				friend const_iterator operator+(difference_type lhs, const const_iterator& rhs) { auto result = rhs; return result += lhs; }
+				friend const_iterator operator-(const const_iterator& lhs, difference_type rhs) { auto result = lhs; return result -= rhs; }
+				friend const_iterator operator-(difference_type lhs, const const_iterator& rhs) { auto result = rhs; return result -= lhs; }
+				friend difference_type operator-(const const_iterator& lhs, const const_iterator& rhs) { return lhs.i - rhs.i; }
+				const value_type& operator[](difference_type d) { return *(*this + d); }
+				bool operator<(const const_iterator& rhs) const { return i < rhs.i; }
+				bool operator>(const const_iterator& rhs) const { return i > rhs.i; }
+				bool operator<=(const const_iterator& rhs) const { return i <= rhs.i; }
+				bool operator>=(const const_iterator& rhs) const { return i >= rhs.i; }
+
+
+				const value_type& operator*()
+				{
+					return *V::get(c, i);
+				}
+				const value_type* operator->()
+				{
+					return &**this;
+				}
+			};
+
+			template<class V>
+			struct iterator : const_iterator<V>
+			{
+				iterator() {}
+				iterator(size_t size, void** data)
+					:const_iterator<V>{ size, data } {}
+				using iterator_category = std::random_access_iterator_tag;
+
+				using value_type = typename V::value_type;
+				using difference_type = typename V::difference_type;
+				using pointer = typename V::pointer;
+				using reference = typename V::reference;
+
+				iterator& operator++() noexcept { ++this->i; return *this; }
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const iterator& right) const noexcept { return this->i == right.i && this->c == right.c; }
+				bool operator!=(const iterator& right) const noexcept { return !(*this == right); };
+				iterator& operator+=(difference_type d) { this->i += d; return *this; }
+				iterator& operator-=(difference_type d) { this->i -= d; return *this; }
+				friend iterator operator+(const iterator& lhs, difference_type rhs) { auto result = lhs; return result += rhs; }
+				friend iterator operator+(difference_type lhs, const iterator& rhs) { auto result = rhs; return result += lhs; }
+				friend iterator operator-(const iterator& lhs, difference_type rhs) { auto result = lhs; return result -= rhs; }
+				friend iterator operator-(difference_type lhs, const iterator& rhs) { auto result = rhs; return result -= lhs; }
+				friend difference_type operator-(const iterator& lhs, const iterator& rhs) { return lhs.i - rhs.i; }
+				bool operator<(const iterator& rhs) const { return this->i < rhs.i; }
+				bool operator>(const iterator& rhs) const { return this->i > rhs.i; }
+				bool operator<=(const iterator& rhs) const { return this->i <= rhs.i; }
+				bool operator>=(const iterator& rhs) const { return this->i >= rhs.i; }
+				value_type& operator[](difference_type d) { return *(*this + d); }
+				value_type& operator*()
+				{
+					return *V::get(this->c, this->i);
+				}
+				value_type* operator->()
+				{
+					return &**this;
+				}
+			};
+		}
 		//for transient lightweight data storage
 		template<class T>
 		struct chunk_vector : chunk_vector_base
 		{
+			using value_type = T;
+			using pointer = T*;
+			using const_pointer = const T*;
+			using reference = T&;
+			using const_reference = const T&;
+			using size_type = size_t;
+			using difference_type = size_t;
+
 			using chunk_vector_base::chunk_vector_base;
 			static T* get(void** data, size_t i)
 			{
@@ -80,45 +170,8 @@ namespace core
 			}
 			static constexpr size_t kChunkCapacity = kFastBinSize / sizeof(T);
 
-			struct const_iterator
-			{
-				size_t i;
-				void** c;
-
-				const_iterator& operator++() noexcept
-				{
-					++i;
-					return *this;
-				}
-				void operator++(int) noexcept { ++* this; }
-				bool operator==(const const_iterator& right) const noexcept { return i == right.i && c == right.c; }
-				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
-
-				const T& operator*()
-				{
-					return *get(c, i);
-				}
-				const T* operator->()
-				{
-					return &**this;
-				}
-			};
-			struct iterator : const_iterator
-			{
-				iterator(size_t size, void** data)
-					:const_iterator{ size, data } {}
-				using const_iterator::operator++;
-				using const_iterator::operator!=;
-				T& operator*()
-				{
-					return const_cast<T&>(const_iterator::operator*());
-				}
-				T* operator->()
-				{
-					return &**this;
-				}
-			};
-
+			using const_iterator = chunk_vector_detail::const_iterator<chunk_vector>;
+			using iterator = chunk_vector_detail::iterator<chunk_vector>;
 			iterator begin() noexcept { return iterator{ 0, data }; }
 			iterator end() noexcept { return iterator{ size, data }; }
 
@@ -201,16 +254,16 @@ namespace core
 		{
 			Valid = 0,
 			Copying = 1,
-			NeedCopying = 2,
-			NeedCleaning = 4,
+			ManualCopying = 2,
+			ManualCleaning = 4,
 			NeedCC = 6
 		};
 
 		struct component_desc
 		{
 			bool isElement = false;
-			bool need_copy = false;
-			bool need_clean = false;
+			bool manualCopy = false;
+			bool manualClean = false;
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
@@ -316,12 +369,103 @@ namespace core
 					buffer_free(d);
 			}
 		};
+
+		namespace buffer_detail
+		{
+			template<class V>
+			struct const_iterator
+			{
+				using iterator_category = std::random_access_iterator_tag;
+
+				using value_type = typename V::value_type;
+				using difference_type = typename V::difference_type;
+				using pointer = typename V::pointer;
+				using reference = typename V::reference;
+
+				value_type* ptr;
+
+				const_iterator& operator++() noexcept { ++ptr; return *this; }
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const const_iterator& right) const noexcept { return ptr == right.ptr; }
+				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
+				const_iterator& operator+=(difference_type d) { ptr += d; return *this; }
+				const_iterator& operator-=(difference_type d) { ptr -= d; return *this; }
+				friend const_iterator operator+(const const_iterator& lhs, difference_type rhs) { auto result = lhs; return result += rhs; }
+				friend const_iterator operator+(difference_type lhs, const const_iterator& rhs) { auto result = rhs; return result += lhs; }
+				friend const_iterator operator-(const const_iterator& lhs, difference_type rhs) { auto result = lhs; return result -= rhs; }
+				friend const_iterator operator-(difference_type lhs, const const_iterator& rhs) { auto result = rhs; return result -= lhs; }
+				friend difference_type operator-(const const_iterator& lhs, const const_iterator& rhs) { return lhs.ptr - rhs.ptr; }
+				const value_type& operator[](difference_type d) { return *(*this + d); }
+				bool operator<(const const_iterator& rhs) const { return ptr < rhs.ptr; }
+				bool operator>(const const_iterator& rhs) const { return ptr > rhs.ptr; }
+				bool operator<=(const const_iterator& rhs) const { return ptr <= rhs.ptr; }
+				bool operator>=(const const_iterator& rhs) const { return ptr >= rhs.ptr; }
+
+
+				const value_type& operator*()
+				{
+					return *ptr;
+				}
+				const value_type* operator->()
+				{
+					return ptr;
+				}
+			};
+
+			template<class V>
+			struct iterator : const_iterator<V>
+			{
+				using iterator_category = std::random_access_iterator_tag;
+
+				using value_type = typename V::value_type;
+				using difference_type = typename V::difference_type;
+				using pointer = typename V::pointer;
+				using reference = typename V::reference;
+				iterator() {}
+				iterator(pointer ptr)
+					:const_iterator<V>{ ptr } {}
+
+				iterator& operator++() noexcept { ++this->ptr; return *this; }
+				void operator++(int) noexcept { ++* this; }
+				bool operator==(const iterator& right) const noexcept { return this->ptr == right.ptr; }
+				bool operator!=(const iterator& right) const noexcept { return !(*this == right); };
+				iterator& operator+=(difference_type d) { this->ptr += d; return *this; }
+				iterator& operator-=(difference_type d) { this->ptr -= d; return *this; }
+				friend iterator operator+(const iterator& lhs, difference_type rhs) { auto result = lhs; return result += rhs; }
+				friend iterator operator+(difference_type lhs, const iterator& rhs) { auto result = rhs; return result += lhs; }
+				friend iterator operator-(const iterator& lhs, difference_type rhs) { auto result = lhs; return result -= rhs; }
+				friend iterator operator-(difference_type lhs, const iterator& rhs) { auto result = rhs; return result -= lhs; }
+				friend difference_type operator-(const iterator& lhs, const iterator& rhs) { return lhs.ptr - rhs.ptr; }
+				bool operator<(const iterator& rhs) const { return this->ptr < rhs.ptr; }
+				bool operator>(const iterator& rhs) const { return this->ptr > rhs.ptr; }
+				bool operator<=(const iterator& rhs) const { return this->ptr <= rhs.ptr; }
+				bool operator>=(const iterator& rhs) const { return this->ptr >= rhs.ptr; }
+				value_type& operator[](difference_type d) { return *(*this + d); }
+				value_type& operator*()
+				{
+					return *this->ptr;
+				}
+				value_type* operator->()
+				{
+					return this->ptr;
+				}
+			};
+		}
+
 		template<class T>
 		class buffer_t
 		{
 			buffer* _data;
 
 		public:
+			using value_type = T;
+			using pointer = T*;
+			using const_pointer = const T*;
+			using reference = T&;
+			using const_reference = const T&;
+			using size_type = size_t;
+			using difference_type = size_t;
+
 			buffer_t(const void* inData)
 				:_data((buffer*)inData) {}
 			T& operator[](int i)
@@ -336,60 +480,24 @@ namespace core
 			{
 				return _data->size / sizeof(T);
 			}
-			struct const_iterator
-			{
-				size_t i;
-				T* data;
-
-				const_iterator& operator++() noexcept
-				{
-					++i;
-					return *this;
-				}
-				void operator++(int) noexcept { ++* this; }
-				bool operator==(const const_iterator& right) const noexcept { return i == right.i && data == right.data; }
-				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
-
-				const T& operator*()
-				{
-					return data[i];
-				}
-				const T* operator->()
-				{
-					return &**this;
-				}
-			};
-			struct iterator : const_iterator
-			{
-				iterator(size_t i, T* data)
-					: const_iterator{ i, data } {}
-				using const_iterator::operator++;
-				using const_iterator::operator!=;
-				T& operator*()
-				{
-					return const_cast<T&>(const_iterator::operator*());
-				}
-				T* operator->()
-				{
-					return &**this;
-				}
-			};
+			using const_iterator = buffer_detail::const_iterator<buffer_t>;
+			using iterator = buffer_detail::iterator<buffer_t>;
 			iterator begin() noexcept
 			{
-				return iterator{ 0, (T*)_data->data() };
+				return iterator{ (T*)_data->data() };
 			}
 			iterator end() noexcept
 			{
-				return iterator{ _data->size / sizeof(T), (T*)_data->data() };
+				return iterator{ (T*)_data->data() + (_data->size / sizeof(T)) };
 			}
 
 			const_iterator begin() const noexcept
 			{
-				return const_iterator{ 0, (T*)_data->data() };
+				return const_iterator{ (T*)_data->data() };
 			}
 			const_iterator end() const noexcept
 			{
-				return const_iterator{ size(), (T*)_data->data() };
+				return const_iterator{ (T*)_data->data() + (_data->size / sizeof(T)) };
 			}
 
 			template<class P>
@@ -429,7 +537,7 @@ namespace core
 			}
 		};
 
-		struct stack_allocator
+		struct ECS_API stack_allocator
 		{
 			char* stackbuffer = nullptr;
 			void* stacktop = nullptr;
@@ -585,7 +693,7 @@ namespace core
 				}
 			};
 
-			void apply(struct matched_archetype& ma) const;
+			void ECS_API apply(struct matched_archetype& ma) const;
 
 			bool operator==(const entity_filter& other) const
 			{

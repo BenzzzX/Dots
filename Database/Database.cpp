@@ -29,7 +29,7 @@ ECS_API index_t core::database::cleanup_id = 1;
 ECS_API index_t core::database::group_id = 2;
 ECS_API index_t core::database::mask_id = 3;
 
-void* stack_allocator::alloc(size_t size, size_t align = alignof(int))
+void* stack_allocator::alloc(size_t size, size_t align)
 {
 	auto offset = uint32_t((char*)stacktop - stackbuffer);
 	stacktop = (uint32_t*)stacktop + 1;
@@ -249,14 +249,14 @@ index_t database::register_type(component_desc desc)
 	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
-	if (desc.need_clean)
-		s = s | NeedCleaning;
-	if (desc.need_copy)
-		s = s | NeedCopying;
+	if (desc.manualClean)
+		s = s | ManualCleaning;
+	if (desc.manualCopy)
+		s = s | ManualCopying;
 	gd.tracks.push_back((track_state)s);
 	gd.hash2type.insert({ desc.hash, id });
 
-	if (desc.need_copy)
+	if (desc.manualCopy)
 	{
 		index_t id2 = (index_t)gd.infos.size();
 		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
@@ -1056,7 +1056,7 @@ archetype* world::get_cleaning(archetype* g)
 	{
 		auto type = (tagged_index)types[i];
 		auto stage = gd.tracks[type.index()];
-		if ((stage & NeedCleaning) != 0)
+		if ((stage & ManualCleaning) != 0)
 			dstTypes[k++] = type;
 	}
 	std::sort(dstTypes, dstTypes + k);
@@ -1111,7 +1111,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		{
 			auto type = (tagged_index)srcTypes[i];
 			auto stage = gd.tracks[type.index()];
-			if ((stage & NeedCopying) != 0)
+			if ((stage & ManualCopying) != 0)
 				dstTypes[i] = type + 1;
 			else
 				dstTypes[i] = type;
@@ -1146,7 +1146,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		{
 			auto type = (tagged_index)srcTypes[i];
 			auto stage = gd.tracks[type.index()];
-			if (((stage & NeedCopying) != 0) && (srcTypes[i + 1] == type + 1))
+			if (((stage & ManualCopying) != 0) && (srcTypes[i + 1] == type + 1))
 				return true;
 			return false;
 		};
@@ -1172,7 +1172,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 			auto type = (tagged_index)shrTypes[i];
 			newShrTypes[k++] = type;
 			auto stage = gd.tracks[type.index()];
-			if ((stage & NeedCopying) != 0)
+			if ((stage & ManualCopying) != 0)
 				newShrTypes[k++] = type + 1;
 		}
 		shrTypes = newShrTypes;
@@ -1766,7 +1766,7 @@ world::world(const world& other)
 		forloop(i, 0, newG->componentCount)
 		{
 			auto type = (tagged_index)newG->types()[i];
-			if ((gd.tracks[type.index()] & NeedCopying) != 0)
+			if ((gd.tracks[type.index()] & ManualCopying) != 0)
 				newG->types()[i] = index_t(type) + 1;
 		}
 
