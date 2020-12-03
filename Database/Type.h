@@ -1,7 +1,10 @@
 #pragma once
 #ifdef __EMSCRIPTEN__
 #include "emscripten.h"
-#define ECS_API 
+#define DLLEXPORT EMSCRIPTEN_KEEPALIVE
+#define ECS_API EMSCRIPTEN_KEEPALIVE
+#define DLLLOCAL __attribute__((visibility("hidden")))
+#define __stdcall 
 #elif defined(__GNUC__)
 #define ECS_API __attribute__((visibility("default")))
 #define DLLEXPORT __attribute__((visibility("default")))
