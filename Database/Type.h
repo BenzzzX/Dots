@@ -1,8 +1,19 @@
 #pragma once
-#ifdef MAKEDLL
-#  define ECS_API __declspec(dllexport)
+#ifdef __EMSCRIPTEN__
+#include "emscripten.h"
+#define ECS_API 
+#elif defined(__GNUC__)
+#define ECS_API __attribute__((visibility("default")))
+#define DLLEXPORT __attribute__((visibility("default")))
+#define DLLLOCAL __attribute__((visibility("hidden")))
+#define __stdcall 
 #else
-#  define ECS_API __declspec(dllimport)
+#define DLLEXPORT __declspec(dllexport)
+#ifdef MAKEDLL
+#define ECS_API __declspec(dllexport)
+#else
+#define ECS_API __declspec(dllimport)
+#endif
 #endif
 #include <cstdint>
 #include <climits>

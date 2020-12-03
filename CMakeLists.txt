@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.19)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-option(DOTS_BUILD_CODEBASE FALSE)
+set(DOTS_BUILD_CODEBASE FALSE)
 
 project(Dots )
 
@@ -22,11 +22,15 @@ file(GLOB_RECURSE
     ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
 )
 
-add_library(DotsDatabase SHARED ${DotsDatabaseSource})
-
-target_compile_definitions(DotsDatabase
-    PRIVATE MAKEDLL 
-)
+if(${DOTS_BUILD_AS_STATIC})
+    message(STATUS "DOTS-Database: Static.")
+    add_library(DotsDatabase STATIC ${DotsDatabaseSource})
+else()
+    add_library(DotsDatabase SHARED ${DotsDatabaseSource})
+    target_compile_definitions(DotsDatabase
+        PRIVATE MAKEDLL 
+    )
+endif(${DOTS_BUILD_AS_STATIC})
 
 if(DOTS_BUILD_CODEBASE)
     ## Glob codebase files.
@@ -44,10 +48,15 @@ if(DOTS_BUILD_CODEBASE)
         ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
     )
 
-    add_library(DotsCodebase SHARED ${DotsCodebaseSource})
-    target_compile_definitions(DotsCodebase
-        PRIVATE MAKEDLL 
-    )
+    if(${DOTS_BUILD_AS_STATIC})
+        add_library(DotsCodebase STATIC ${DotsCodebaseSource})
+    else()
+        add_library(DotsCodebase SHARED ${DotsCodebaseSource})
+        target_compile_definitions(DotsCodebase
+            PRIVATE MAKEDLL 
+        )
+    endif(${DOTS_BUILD_AS_STATIC})
+
     target_include_directories(DotsCodebase
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Database
