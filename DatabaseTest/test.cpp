@@ -97,7 +97,7 @@ TEST_F(DatabaseTest, Instatiate)
 {
 	using namespace core::database;
 	index_t t[] = { tid<test> };
-	entity_type type{ {t, 1} };
+	entity_type type{ t };
 	core::entity e[2];
 	e[0] = pick(ctx.allocate(type));
 	EXPECT_TRUE(ctx.has_component(e[0], { t, 1 }));
@@ -123,7 +123,7 @@ TEST_F(DatabaseTest, Cast)
 	EXPECT_TRUE(ctx.exist(e));
 
 	index_t t[] = { tid<test> };
-	entity_type type{ {t, 1} };
+	entity_type type{ t };
 	for (auto c : ctx.batch(&e, 1))
 		ctx.cast(c, type);
 	EXPECT_TRUE(ctx.has_component(e, { t, 1 }));
@@ -137,7 +137,7 @@ TEST_F(DatabaseTest, CastDiff)
 	EXPECT_TRUE(ctx.exist(e));
 
 	index_t t[] = { tid<test> };
-	entity_type type{ {t, 1} };
+	entity_type type{ t };
 	type_diff diff = { type };
 	for (auto c : ctx.batch(&e, 1))
 		ctx.cast(c, diff);
@@ -168,7 +168,7 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 	core::entity e;
 
 	index_t t[] = { tid<test> };
-	entity_type type{typeset{t,1}};
+	entity_type type{ t };
 	//就地初始化，避免多次查询
 	for (auto c : ctx.allocate(type))
 	{
@@ -190,7 +190,7 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 
 	//初始化
 	index_t t[] = { tid<test_track> };
-	entity_type type{typeset{t,1}};
+	entity_type type{ t };
 	core::entity e = pick(ctx.allocate(type));
 	{
 		//非就地初始化，更容易书写
@@ -235,7 +235,7 @@ TEST_F(DatabaseTest, BufferReadWrite)
 	core::entity e;
 
 	index_t t[] = { tid<test_element> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	for (auto c : ctx.allocate(type))
 	{
 		auto buffers = (char*)ctx.get_owned_rw(c.c, tid<test_element>);
@@ -255,7 +255,7 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	core::entity e;
 
 	index_t t[] = { tid<test_element> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	for (auto c : ctx.allocate(type))
 	{
 		auto buffers = (char*)ctx.get_owned_rw(c.c, tid<test_element>);
@@ -283,7 +283,7 @@ TEST_F(DatabaseTest, Meta)
 
 	{
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		for (auto c : ctx.allocate(type))
 		{
 			auto components = (test*)ctx.get_owned_rw(c.c, tid<test>);
@@ -310,7 +310,7 @@ TEST_F(DatabaseTest, Meta)
 
 	{
 		index_t t[] = { tid<test> };
-		entity_type type({ {t,1},{} });
+		entity_type type({ t });
 
 		for (auto c : ctx.batch(&e, 1))
 			for (auto s : ctx.cast(c, { type }))
@@ -331,7 +331,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 	using namespace core::database;
 	core::entity es[100];
 	index_t t[] = { tid<test> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
@@ -366,7 +366,7 @@ TEST_F(DatabaseTest, SimpleLoop)
 	for (int x = 0; x < 5; x++)
 	{
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		{
 			int counter = 1;
 			for (auto c : ctx.allocate(type, 100))
@@ -401,7 +401,7 @@ TEST_F(DatabaseTest, DisableMask)
 	index_t t[] = { mask_id, tid<test> };
 	std::sort(t, t + 2);
 	index_t dt[] = { tid<test> };
-	entity_type type{ typeset{t,2} };
+	entity_type type{ t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100)) //遍历创建 Entity
@@ -484,7 +484,7 @@ TEST_F(DatabaseTest, MoveContext)
 {
 	using namespace core::database;
 	index_t t[] = { tid<test> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
@@ -538,7 +538,7 @@ TEST_F(DatabaseTest, Group)
 	core::entity es[10];
 	{
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
 		{
@@ -551,7 +551,7 @@ TEST_F(DatabaseTest, Group)
 	}
 	{
 		index_t t[] = { group_id };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
 			ctx.cast(s, addGroup);
@@ -561,7 +561,7 @@ TEST_F(DatabaseTest, Group)
 	}
 	{
 		index_t t[] = { tid<test_ref> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es+1, 1))
 			ctx.cast(s, addRef);
@@ -580,7 +580,7 @@ TEST_F(DatabaseTest, Group)
 		}
 
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type))
@@ -637,7 +637,7 @@ TEST_F(DatabaseTest, Deserialize)
 {
 	using namespace core::database;
 	index_t t[] = { tid<test> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100))
@@ -680,7 +680,7 @@ TEST_F(DatabaseTest, EntityDeserialize)
 {
 	using namespace core::database;
 	index_t t[] = { tid<test> };
-	entity_type type{ typeset{t,1} };
+	entity_type type{ t };
 	auto e = pick(ctx.allocate(type));
 	((test*)ctx.get_owned_rw(e, tid<test>))->v = -1.f;
 	std::vector<char> buffer;
@@ -697,7 +697,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	core::entity es[10];
 	{
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
 		{
@@ -710,7 +710,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	}
 	{
 		index_t t[] = { group_id };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
 			ctx.cast(s, addGroup);
@@ -720,7 +720,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	}
 	{
 		index_t t[] = { tid<test_ref> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es + 1, 1))
 			ctx.cast(s, addRef);
@@ -743,7 +743,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		}
 
 		index_t t[] = { tid<test> };
-		entity_type type{ typeset{t,1} };
+		entity_type type{ t };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type))
@@ -772,7 +772,7 @@ TEST_F(DatabaseTest, Tag)
 {
 	using namespace core::database;
 	index_t t[] = { tid<test_tag> };
-	entity_type type{ typeset{t, 1} };
+	entity_type type{ t };
 	core::entity e;
 	e = pick(ctx.allocate(type));
 	EXPECT_EQ(ctx.get_component_ro(e, tid<test_tag>), nullptr);

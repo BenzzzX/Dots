@@ -76,6 +76,16 @@ namespace core
 			const T* data = nullptr;
 			tsize_t length = 0;
 
+			set() {}
+			set(const T* data, tsize_t length)
+				:data(data), length(length) {}
+			template<int n>
+			set(T (&data)[n])
+				:data(data), length(n) 
+			{
+				std::sort(data, data + n);
+			}
+
 			const T& operator[](uint32_t i) const noexcept { return data[i]; }
 
 			bool operator==(const set& other) const

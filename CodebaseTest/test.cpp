@@ -38,7 +38,7 @@ protected:
 TEST_F(CodebaseTest, CreateKernel) {
 	using namespace core::codebase;
 	index_t t[] = { test_id };
-	entity_type type = { {t, 1} };
+	entity_type type = { t };
 	ctx.allocate(type);
 
 	view v;
@@ -54,7 +54,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 {
 	using namespace core::codebase;
 	index_t t[] = { test_id };
-	entity_type type = { {t, 1} };
+	entity_type type = { t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000))
@@ -88,7 +88,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 {
 	using namespace core::codebase;
 	index_t t[] = { test_id };
-	entity_type type = { {t, 1} };
+	entity_type type = { t };
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000))
