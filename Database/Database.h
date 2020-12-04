@@ -209,6 +209,7 @@ namespace core
 			ECS_API chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
 			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter);
 			ECS_API chunk_vector<chunk*> query(archetype*, const chunk_filter& filter = {});
+			ECS_API chunk_vector<archetype*> get_archetypes();
 
 
 			/*** per entity ***/

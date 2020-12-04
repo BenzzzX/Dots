@@ -18,6 +18,9 @@
     <ClInclude Include="Codebase.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CodebaseImpl.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Codebase.cpp">

@@ -84,10 +84,12 @@ namespace core
 
 			void grow();
 			void shrink(size_t n);
+			void reset();
 
 			chunk_vector_base() = default;
 			chunk_vector_base(chunk_vector_base&& r) noexcept;
 			chunk_vector_base(const chunk_vector_base& r) noexcept;
+			chunk_vector_base& operator=(chunk_vector_base&& r) noexcept;
 			~chunk_vector_base();
 		};
 

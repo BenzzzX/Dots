@@ -2597,6 +2597,14 @@ chunk_vector<chunk*> world::query(archetype* type, const chunk_filter& filter)
 	return result;
 }
 
+chunk_vector<archetype*> world::get_archetypes()
+{
+	chunk_vector<archetype*> result;
+	for (auto& pair : archetypes)
+		result.push(pair.second);
+	return result;
+}
+
 bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 {
 	//todo: cache these things?
@@ -2650,6 +2658,12 @@ void chunk_vector_base::shrink(size_t n)
 	}
 }
 
+void chunk_vector_base::reset()
+{
+	shrink(chunkSize);
+	size = 0;
+}
+
 chunk_vector_base::chunk_vector_base(chunk_vector_base&& r) noexcept
 {
 	data = r.data;
@@ -2675,7 +2689,18 @@ chunk_vector_base::chunk_vector_base(const chunk_vector_base& r) noexcept
 
 chunk_vector_base::~chunk_vector_base()
 {
-	shrink(chunkSize);
+	reset();
+}
+
+
+chunk_vector_base& chunk_vector_base::operator=(chunk_vector_base&& r) noexcept
+{
+	reset();
+	data = r.data;
+	size = r.size;
+	chunkSize = r.chunkSize;
+	r.data = nullptr;
+	r.size = r.chunkSize = 0;
 }
 
 void core::database::initialize()
