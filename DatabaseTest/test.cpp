@@ -768,10 +768,8 @@ TEST_F(DatabaseTest, FormatTest)
 
 }
 
-
 TEST_F(DatabaseTest, Tag)
 {
-
 	using namespace core::database;
 	index_t t[] = { tid<test_tag> };
 	entity_type type{ typeset{t, 1} };

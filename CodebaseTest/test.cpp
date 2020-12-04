@@ -42,7 +42,7 @@ TEST_F(CodebaseTest, CreateKernel) {
 	ctx.allocate(type);
 
 	view v;
-	v.af = { type };
+	v.archetypeFilter = { type };
 	param params[] = { {test_id, false, false} };
 	v.params = params;
 	v.paramCount = 1;
@@ -66,7 +66,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 	}
 
 	view v;
-	v.af = { type };
+	v.archetypeFilter = { type };
 	param params[] = { {test_id, true, false} };
 	v.params = params;
 	v.paramCount = 1;
@@ -76,7 +76,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 	std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
 		{
 			operation o{ *k, tk };
-			auto tests = o.get_component<test>(0);
+			auto tests = o.get_parameter<test>(0);
 			forloop(i, 0, o.get_count())
 				counter += tests[i].v;
 		});
@@ -109,7 +109,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 		tasks.begin(), tasks.end(), [k, &counter](task& tk)
 		{
 			operation o{ *k, tk };
-			auto tests = o.get_component<test>(0);
+			auto tests = o.get_parameter<test>(0);
 			forloop(i, 0, o.get_count())
 				counter.fetch_add(tests[i].v);
 		});

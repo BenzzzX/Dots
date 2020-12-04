@@ -50,7 +50,9 @@ namespace core
 			operation(const kernel& k, task& t)
 				:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel) {}
 			template<class T>
-			T* get_component(int paramId) { return (T*)get(paramId) + slice.start; }
+			T* get_parameter(int paramId) { return (T*)get(paramId) + slice.start; }
+			template<class T>
+			T* get_parameter(int paramId, entity e) { return (T*)get(paramId, e); }
 			ECS_API const entity* get_entities();
 			ECS_API mask get_mask();
 			uint32_t get_count() { return slice.count; }
@@ -61,6 +63,7 @@ namespace core
 			chunk_slice slice;
 			int indexInKernel;
 			ECS_API void* get(int paramId);
+			ECS_API void* get(int paramId, entity e);
 		};
 
 		struct kernel
@@ -96,9 +99,10 @@ namespace core
 	auto handle = xxx::parallel_for(tasks, [&kernel](task& curr)
 	{
 		operation o{kernel, curr}
-		auto counters = o.get_component<counter>(0);
+		auto counters = o.get_parameter<counter>(0);
 		forloop(i, 0, o.get_count())
 			counters[i]++;
+		o.get_parameter<fuck>(1, e);
 	});
 	setup_dependencies(handle, kernel);
 	*/

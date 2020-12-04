@@ -118,3 +118,13 @@ void* operation::get(int paramId)
 			return const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
 	}
 }
+
+void* operation::get(int paramId, entity e)
+{
+	if (!check_bit(ctx.randomAccess, paramId))
+		return nullptr;
+	if (check_bit(ctx.readonly, paramId))
+		return const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
+	else
+		return const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
+}

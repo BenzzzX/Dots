@@ -4,7 +4,6 @@
 #include <unordered_map>
 #include <array>
 #include <optional>
-#include <functional>
 #include "Set.h"
 #include "Type.h"
 
