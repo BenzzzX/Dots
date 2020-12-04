@@ -101,6 +101,8 @@ mask operation::get_mask() { return ctx.matched[matched]; }
 void* operation::get(int paramId)
 {
 	auto localType = ctx.localType[matched * ctx.paramCount + paramId];
+	if (localType >= ctx.archetypes[matched]->firstTag)
+		return nullptr;
 	if (check_bit(ctx.readonly, paramId))
 	{
 		if (localType == InvalidIndex)

@@ -1916,6 +1916,8 @@ const void* world::get_component_ro(entity e, index_t type) const noexcept
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
+	if (id >= g->firstTag)
+		return nullptr;
 	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
 	return c->data() + (size_t)g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
@@ -1928,7 +1930,7 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
-	if (id == InvalidIndex)
+	if (id == InvalidIndex || id >= g->firstTag)
 		return nullptr;
 	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
@@ -1949,7 +1951,8 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 	const auto& data = ents.datas[e.id];
 	chunk* c = data.c; archetype* g = c->type;
 	tsize_t id = g->index(type);
-	if (id == InvalidIndex) return nullptr;
+	if (id == InvalidIndex || id >= g->firstTag)
+		return nullptr;
 	g->timestamps(c)[id] = timestamp;
 	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
 }
@@ -1959,6 +1962,8 @@ const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 {
 	archetype* g = c->type;
 	tsize_t id = g->index(t);
+	if (id >= g->firstTag)
+		return nullptr;
 	if (id == InvalidIndex)
 		return get_shared_ro(g, t);
 	return c->data() + c->type->offsets(c->ct)[id];
@@ -1967,7 +1972,8 @@ const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
 {
 	tsize_t id = c->type->index(t);
-	if (id == InvalidIndex) return nullptr;
+	if (id == InvalidIndex || id >= c->type->firstTag)
+		return nullptr;
 	return c->data() + c->type->offsets(c->ct)[id];
 }
 
@@ -1980,7 +1986,8 @@ const void* world::get_shared_ro(chunk* c, index_t type) const noexcept
 void* world::get_owned_rw(chunk* c, index_t t) noexcept
 {
 	tsize_t id = c->type->index(t);
-	if (id == InvalidIndex) return nullptr;
+	if (id == InvalidIndex || id >= c->type->firstTag) 
+		return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
 	return c->data() + c->type->offsets(c->ct)[id];
 }
@@ -2042,7 +2049,8 @@ const entity* world::get_entities(chunk* c) noexcept
 uint16_t world::get_size(chunk* c, index_t t) const noexcept
 {
 	tsize_t id = c->type->index(t);
-	if (id == InvalidIndex) return 0;
+	if (id == InvalidIndex || id > c->type->firstTag) 
+		return 0;
 	return c->type->sizes()[id];
 }
 

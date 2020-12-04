@@ -769,9 +769,16 @@ TEST_F(DatabaseTest, FormatTest)
 }
 
 
-TEST_F(DatabaseTest, Flag)
+TEST_F(DatabaseTest, Tag)
 {
 
+	using namespace core::database;
+	index_t t[] = { tid<test_tag> };
+	entity_type type{ typeset{t, 1} };
+	core::entity e;
+	e = pick(ctx.allocate(type));
+	EXPECT_EQ(ctx.get_component_ro(e, tid<test_tag>), nullptr);
+	EXPECT_EQ(ctx.get_archetype(e)->entitySize, sizeof(core::entity));
 }
 
 void install_test_components()

@@ -96,10 +96,9 @@ namespace core
 	auto handle = xxx::parallel_for(tasks, [&kernel](task& curr)
 	{
 		operation o{kernel, curr}
+		auto counters = o.get_component<counter>(0);
 		forloop(i, 0, o.get_count())
-		{
-			o.get_component<counter>(0)++;
-		}
+			counters[i]++;
 	});
 	setup_dependencies(handle, kernel);
 	*/
