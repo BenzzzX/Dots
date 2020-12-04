@@ -348,7 +348,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 
 	for (auto i : ctx.query({ type })) //遍历 Archetype
 	{
-		for (auto j : ctx.query(i.type, {})) //遍历 Chunk
+		for (auto j : ctx.query(i.type)) //遍历 Chunk
 		{
 			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -379,7 +379,7 @@ TEST_F(DatabaseTest, SimpleLoop)
 		int counter = 0;
 
 		for (auto i : ctx.query({ type }))
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 			{
 				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
@@ -389,7 +389,7 @@ TEST_F(DatabaseTest, SimpleLoop)
 		EXPECT_EQ(counter, 5050);
 
 		for (auto i : ctx.query({ type }))
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 				ctx.destroy(j);
 	}
 }
@@ -426,7 +426,7 @@ TEST_F(DatabaseTest, DisableMask)
 	{
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 			{
 				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
 				auto length = j->get_count();
@@ -446,7 +446,7 @@ TEST_F(DatabaseTest, DisableMask)
 		entity_type queryType{ typeset{qt,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ queryType })) // 空 Query
-			for (auto j : ctx.query(i.type, {})) 
+			for (auto j : ctx.query(i.type)) 
 			{
 				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
 				auto length = j->get_count();
@@ -465,7 +465,7 @@ TEST_F(DatabaseTest, DisableMask)
 		for (auto i : ctx.query({ type }))
 		{
 			auto mymask = i.matched & ~i.type->get_mask({ dt, 1 }); //关闭检查
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 			{
 				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
 				auto length = j->get_count();
@@ -497,7 +497,7 @@ TEST_F(DatabaseTest, MoveContext)
 	int counter = 0;
 
 	for (auto i : ctx.query({ type }))
-		for (auto j : ctx.query(i.type, {}))
+		for (auto j : ctx.query(i.type))
 		{
 			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -510,7 +510,7 @@ TEST_F(DatabaseTest, MoveContext)
 	ctx2.move_context(ctx); //把所有 ctx 的内容移动到 ctx2
 	int counter2 = 0;
 	for (auto i : ctx2.query({ type }))
-		for (auto j : ctx2.query(i.type, {}))
+		for (auto j : ctx2.query(i.type))
 		{
 			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -522,7 +522,7 @@ TEST_F(DatabaseTest, MoveContext)
 	//ctx 应该是空的
 	int counter3 = 0;
 	for (auto i : ctx.query({ type }))
-		for (auto j : ctx.query(i.type, {}))
+		for (auto j : ctx.query(i.type))
 		{
 			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -583,7 +583,7 @@ TEST_F(DatabaseTest, Group)
 		entity_type type{ typeset{t,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 			{
 				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
@@ -650,7 +650,7 @@ TEST_F(DatabaseTest, Deserialize)
 	int counter = 0;
 
 	for (auto i : ctx.query({ type }))
-		for (auto j : ctx.query(i.type, {}))
+		for (auto j : ctx.query(i.type))
 		{
 			auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -666,7 +666,7 @@ TEST_F(DatabaseTest, Deserialize)
 	ctx2.deserialize(&ds);
 	int counter2 = 0;
 	for (auto i : ctx2.query({ type }))
-		for (auto j : ctx2.query(i.type, {}))
+		for (auto j : ctx2.query(i.type))
 		{
 			auto tests = (test*)ctx2.get_owned_ro(j, tid<test>);
 			auto num = j->get_count();
@@ -746,7 +746,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		entity_type type{ typeset{t,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
-			for (auto j : ctx.query(i.type, {}))
+			for (auto j : ctx.query(i.type))
 			{
 				auto tests = (test*)ctx.get_owned_ro(j, tid<test>);
 				auto num = j->get_count();
