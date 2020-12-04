@@ -149,6 +149,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Database.h" />
+    <ClInclude Include="ECS.h" />
     <ClInclude Include="Set.h" />
     <ClInclude Include="Type.h" />
   </ItemGroup>

@@ -18,6 +18,15 @@
 #define ECS_API __declspec(dllimport)
 #endif
 #endif
+
+#ifndef FORCEINLINE
+    #ifdef _MSC_VER
+        #define FORCEINLINE __forceinline
+    #else
+        #define FORCEINLINE inline
+    #endif
+#endif
+
 #include <cstdint>
 #include <climits>
 #include <memory>
