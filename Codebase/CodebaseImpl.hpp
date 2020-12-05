@@ -6,7 +6,7 @@ namespace core
 	namespace codebase
 	{
 		template<class T>
-		kernel* pipeline::create_kernel(const filters& v, T paramList)
+		pass* pipeline::create_kernel(const filters& v, T paramList)
 		{
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);
@@ -15,15 +15,15 @@ namespace core
 				for (auto j : ctx.query(i.type, v.chunkFilter))
 					chunks.push(j);
 			size_t bufferSize =
-				sizeof(kernel) //自己
+				sizeof(pass) //自己
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ (paramCount / 4 + 1) * sizeof(index_t) * 2; //readonly + random access
-			char* buffer = (char*)kernelStack.alloc(bufferSize, alignof(kernel));
-			kernel* k = new(buffer) kernel{ ctx };
+			char* buffer = (char*)kernelStack.alloc(bufferSize, alignof(pass));
+			pass* k = new(buffer) pass{ ctx };
 			kernels.push(k);
-			buffer += sizeof(kernel);
+			buffer += sizeof(pass);
 			k->kernelIndex = kernelIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
@@ -87,8 +87,9 @@ namespace core
 			auto param = hana::at(paramList, paramId_c);
 			void* ptr = nullptr;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
+			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
 			if (localType >= ctx.archetypes[matched]->firstTag)
-				return (value_type*)nullptr;
+				return (return_type*)nullptr;
 			if constexpr (param.readonly)
 			{
 				if (localType == InvalidIndex)
@@ -103,7 +104,7 @@ namespace core
 				else
 					ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
 			}
-			return (ptr && operation_base::is_owned(paramId)) ? (value_type*)ptr + slice.start : (value_type*)ptr;
+			return (ptr && operation_base::is_owned(paramId)) ? (return_type*)ptr + slice.start : (return_type*)ptr;
 		}
 
 		template<class ...params>

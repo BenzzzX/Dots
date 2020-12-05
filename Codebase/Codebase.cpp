@@ -15,9 +15,9 @@ T* allocate_inplace(char*& buffer, size_t size)
 	return (T*)allocated;
 }
 
-void pipeline::setup_kernel_dependency(kernel& k)
+void pipeline::setup_kernel_dependency(pass& k)
 {
-	std::set<kernel*> dependencies;
+	std::set<pass*> dependencies;
 	int ati = 0;
 	int eti = 0;
 	forloop(i, 0, k.archetypeCount)
@@ -50,7 +50,7 @@ void pipeline::setup_kernel_dependency(kernel& k)
 			}
 		}
 	}
-	k.dependencies = (kernel**)kernelStack.alloc(dependencies.size() * sizeof(kernel*));
+	k.dependencies = (pass**)kernelStack.alloc(dependencies.size() * sizeof(pass*));
 	k.dependencyCount = dependencies.size();
 	int i = 0;
 	for (auto dp : dependencies)
@@ -72,7 +72,7 @@ pipeline::~pipeline()
 {
 }
 
-chunk_vector<task> pipeline::create_tasks(kernel& k, int maxSlice)
+chunk_vector<task> pipeline::create_tasks(pass& k, int maxSlice)
 {
 	uint32_t count = k.chunkCount;
 	int archIndex = 0;

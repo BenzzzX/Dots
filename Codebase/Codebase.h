@@ -38,13 +38,14 @@ namespace core
 		template<class T>
 		inline index_t cid;
 
-		template<class T, bool randomAccess = false>
+		template<class T, bool inRandomAccess = false>
 		struct param_t
 		{
-			def comp_type = hana::type_c<T>;
-			def value_type = hana::type_c< component_value_type_t<T>>;
+			using TT = std::remove_const_t<T>;
+			def comp_type = hana::type_c<TT>;
+			def value_type = hana::type_c< component_value_type_t<TT>>;
 			def readonly = std::is_const_v<T>;
-			def randomAccess = randomAccess;
+			def randomAccess = inRandomAccess;
 		};
 		template<class T, bool randomAccess = false>
 		static constexpr param_t<T, randomAccess> param;
@@ -63,18 +64,18 @@ namespace core
 			int indexInKernel;
 			chunk_slice slice;
 		};
-		struct kernel;
+		struct pass;
 
 		struct operation_base
 		{
+			ECS_API const entity* get_entities();
 		protected:
-			operation_base(const kernel& k, task& t)
+			operation_base(const pass& k, task& t)
 				:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel) {}
-			const kernel& ctx;
+			const pass& ctx;
 			int matched;
 			chunk_slice slice;
 			int indexInKernel;
-			ECS_API const entity* get_entities();
 			ECS_API mask get_mask();
 			ECS_API bool is_owned(int paramId);
 		};
@@ -82,7 +83,7 @@ namespace core
 		struct operation : operation_base //用于简化api
 		{
 			static constexpr hana::tuple<params...> paramList;
-			operation(hana::tuple<params...> ps, const kernel& k, task& t)
+			operation(hana::tuple<params...> ps, const pass& k, task& t)
 				:operation_base(k, t) {}
 			template<class T>
 			constexpr auto param_id();
@@ -100,9 +101,9 @@ namespace core
 			uint32_t get_index() { return indexInKernel; }
 		};
 		template<class... params>
-		operation(hana::tuple<params...> ps, const kernel& k, task& t)->operation<params...>;
+		operation(hana::tuple<params...> ps, const pass& k, task& t)->operation<params...>;
 
-		struct kernel
+		struct pass
 		{
 			world& ctx;
 			int kernelIndex;
@@ -118,7 +119,7 @@ namespace core
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
-			kernel** dependencies;
+			pass** dependencies;
 			int dependencyCount;
 		};
 
@@ -132,8 +133,8 @@ namespace core
 
 		struct dependency_entry
 		{
-			kernel* owned = nullptr;
-			std::vector<kernel*> shared;
+			pass* owned = nullptr;
+			std::vector<pass*> shared;
 		};
 
 		class pipeline //计算管线，处于两个 sync point 之间
@@ -141,27 +142,27 @@ namespace core
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
 			stack_allocator kernelStack;
-			chunk_vector<kernel*> kernels;
+			chunk_vector<pass*> kernels;
 			chunk_vector<archetype*> archetypes;
 			std::unique_ptr<dependency_entry[]> denpendencyEntries;
-			ECS_API void setup_kernel_dependency(kernel& k);
+			ECS_API void setup_kernel_dependency(pass& k);
 			world& ctx;
 			int kernelIndex;
 		public:
 			ECS_API pipeline(world& ctx);
 			ECS_API ~pipeline();
 			template<class T>
-			kernel* create_kernel(const filters& v, T paramList);
-			ECS_API chunk_vector<task> create_tasks(kernel& k, int maxSlice = -1);
+			pass* create_kernel(const filters& v, T paramList);
+			ECS_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 		};
 }
 	/*
 	auto params = make_params(param<counter>, param<const material>, param<fuck, access::random_acesss>>);
-	auto kernel = create_kernel(ctx, params);
-	chunk_vector<task> tasks = create_tasks(kernel, -1);
-	auto handle = xxx::parallel_for(tasks, [&kernel](task& curr)
+	auto pass = create_kernel(ctx, params);
+	chunk_vector<task> tasks = create_tasks(pass, -1);
+	auto handle = xxx::parallel_for(tasks, [&pass](task& curr)
 	{
-		operation o{params, kernel, curr}
+		operation o{params, pass, curr}
 		auto counters = o.get_parameter<counter>(); // component
 		auto mat = o.get_parameter<material>(); // component may shared
 		if(!o.is_owned<material>())
@@ -175,7 +176,7 @@ namespace core
 			counters[i]++;
 		o.get_parameter<fuck>(e); //random access
 	});
-	setup_dependencies(handle, kernel);
+	setup_dependencies(handle, pass);
 	*/
 }
 #include "CodebaseImpl.hpp"

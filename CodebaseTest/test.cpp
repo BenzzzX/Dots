@@ -11,9 +11,16 @@ struct test
 	int v;
 };
 
+struct disable {};
+struct cleanup {};
+
 void install_test_components()
 {
 	using namespace core::database;
+	core::codebase::cid<group> = group_id;
+	core::codebase::cid<disable> = disable_id;
+	core::codebase::cid<cleanup> = cleanup_id;
+	core::codebase::cid<mask> = mask_id;
 	core::codebase::cid<test> = register_type({ false, false, false, 10, sizeof(test) });
 }
 
@@ -149,9 +156,9 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto components = get_component_ro<test>(ctx, c);
+			auto tests = get_component_ro<test>(ctx, c);
 			forloop(i, 0, c.count)
-				components[i] = counter++;
+				tests[i] = counter++;
 		}
 	}
 
@@ -164,7 +171,7 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		pipeline ppl(ctx);
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
+		def params = hana::make_tuple(param<const test>); //定义 kernel 的参数
 		auto k = ppl.create_kernel(filter, params); //创建 kernel
 		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
 
@@ -174,7 +181,8 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
 				//以 slice 为粒度执行具体的逻辑
-				int* tests = o.get_parameter<test>();
+				const int* tests = o.get_parameter<test>();
+				const core::entity* es = o.get_entities();
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
 			});
