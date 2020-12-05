@@ -72,13 +72,12 @@ namespace core
 			int matched;
 			chunk_slice slice;
 			int indexInKernel;
-			ECS_API void* get(int paramId, entity e, bool forceOwned);
-			ECS_API void* get(int paramId);
 			ECS_API const entity* get_entities();
 			ECS_API mask get_mask();
 			ECS_API bool is_owned(int paramId);
 		};
 
+#define def static constexpr auto
 		template<class... params>
 		struct operation : operation_base //用于简化api
 		{
@@ -86,38 +85,28 @@ namespace core
 			operation(hana::tuple<params...> ps, const kernel& k, task& t)
 				:operation_base(k, t) {}
 			template<class T>
-			auto param_id()
+			constexpr auto param_id()
 			{
-				auto result = hana::index_if(paramList, [](auto p) {
-						return std::is_same<typename decltype(p)::comp_type, T>{};
-					});
-				return (int)(*result).value;
+				def compList = hana::transform(paramList, [](const auto p) { return hana::type_c<typename decltype(p)::comp_type>; });
+				return *hana::index_if(compList, [](const auto c) { return hana::traits::is_same(c, hana::type_c<T>); });
 			}
 			template<class T>
 			bool is_owned()
 			{
-				auto paramId = param_id<T>();
-				return is_owned(paramId);
+				def paramId = param_id<T>();
+				return is_owned(paramId.value);
 			}
 			template<class T>
-			auto get_parameter() 
-			{
-				using value_type = component_value_type_t<T>;
-				auto paramId = param_id<T>();
-				auto ptr = (value_type*)get(paramId);
-				return (ptr && operation_base::is_owned(paramId)) ? ptr + slice.start : ptr;
-			}
+			auto get_parameter();
 			template<class T>
-			auto get_parameter(entity e, bool forceOwned = false)
-			{
-				using value_type = component_value_type_t<T>;
-				auto paramId = param_id<T>(); 
-				return (value_type*)get(paramId, e);
-			}
+			auto get_parameter_owned();
+			template<class T>
+			auto get_parameter(entity e);
+			template<class T>
+			auto get_parameter_owned(entity e);
 			uint32_t get_count() { return slice.count; }
 			uint32_t get_index() { return indexInKernel; }
 		};
-
 		template<class... params>
 		operation(hana::tuple<params...> ps, const kernel& k, task& t)->operation<params...>;
 
@@ -129,14 +118,14 @@ namespace core
 			int* archetypeIndices;
 			mask* matched;
 			index_t* localType;
-			index_t* chunkCount;
 			int archetypeCount;
-			chunk_vector<chunk*> chunks;
+			chunk** chunks;
+			int chunkCount;
 			index_t* types;
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
-			chunk_vector<kernel*> dependencies;
+			kernel** dependencies;
 		};
 
 		template<class T>
@@ -147,6 +136,12 @@ namespace core
 			return (T*)allocated;
 		}
 
+		struct dependency_entry
+		{
+			kernel* owned = nullptr;
+			std::vector<kernel*> shared;
+		};
+
 		class pipeline //计算管线，处于两个 sync point 之间
 		{
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
@@ -154,7 +149,8 @@ namespace core
 			stack_allocator kernelStack;
 			chunk_vector<kernel*> kernels;
 			chunk_vector<archetype*> archetypes;
-			void setup_kernel_dependency(kernel& k);
+			std::unique_ptr<dependency_entry[]> denpendencyEntries;
+			ECS_API void setup_kernel_dependency(kernel& k);
 			world& ctx;
 		public:
 			ECS_API pipeline(world& ctx);
@@ -188,3 +184,4 @@ namespace core
 	*/
 }
 #include "CodebaseImpl.hpp"
+#undef def

@@ -85,6 +85,7 @@ namespace core
 			void grow();
 			void shrink(size_t n);
 			void reset();
+			void flatten(void* dst, size_t eleSize);
 
 			chunk_vector_base() = default;
 			chunk_vector_base(chunk_vector_base&& r) noexcept;
@@ -202,6 +203,10 @@ namespace core
 
 			const_iterator begin() const noexcept { return const_iterator{ 0, data }; }
 			const_iterator end() const noexcept { return const_iterator{ size, data }; }
+			void flatten(T* dst)
+			{
+				chunk_vector_base::flatten(dst, sizeof(T));
+			}
 			void resize(int newSize)
 			{
 				size = newSize;

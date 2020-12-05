@@ -2658,6 +2658,19 @@ void chunk_vector_base::shrink(size_t n)
 	}
 }
 
+void chunk_vector_base::flatten(void* dst, size_t eleSize)
+{
+	auto remainSize = size * eleSize;
+	auto chunkCapacity = kFastBinSize;
+	forloop(i, 0, chunkSize)
+	{
+		auto sizeToCopy = std::min(kFastBinSize, remainSize);
+		memcpy(dst, data[i], sizeToCopy);
+		dst = (char*)dst + sizeToCopy;
+		remainSize -= sizeToCopy;
+	}
+}
+
 void chunk_vector_base::reset()
 {
 	shrink(chunkSize);
@@ -2701,6 +2714,7 @@ chunk_vector_base& chunk_vector_base::operator=(chunk_vector_base&& r) noexcept
 	chunkSize = r.chunkSize;
 	r.data = nullptr;
 	r.size = r.chunkSize = 0;
+	return *this;
 }
 
 void core::database::initialize()

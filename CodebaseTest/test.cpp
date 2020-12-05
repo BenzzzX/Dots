@@ -19,7 +19,7 @@ class CodebaseTest : public ::testing::Test
 {
 protected:
 	CodebaseTest()
-		:ctx(), ppl(ctx) {}
+		:ctx() {}
 	void SetUp() override
 	{}
 
@@ -29,9 +29,6 @@ protected:
 		return ctx.get_entities(c.c)[c.start];
 	}
 	core::database::world ctx;
-
-
-	core::codebase::pipeline ppl;
 };
 
 
@@ -41,11 +38,12 @@ TEST_F(CodebaseTest, CreateKernel) {
 	entity_type type = { t };
 	ctx.allocate(type);
 
+	core::codebase::pipeline ppl(ctx);
 	filters filter;
 	filter.archetypeFilter = { type };
 	auto params = hana::make_tuple(param<test>);
 	auto k = ppl.create_kernel(filter, params);
-	EXPECT_EQ(k->chunks.size, 1);
+	EXPECT_EQ(k->chunkCount, 1);
 }
 
 template<class T>
@@ -72,6 +70,9 @@ TEST_F(CodebaseTest, TaskSingleThread)
 	}
 
 
+
+
+	core::codebase::pipeline ppl(ctx);
 	filters filter;
 	filter.archetypeFilter = { type };
 	static constexpr auto params = hana::make_tuple(param<test>);
@@ -87,7 +88,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 		});
 	EXPECT_EQ(counter, 5000050000);
 }
-
+#define def static constexpr auto
 TEST_F(CodebaseTest, TaskMultiThreadStd)
 {
 	using namespace core::codebase;
@@ -102,9 +103,11 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 				components[i] = counter++;
 		}
 	}
+
+	core::codebase::pipeline ppl(ctx);
 	filters filter;
 	filter.archetypeFilter = { type };
-	static constexpr auto params = hana::make_tuple(param<test>);
+	def params = hana::make_tuple(param<test>);
 	auto k = ppl.create_kernel(filter, params);
 	auto tasks = ppl.create_tasks(*k);
 	std::atomic<long long> counter = 0;
