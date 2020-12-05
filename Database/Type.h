@@ -111,7 +111,7 @@ namespace core
 				void** c;
 
 				const_iterator& operator++() noexcept { ++i; return *this; }
-				void operator++(int) noexcept { ++* this; }
+				const_iterator operator++(int) noexcept { auto v = *this; ++* this; return v; }
 				bool operator==(const const_iterator& right) const noexcept { return i == right.i && c == right.c; }
 				bool operator!=(const const_iterator& right) const noexcept { return !(*this == right); };
 				const_iterator& operator+=(difference_type d) { i += d; return *this; }
@@ -152,7 +152,7 @@ namespace core
 				using reference = typename V::reference;
 
 				iterator& operator++() noexcept { ++this->i; return *this; }
-				void operator++(int) noexcept { ++* this; }
+				iterator operator++(int) noexcept { auto v = *this; ++* this; return v; }
 				bool operator==(const iterator& right) const noexcept { return this->i == right.i && this->c == right.c; }
 				bool operator!=(const iterator& right) const noexcept { return !(*this == right); };
 				iterator& operator+=(difference_type d) { this->i += d; return *this; }

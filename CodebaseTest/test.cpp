@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Codebase.h"
 #include <execution>
+#include "taskflow.hpp"
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 #define def static constexpr auto
 
@@ -135,6 +136,54 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
 			});
+	}
+	EXPECT_EQ(counter, 5000050000);
+}
+
+TEST_F(CodebaseTest, TaskflowIntergration)
+{
+	using namespace core::codebase;
+	entity_type type = { complist<test>() }; //定义 entity 类型
+	{
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
+		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
+			auto components = get_component_ro<test>(ctx, c);
+			forloop(i, 0, c.count)
+				components[i] = counter++;
+		}
+	}
+
+	std::atomic<long long> counter = 0;
+	{
+		tf::Executor executer;
+		tf::Taskflow taskflow;
+		std::vector<tf::Task> tfTasks;
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		pipeline ppl(ctx);
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
+		auto k = ppl.create_kernel(filter, params); //创建 kernel
+		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+
+		auto tk = taskflow.for_each(//使用 taskflow 的多线程调度
+			tasks.begin(), tasks.end(), [k, &counter](task& tk)
+			{
+				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+				auto o = operation{ params, *k, tk };
+				//以 slice 为粒度执行具体的逻辑
+				int* tests = o.get_parameter<test>();
+				forloop(i, 0, o.get_count())
+					counter.fetch_add(tests[i]);
+			});
+
+		tfTasks.push_back(tk);
+		forloop(i, 0, k->dependencyCount) //转换 kernel 的依赖到 taskflow
+			tk.precede(tfTasks[k->dependencies[i]->kernelIndex]);
+
+		executer.run(taskflow).wait();
 	}
 	EXPECT_EQ(counter, 5000050000);
 }

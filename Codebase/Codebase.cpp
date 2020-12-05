@@ -51,13 +51,14 @@ void pipeline::setup_kernel_dependency(kernel& k)
 		}
 	}
 	k.dependencies = (kernel**)kernelStack.alloc(dependencies.size() * sizeof(kernel*));
+	k.dependencyCount = dependencies.size();
 	int i = 0;
 	for (auto dp : dependencies)
 		k.dependencies[i++] = dp;
 }
 
 pipeline::pipeline(world& ctx)
-	:ctx(ctx)
+	:ctx(ctx), kernelIndex(0)
 {
 	kernelStack.init(10000);
 	archetypes = ctx.get_archetypes();

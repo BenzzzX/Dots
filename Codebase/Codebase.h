@@ -85,17 +85,9 @@ namespace core
 			operation(hana::tuple<params...> ps, const kernel& k, task& t)
 				:operation_base(k, t) {}
 			template<class T>
-			constexpr auto param_id()
-			{
-				def compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
-				return *hana::index_if(compList, hana::_ == hana::type_c<T>);
-			}
+			constexpr auto param_id();
 			template<class T>
-			bool is_owned()
-			{
-				def paramId = param_id<T>();
-				return is_owned(paramId.value);
-			}
+			bool is_owned();
 			template<class T>
 			auto get_parameter();
 			template<class T>
@@ -113,6 +105,7 @@ namespace core
 		struct kernel
 		{
 			world& ctx;
+			int kernelIndex;
 			//int* archetypeIndex;
 			archetype** archetypes;
 			int* archetypeIndices;
@@ -126,6 +119,7 @@ namespace core
 			index_t* randomAccess;
 			int paramCount;
 			kernel** dependencies;
+			int dependencyCount;
 		};
 
 		template<class T>
@@ -152,6 +146,7 @@ namespace core
 			std::unique_ptr<dependency_entry[]> denpendencyEntries;
 			ECS_API void setup_kernel_dependency(kernel& k);
 			world& ctx;
+			int kernelIndex;
 		public:
 			ECS_API pipeline(world& ctx);
 			ECS_API ~pipeline();

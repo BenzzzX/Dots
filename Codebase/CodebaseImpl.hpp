@@ -1,3 +1,4 @@
+#include "Codebase.h"
 #pragma once
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 namespace core
@@ -23,6 +24,7 @@ namespace core
 			kernel* k = new(buffer) kernel{ ctx };
 			kernels.push(k);
 			buffer += sizeof(kernel);
+			k->kernelIndex = kernelIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
 			k->paramCount = (int)paramCount;
@@ -57,6 +59,22 @@ namespace core
 			return k;
 		}
 
+
+		template<class ...params>
+		template<class T>
+		inline constexpr auto operation<params...>::param_id()
+		{
+			def compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
+			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
+		}
+
+		template<class ...params>
+		template<class T>
+		inline bool operation<params...>::is_owned()
+		{
+			def paramId = param_id<T>();
+			return is_owned(paramId.value);
+		}
 
 		template<class ...params>
 		template<class T>
