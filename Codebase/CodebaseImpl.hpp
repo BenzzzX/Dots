@@ -5,7 +5,7 @@ namespace core
 	namespace codebase
 	{
 		template<class T>
-		inline kernel* pipeline::create_kernel(const filters& v, T paramList)
+		kernel* pipeline::create_kernel(const filters& v, T paramList)
 		{
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);

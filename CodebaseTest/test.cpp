@@ -2,6 +2,7 @@
 #include "Codebase.h"
 #include <execution>
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
+#define def static constexpr auto
 
 struct test
 {
@@ -32,10 +33,19 @@ protected:
 };
 
 
+template<class ...Ts>
+struct complist
+{
+	operator core::database::typeset()
+	{
+		static core::database::index_t list[] = { core::codebase::cid<Ts>... };
+		return list;
+	}
+};
+
 TEST_F(CodebaseTest, CreateKernel) {
 	using namespace core::codebase;
-	index_t t[] = { cid<test> };
-	entity_type type = { t };
+	entity_type type = { complist<test>() };
 	ctx.allocate(type);
 
 	core::codebase::pipeline ppl(ctx);
@@ -57,68 +67,75 @@ auto get_component_ro(core::database::world& ctx, core::database::chunk_slice c)
 TEST_F(CodebaseTest, TaskSingleThread)
 {
 	using namespace core::codebase;
-	index_t t[] = { cid<test> };
-	entity_type type = { t };
+	entity_type type = { complist<test>() }; //定义 entity 类型
 	{
 		int counter = 1;
-		for (auto c : ctx.allocate(type, 100000))
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
 			auto components = get_component_ro<test>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i] = counter++;
 		}
 	}
 
-
-
-
-	core::codebase::pipeline ppl(ctx);
-	filters filter;
-	filter.archetypeFilter = { type };
-	static constexpr auto params = hana::make_tuple(param<test>);
-	auto k = ppl.create_kernel(filter, params);
-	auto tasks = ppl.create_tasks(*k);
 	long long counter = 0;
-	std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
-		{
-			auto o = operation{ params, *k, tk };
-			int* tests = o.get_parameter<test>();
-			forloop(i, 0, o.get_count())
-				counter += tests[i];
-		});
+	{
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		pipeline ppl(ctx); 
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
+		auto k = ppl.create_kernel(filter, params); //创建 kernel
+		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
+			{
+				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+				auto o = operation{ params, *k, tk };
+				//以 slice 为粒度执行具体的逻辑
+				int* tests = o.get_parameter<test>();
+				forloop(i, 0, o.get_count())
+					counter += tests[i];
+			});
+	}
 	EXPECT_EQ(counter, 5000050000);
 }
-#define def static constexpr auto
+
 TEST_F(CodebaseTest, TaskMultiThreadStd)
 {
 	using namespace core::codebase;
-	index_t t[] = { cid<test> };
-	entity_type type = { t };
+	entity_type type = { complist<test>() }; //定义 entity 类型
 	{
 		int counter = 1;
-		for (auto c : ctx.allocate(type, 100000))
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
 			auto components = get_component_ro<test>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i] = counter++;
 		}
 	}
 
-	core::codebase::pipeline ppl(ctx);
-	filters filter;
-	filter.archetypeFilter = { type };
-	def params = hana::make_tuple(param<test>);
-	auto k = ppl.create_kernel(filter, params);
-	auto tasks = ppl.create_tasks(*k);
 	std::atomic<long long> counter = 0;
-	std::for_each(std::execution::parallel_unsequenced_policy{}, 
-		tasks.begin(), tasks.end(), [k, &counter](task& tk)
-		{
-			auto o = operation{ params, *k, tk };
-			int* tests = o.get_parameter<test>();
-			forloop(i, 0, o.get_count())
-				counter.fetch_add(tests[i]);
-		});
+	{
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		pipeline ppl(ctx);
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
+		auto k = ppl.create_kernel(filter, params); //创建 kernel
+		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+		std::for_each(std::execution::parallel_unsequenced_policy{}, //使用 std 的多线程调度
+			tasks.begin(), tasks.end(), [k, &counter](task& tk)
+			{
+				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+				auto o = operation{ params, *k, tk };
+				//以 slice 为粒度执行具体的逻辑
+				int* tests = o.get_parameter<test>();
+				forloop(i, 0, o.get_count())
+					counter.fetch_add(tests[i]);
+			});
+	}
 	EXPECT_EQ(counter, 5000050000);
 }
 
