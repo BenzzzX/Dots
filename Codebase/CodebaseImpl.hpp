@@ -6,7 +6,7 @@ namespace core
 	namespace codebase
 	{
 		template<class T>
-		pass* pipeline::create_kernel(const filters& v, T paramList)
+		pass* pipeline::create_pass(const filters& v, T paramList)
 		{
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);
@@ -24,7 +24,7 @@ namespace core
 			pass* k = new(buffer) pass{ ctx };
 			kernels.push(k);
 			buffer += sizeof(pass);
-			k->kernelIndex = kernelIndex++;
+			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
 			k->paramCount = (int)paramCount;

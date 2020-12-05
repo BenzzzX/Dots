@@ -51,7 +51,7 @@ struct complist
 	}
 };
 
-TEST_F(CodebaseTest, CreateKernel) {
+TEST_F(CodebaseTest, Createpass) {
 	using namespace core::codebase;
 	entity_type type = { complist<test>() };
 	ctx.allocate(type);
@@ -60,7 +60,7 @@ TEST_F(CodebaseTest, CreateKernel) {
 	filters filter;
 	filter.archetypeFilter = { type };
 	auto params = hana::make_tuple(param<test>);
-	auto k = ppl.create_kernel(filter, params);
+	auto k = ppl.create_pass(filter, params);
 	EXPECT_EQ(k->chunkCount, 1);
 }
 
@@ -93,9 +93,9 @@ TEST_F(CodebaseTest, TaskSingleThread)
 		pipeline ppl(ctx); 
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
-		auto k = ppl.create_kernel(filter, params); //创建 kernel
-		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+		def params = hana::make_tuple(param<test>); //定义 pass 的参数
+		auto k = ppl.create_pass(filter, params); //创建 pass
+		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
 		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
@@ -130,9 +130,9 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 		pipeline ppl(ctx);
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<test>); //定义 kernel 的参数
-		auto k = ppl.create_kernel(filter, params); //创建 kernel
-		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+		def params = hana::make_tuple(param<test>); //定义 pass 的参数
+		auto k = ppl.create_pass(filter, params); //创建 pass
+		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
 		std::for_each(std::execution::parallel_unsequenced_policy{}, //使用 std 的多线程调度
 			tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{
@@ -171,9 +171,9 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		pipeline ppl(ctx);
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<const test>); //定义 kernel 的参数
-		auto k = ppl.create_kernel(filter, params); //创建 kernel
-		auto tasks = ppl.create_tasks(*k); //从 kernel 提取 task
+		def params = hana::make_tuple(param<const test>); //定义 pass 的参数
+		auto k = ppl.create_pass(filter, params); //创建 pass
+		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
 
 		auto tk = taskflow.for_each(//使用 taskflow 的多线程调度
 			tasks.begin(), tasks.end(), [k, &counter](task& tk)
@@ -188,8 +188,8 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 			});
 
 		tfTasks.push_back(tk);
-		forloop(i, 0, k->dependencyCount) //转换 kernel 的依赖到 taskflow
-			tk.precede(tfTasks[k->dependencies[i]->kernelIndex]);
+		forloop(i, 0, k->dependencyCount) //转换 pass 的依赖到 taskflow
+			tk.precede(tfTasks[k->dependencies[i]->passIndex]);
 
 		executer.run(taskflow).wait();
 	}

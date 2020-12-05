@@ -58,7 +58,7 @@ void pipeline::setup_kernel_dependency(pass& k)
 }
 
 pipeline::pipeline(world& ctx)
-	:ctx(ctx), kernelIndex(0)
+	:ctx(ctx), passIndex(0)
 {
 	kernelStack.init(10000);
 	archetypes = ctx.get_archetypes();

@@ -106,7 +106,7 @@ namespace core
 		struct pass
 		{
 			world& ctx;
-			int kernelIndex;
+			int passIndex;
 			//int* archetypeIndex;
 			archetype** archetypes;
 			int* archetypeIndices;
@@ -147,18 +147,18 @@ namespace core
 			std::unique_ptr<dependency_entry[]> denpendencyEntries;
 			ECS_API void setup_kernel_dependency(pass& k);
 			world& ctx;
-			int kernelIndex;
+			int passIndex;
 		public:
 			ECS_API pipeline(world& ctx);
 			ECS_API ~pipeline();
 			template<class T>
-			pass* create_kernel(const filters& v, T paramList);
+			pass* create_pass(const filters& v, T paramList);
 			ECS_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 		};
 }
 	/*
 	auto params = make_params(param<counter>, param<const material>, param<fuck, access::random_acesss>>);
-	auto pass = create_kernel(ctx, params);
+	auto pass = create_pass(ctx, params);
 	chunk_vector<task> tasks = create_tasks(pass, -1);
 	auto handle = xxx::parallel_for(tasks, [&pass](task& curr)
 	{
