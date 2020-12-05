@@ -37,7 +37,7 @@ namespace core
 			hana::for_each(paramList, [&](auto p)
 				{
 					using type = decltype(p);
-					k->types[t] = cid<typename type::comp_type>;
+					k->types[t] = cid<decltype(p.comp_type)::type>;
 					set_bit(k->readonly, type::readonly);
 					set_bit(k->randomAccess, type::randomAccess);
 					t++;

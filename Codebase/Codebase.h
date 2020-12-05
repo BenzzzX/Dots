@@ -1,6 +1,8 @@
 #pragma once
 #include "Database.h"
 #include "boost/hana.hpp"
+
+#define def static constexpr auto
 namespace core
 {
 	namespace codebase
@@ -39,10 +41,10 @@ namespace core
 		template<class T, bool randomAccess = false>
 		struct param_t
 		{
-			using comp_type = T;
-			using value_type = component_value_type_t<T>;
-			static constexpr bool readonly = std::is_const_v<T>;
-			static constexpr bool randomAccess = randomAccess;
+			def comp_type = hana::type_c<T>;
+			def value_type = hana::type_c< component_value_type_t<T>>;
+			def readonly = std::is_const_v<T>;
+			def randomAccess = randomAccess;
 		};
 		template<class T, bool randomAccess = false>
 		static constexpr param_t<T, randomAccess> param;
@@ -76,8 +78,6 @@ namespace core
 			ECS_API mask get_mask();
 			ECS_API bool is_owned(int paramId);
 		};
-
-#define def static constexpr auto
 		template<class... params>
 		struct operation : operation_base //用于简化api
 		{
@@ -87,8 +87,8 @@ namespace core
 			template<class T>
 			constexpr auto param_id()
 			{
-				def compList = hana::transform(paramList, [](const auto p) { return hana::type_c<typename decltype(p)::comp_type>; });
-				return *hana::index_if(compList, [](const auto c) { return hana::traits::is_same(c, hana::type_c<T>); });
+				def compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
+				return *hana::index_if(compList, hana::_ == hana::type_c<T>);
 			}
 			template<class T>
 			bool is_owned()
