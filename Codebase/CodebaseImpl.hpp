@@ -35,6 +35,7 @@ namespace core
 			k->readonly = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
 			k->randomAccess = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
 			k->localType = allocate_inplace<index_t>(buffer, paramCount * archs.size);
+			k->hasRandomAccess = false;
 			int t = 0;
 			hana::for_each(paramList, [&](auto p)
 				{
@@ -42,6 +43,7 @@ namespace core
 					k->types[t] = cid<decltype(p.comp_type)::type>;
 					set_bit(k->readonly, type::readonly);
 					set_bit(k->randomAccess, type::randomAccess);
+					k->hasRandomAccess |= type::randomAccess;
 					t++;
 				});
 			int counter = 0;

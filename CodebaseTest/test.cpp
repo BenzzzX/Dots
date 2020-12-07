@@ -57,7 +57,7 @@ struct complist
 	}
 };
 
-TEST_F(CodebaseTest, Createpass) {
+TEST_F(CodebaseTest, CreatePass) {
 	using namespace core::codebase;
 	entity_type type = { complist<test>() };
 	ctx.allocate(type);
@@ -234,6 +234,13 @@ TEST_F(CodebaseTest, MarlIntergration)
 
 		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
 		pipeline ppl(ctx);
+
+		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
+		{
+			forloop(i, 0, dependencyCount)
+				allPasses[dependencies[i]->passIndex].wait();
+		};
+
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
 		def params = hana::make_tuple(param<const test>); //定义 pass 的参数
@@ -251,21 +258,48 @@ TEST_F(CodebaseTest, MarlIntergration)
 			// 等待依赖的pass信号量
 			forloop(j, 0, k->dependencyCount)
 				allPasses[k->dependencies[j]->passIndex].wait();
-			
-			std::for_each(
-				tasks.begin(), tasks.end(), [k, &counter](task& tk)
+			constexpr int MinParallelTask = 10;
+			constexpr bool ForceParallel = false;
+			const bool recommandParallel = !k->hasRandomAccess && tasks.size > MinParallelTask;
+			if (recommandParallel || ForceParallel) // task交付marl
+			{
+				marl::WaitGroup tasksGroup(tasks.size);
+				forloop(tsk, 0, tasks.size)
 				{
-					//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
-					auto o = operation{ params, *k, tk };
-					//以 slice 为粒度执行具体的逻辑
-					const int* tests = o.get_parameter<test>();
-					const core::entity* es = o.get_entities();
-					forloop(i, 0, o.get_count())
-						counter.fetch_add(tests[i]);
-				});
+					auto& tk = tasks[tsk];
+					marl::schedule([=, &tk, &counter] {
+						// Decrement the WaitGroup counter when the task has finished.
+						defer(tasksGroup.done());
+						std::cout << std::this_thread::get_id() << std::endl;
+						//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+						auto o = operation{ params, *k, tk };
+						//以 slice 为粒度执行具体的逻辑
+						const int* tests = o.get_parameter<test>();
+						const core::entity* es = o.get_entities();
+						forloop(i, 0, o.get_count())
+							counter.fetch_add(tests[i]);
+						});
+				}
+				tasksGroup.wait();
+			}
+			else // 强制串行
+			{
+				std::for_each(
+					tasks.begin(), tasks.end(), [k, &counter](task& tk)
+					{
+						//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+						auto o = operation{ params, *k, tk };
+						//以 slice 为粒度执行具体的逻辑
+						const int* tests = o.get_parameter<test>();
+						const core::entity* es = o.get_entities();
+						forloop(i, 0, o.get_count())
+							counter.fetch_add(tests[i]);
+					});
+			}
 
 			pass.signal();
 		});
+
 
 		// 开闸泄洪
 		starterPass.signal();
