@@ -1,7 +1,13 @@
 #include "pch.h"
 #include "Codebase.h"
-#include <execution>
+
 #include "taskflow.hpp"
+
+#include "marl/defer.h"
+#include "marl/event.h"
+#include "marl/scheduler.h"
+#include "marl/waitgroup.h"
+
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 #define def static constexpr auto
 
@@ -108,7 +114,9 @@ TEST_F(CodebaseTest, TaskSingleThread)
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
-
+#if defined(_WIN32) || defined(_WIN64)
+// Only MSVC support this.
+#include <execution>
 TEST_F(CodebaseTest, TaskMultiThreadStd)
 {
 	using namespace core::codebase;
@@ -146,6 +154,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
+#endif
 
 TEST_F(CodebaseTest, TaskflowIntergration)
 {
@@ -197,6 +206,71 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 			tk.precede(tfTasks[k->dependencies[i]->passIndex]);
 
 		executer.run(taskflow).wait();
+	}
+	EXPECT_EQ(counter, 5000050000);
+}
+
+TEST_F(CodebaseTest, MarlIntergration)
+{
+	using namespace core::codebase;
+	entity_type type = { complist<test>() }; //定义 entity 类型
+	{
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
+		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
+			auto tests = get_component_ro<test>(ctx, c);
+			forloop(i, 0, c.count)
+				tests[i] = counter++;
+		}
+	}
+
+	std::atomic<long long> counter = 0;
+	{
+		marl::Scheduler scheduler(marl::Scheduler::Config::allCores());
+		scheduler.bind();
+		defer(scheduler.unbind());  // Automatically unbind before returning.
+		std::vector<marl::Event> allPasses;
+
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		pipeline ppl(ctx);
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = hana::make_tuple(param<const test>); //定义 pass 的参数
+		auto k = ppl.create_pass(filter, params); //创建 pass
+		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
+		
+		// 将要添加任务的Event.
+		marl::Event pass(marl::Event::Mode::Manual);
+		allPasses.push_back(pass);
+		// 等这个Event激发了才fire.
+		marl::Event starterPass(marl::Event::Mode::Manual);
+		
+		marl::schedule([=, &tasks, &counter] {
+			starterPass.wait();
+			// 等待依赖的pass信号量
+			forloop(j, 0, k->dependencyCount)
+				allPasses[k->dependencies[j]->passIndex].wait();
+			
+			std::for_each(
+				tasks.begin(), tasks.end(), [k, &counter](task& tk)
+				{
+					//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+					auto o = operation{ params, *k, tk };
+					//以 slice 为粒度执行具体的逻辑
+					const int* tests = o.get_parameter<test>();
+					const core::entity* es = o.get_entities();
+					forloop(i, 0, o.get_count())
+						counter.fetch_add(tests[i]);
+				});
+
+			pass.signal();
+		});
+
+		// 开闸泄洪
+		starterPass.signal();
+		forloop(i, 0, tasks.size)
+			allPasses[i].wait();
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
