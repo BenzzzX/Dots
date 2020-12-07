@@ -137,23 +137,27 @@ namespace core
 			std::vector<pass*> shared;
 		};
 
-		class pipeline //计算管线，处于两个 sync point 之间
+		class pipeline //计算管线，Database 的多线程交互封装
 		{
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
-			stack_allocator kernelStack;
-			chunk_vector<pass*> kernels;
-			chunk_vector<archetype*> archetypes;
-			std::unique_ptr<dependency_entry[]> denpendencyEntries;
-			ECS_API void setup_kernel_dependency(pass& k);
+			stack_allocator passStack;
+			chunk_vector<pass*> passes;
+			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
+			ECS_API void setup_pass_dependency(pass& k);
+			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
+			void sync_archetype(archetype* at);
+			void sync_entry(archetype* at, index_t type);
 		public:
 			ECS_API pipeline(world& ctx);
 			ECS_API ~pipeline();
 			template<class T>
 			pass* create_pass(const filters& v, T paramList);
 			ECS_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
+			
+			std::function<void(pass** dependencies, int dependencyCount)> on_sync;
 		};
 }
 	/*

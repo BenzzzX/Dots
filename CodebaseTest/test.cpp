@@ -169,12 +169,17 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		std::vector<tf::Task> tfTasks;
 		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
 		pipeline ppl(ctx);
+		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
+		{
+			forloop(i, 0, dependencyCount)
+				;// executer.wait(tkTasks[dependencies[dependencyCount]->passId]);
+		};
+
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
 		def params = hana::make_tuple(param<const test>); //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
 		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
-
 		auto tk = taskflow.for_each(//使用 taskflow 的多线程调度
 			tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{

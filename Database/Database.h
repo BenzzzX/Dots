@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <array>
 #include <optional>
+#include <functional>
 #include "Set.h"
 #include "Type.h"
 
@@ -140,14 +141,6 @@ namespace core
 			void update_queries(archetype* g, bool add);
 			archetype_filter cache_query(const archetype_filter& type);
 
-			//archetype behavior, lifetime
-			archetype* get_archetype(const entity_type&);
-			void add_archetype(archetype*);
-			archetype* get_cleaning(archetype*);
-			bool is_cleaned(const entity_type&);
-			archetype* get_casted(archetype*, type_diff diff, bool inst = false);
-			void structural_change(archetype* g, chunk* c);
-
 			//archetype-chunk behavior
 			static void remove(chunk*& head, chunk*& tail, chunk* toremove);
 			void add_chunk(archetype* g, chunk* c);
@@ -161,11 +154,14 @@ namespace core
 			void resize_chunk(chunk*, uint32_t);
 			void merge_chunks(archetype*);
 
+			//archetype behavior
+			void add_archetype(archetype*);
+			void structural_change(archetype* g, chunk* c);
+
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
 			chunk_vector<chunk_slice> cast_slice(chunk_slice, archetype*);
-			chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//serialize behavior
 			static void serialize_archetype(archetype* g, serializer_i* s);
@@ -197,6 +193,7 @@ namespace core
 			/*** per chunk slice ***/
 			//create
 			ECS_API chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
+			ECS_API chunk_vector<chunk_slice> allocate(archetype* g, uint32_t count = 1);
 			ECS_API chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
 
 			//stuctural change
@@ -204,6 +201,14 @@ namespace core
 			/* note: return null if trigger chunk move or chunk clean up */
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, const entity_type& type);
+
+
+			//archetype behavior, lifetime
+			ECS_API archetype* get_archetype(const entity_type&);
+			ECS_API archetype* get_cleaning(archetype*);
+			ECS_API bool is_cleaned(const entity_type&);
+			ECS_API archetype* get_casted(archetype*, type_diff diff, bool inst = false);
+			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//query iterators
 			ECS_API chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
@@ -262,6 +267,8 @@ namespace core
 			ECS_API void merge_chunks();
 			//query
 			uint32_t timestamp;
+
+			std::function<void(archetype*, bool)> on_archetype_update;
 		};
 
 		struct chunk

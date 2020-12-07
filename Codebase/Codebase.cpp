@@ -15,20 +15,17 @@ T* allocate_inplace(char*& buffer, size_t size)
 	return (T*)allocated;
 }
 
-void pipeline::setup_kernel_dependency(pass& k)
+void pipeline::setup_pass_dependency(pass& k)
 {
 	std::set<pass*> dependencies;
-	int ati = 0;
-	int eti = 0;
 	forloop(i, 0, k.archetypeCount)
 	{
 		auto at = k.archetypes[i];
-		while (archetypes[ati] != at)
-		{
-			eti += at->firstTag;
-			ati++;
-		}
-		auto entries = denpendencyEntries.get() + eti;
+		auto iter = dependencyEntries.find(at);
+		if (iter == dependencyEntries.end())
+			continue;
+
+		auto entries = (*iter).second.get();
 		forloop(j, 0, k.paramCount)
 		{
 			auto localType = k.localType[i*k.paramCount + j];
@@ -50,7 +47,7 @@ void pipeline::setup_kernel_dependency(pass& k)
 			}
 		}
 	}
-	k.dependencies = (pass**)kernelStack.alloc(dependencies.size() * sizeof(pass*));
+	k.dependencies = (pass**)passStack.alloc(dependencies.size() * sizeof(pass*));
 	k.dependencyCount = dependencies.size();
 	int i = 0;
 	for (auto dp : dependencies)
@@ -60,16 +57,32 @@ void pipeline::setup_kernel_dependency(pass& k)
 pipeline::pipeline(world& ctx)
 	:ctx(ctx), passIndex(0)
 {
-	kernelStack.init(10000);
-	archetypes = ctx.get_archetypes();
-	size_t entryCount = 0;
-	for (auto at : archetypes)
-		entryCount += at->firstTag;
-	denpendencyEntries = std::unique_ptr<dependency_entry[]>{ new dependency_entry[entryCount] };
+	passStack.init(10000);
+	ctx.on_archetype_update = [this](archetype* at, bool add)
+	{
+		update_archetype(at, add);
+	};
+	for (auto at : ctx.get_archetypes())
+	{
+		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag] };
+		dependencyEntries.try_emplace(at, std::move(entries));
+	}
+}
+
+void pipeline::update_archetype(archetype* at, bool add)
+{
+	if (add)
+	{
+		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag] };
+		dependencyEntries.try_emplace(at, std::move(entries));
+	}
+	else
+		dependencyEntries.erase(at);
 }
 
 pipeline::~pipeline()
 {
+	ctx.on_archetype_update = std::function<void(archetype*, bool)>();
 }
 
 chunk_vector<task> pipeline::create_tasks(pass& k, int maxSlice)

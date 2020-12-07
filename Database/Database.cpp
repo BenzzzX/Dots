@@ -885,6 +885,8 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 
 void world::update_queries(archetype* g, bool add)
 {
+	if(on_archetype_update)
+		on_archetype_update(g, add);
 	tsize_t size = 0;
 	estimate_shared_size(size, g);
 	stack_array(index_t, _type, size);
@@ -1790,8 +1792,13 @@ world::~world()
 
 chunk_vector<chunk_slice> world::allocate(const entity_type& type, uint32_t count)
 {
-	chunk_vector<chunk_slice> result;
 	archetype* g = get_archetype(type);
+	return allocate(g, count);
+}
+
+ECS_API chunk_vector<chunk_slice> world::allocate(archetype* g, uint32_t count)
+{
+	chunk_vector<chunk_slice> result;
 	uint32_t k = 0;
 
 	while (k < count)

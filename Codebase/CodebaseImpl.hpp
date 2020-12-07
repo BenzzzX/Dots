@@ -20,9 +20,9 @@ namespace core
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ (paramCount / 4 + 1) * sizeof(index_t) * 2; //readonly + random access
-			char* buffer = (char*)kernelStack.alloc(bufferSize, alignof(pass));
+			char* buffer = (char*)passStack.alloc(bufferSize, alignof(pass));
 			pass* k = new(buffer) pass{ ctx };
-			kernels.push(k);
+			passes.push(k);
 			buffer += sizeof(pass);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
@@ -55,7 +55,7 @@ namespace core
 					k->localType[j + counter * archs.size] = i.type->index(k->types[j]);
 				counter++;
 			}
-			setup_kernel_dependency(*k);
+			setup_pass_dependency(*k);
 			return k;
 		}
 
