@@ -7,4 +7,5 @@ x64
 Debug
 .VSCodeCounter
 packages
-/build
+build
+!CodebaseTest/lib/**
