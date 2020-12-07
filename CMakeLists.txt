@@ -3,8 +3,6 @@ cmake_minimum_required(VERSION 3.19)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-set(DOTS_BUILD_CODEBASE FALSE)
-
 project(Dots )
 
 ## Glob database files.
@@ -58,7 +56,8 @@ if(DOTS_BUILD_CODEBASE)
     endif(${DOTS_BUILD_AS_STATIC})
 
     target_include_directories(DotsCodebase
-        PRIVATE
+        PUBLIC 
+        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/include
         ${CMAKE_CURRENT_SOURCE_DIR}/Database
     )
     target_link_libraries(DotsCodebase PUBLIC DotsDatabase)

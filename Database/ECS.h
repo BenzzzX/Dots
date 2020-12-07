@@ -11,7 +11,7 @@ namespace ecs
 		need_clean = 0x02,
 		is_element = 0x04
 	};
-	template<typename T> core::database::index_t cid;
+	//template<typename T> core::database::index_t cid;
 	template <typename, typename = void>
 	struct has_flags : std::false_type {};
 	template <typename T>
@@ -44,7 +44,7 @@ namespace ecs
 	};
 
 
-	
+	/*
 	struct world : public core::database::world {
 		using base = core::database::world;
 		
@@ -66,6 +66,6 @@ namespace ecs
 			return base::has_component(e, { t, sizeof...(Args) });
 		}
 
-	};
+	};*/
 }
 
