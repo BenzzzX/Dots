@@ -74,7 +74,7 @@ TEST_F(CodebaseTest, CreatePass) {
 }
 
 template<class T>
-auto get_component_ro(core::database::world& ctx, core::database::chunk_slice c)
+auto init_component(core::database::world& ctx, core::database::chunk_slice c)
 {
 	using namespace core::codebase;
 	using value_type = component_value_type_t<T>;
@@ -90,7 +90,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto components = get_component_ro<test>(ctx, c);
+			auto components = init_component<test>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i] = counter++;
 		}
@@ -129,7 +129,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto components = get_component_ro<test>(ctx, c);
+			auto components = init_component<test>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i] = counter++;
 		}
@@ -168,7 +168,7 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto tests = get_component_ro<test>(ctx, c);
+			auto tests = init_component<test>(ctx, c);
 			forloop(i, 0, c.count)
 				tests[i] = counter++;
 		}
@@ -222,7 +222,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto tests = get_component_ro<test>(ctx, c);
+			auto tests = init_component<test>(ctx, c);
 			forloop(i, 0, c.count)
 				tests[i] = counter++;
 		}
