@@ -32,8 +32,12 @@ namespace core
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
 			k->matched = allocate_inplace<mask>(buffer, archs.size);
 			k->types = allocate_inplace<index_t>(buffer, paramCount);
-			k->readonly = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
-			k->randomAccess = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
+			constexpr size_t bits = std::numeric_limits<index_t>::digits;
+			const auto bal = paramCount / bits + 1;
+			k->readonly = allocate_inplace<index_t>(buffer, bal);
+			k->randomAccess = allocate_inplace<index_t>(buffer, bal);
+			memset(k->readonly, 0, sizeof(index_t) * bal);
+			memset(k->randomAccess, 0, sizeof(index_t) * bal);
 			k->localType = allocate_inplace<index_t>(buffer, paramCount * archs.size);
 			k->hasRandomWrite = false;
 			int t = 0;
@@ -41,8 +45,10 @@ namespace core
 				{
 					using type = decltype(p);
 					k->types[t] = cid<decltype(p.comp_type)::type>;
-					set_bit(k->readonly, type::readonly);
-					set_bit(k->randomAccess, type::randomAccess);
+					if(type::readonly)
+						set_bit(k->readonly, t);
+					if(type::randomAccess)
+						set_bit(k->randomAccess, t);
 					k->hasRandomWrite |= (type::randomAccess && !type::readonly);
 					t++;
 				});
@@ -54,7 +60,7 @@ namespace core
 				v.entityFilter.apply(i);
 				k->matched[counter] = i.matched;
 				forloop(j, 0, paramCount)
-					k->localType[j + counter * archs.size] = i.type->index(k->types[j]);
+					k->localType[j + counter * paramCount] = i.type->index(k->types[j]);
 				counter++;
 			}
 			setup_pass_dependency(*k);
@@ -140,8 +146,6 @@ namespace core
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
-			if constexpr (!)
-				return nullptr;
 			if constexpr (param.readonly)
 				return (return_type*)const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
 			else
