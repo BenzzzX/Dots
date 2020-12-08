@@ -268,13 +268,15 @@ namespace core
 			virtual void reset() {}
 		};
 
+		// Internal Components
 		struct group
 		{
 			entity e;
 		};
-
 		using mask = std::bitset<32>;
-
+		struct disable {};
+		struct cleanup {};
+		
 		struct component_vtable
 		{
 			void(*patch)(char* data, patcher_i* stream) = nullptr;

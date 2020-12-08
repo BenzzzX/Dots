@@ -22,9 +22,6 @@ struct test2
 	int v;
 };
 
-struct disable {};
-struct cleanup {};
-
 void install_test_components()
 {
 	using namespace core::database;
@@ -276,7 +273,6 @@ TEST_F(CodebaseTest, MarlIntergration)
 					marl::schedule([=, &tk, &counter] {
 						// Decrement the WaitGroup counter when the task has finished.
 						defer(tasksGroup.done());
-						std::cout << std::this_thread::get_id() << std::endl;
 						//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 						auto o = operation{ params, *k, tk };
 						//以 slice 为粒度执行具体的逻辑
