@@ -115,6 +115,47 @@ chunk_vector<task> pipeline::create_tasks(pass& k, int maxSlice)
 	return result;
 }
 
+void pipeline::sync_archetype(archetype* at)
+{
+	auto pair = dependencyEntries.find(at);
+	auto entries = pair->second.get();
+	std::vector<pass*> deps;
+	forloop(i, 0, at->firstTag)
+	{
+		if (entries[i].shared.empty())
+		{
+			if(entries[i].owned)
+				deps.push_back(entries[i].owned)
+		}
+		else
+		{
+			for (auto p : entries[i].shared)
+				deps.push_back(p);
+		}
+	}
+	on_sync(deps.data(), deps.size());
+}
+
+void pipeline::sync_entry(archetype* at, index_t type)
+{
+	auto pair = dependencyEntries.find(at);
+	auto entries = pair->second.get();
+	std::vector<pass*> deps;
+	auto i = at->index(type);
+	//assert(i <= at->firstTag);
+	if (entries[i].shared.empty())
+	{
+		if (entries[i].owned)
+			deps.push_back(entries[i].owned)
+	}
+	else
+	{
+		for (auto p : entries[i].shared)
+			deps.push_back(p);
+	}
+	on_sync(deps.data(), deps.size());
+}
+
 const core::entity* operation_base::get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }
 
 mask operation_base::get_mask() { return ctx.matched[matched]; }
