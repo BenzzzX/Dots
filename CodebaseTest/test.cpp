@@ -16,9 +16,11 @@ struct test
 	using value_type = int;
 	int v;
 };
-
-struct disable {};
-struct cleanup {};
+struct test2
+{
+	using value_type = int;
+	int v;
+};
 
 void install_test_components()
 {
@@ -27,7 +29,8 @@ void install_test_components()
 	core::codebase::cid<disable> = disable_id;
 	core::codebase::cid<cleanup> = cleanup_id;
 	core::codebase::cid<mask> = mask_id;
-	core::codebase::cid<test> = register_type({ false, false, false, 10, sizeof(test) });
+	core::codebase::cid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
+	core::codebase::cid<test2> = register_type({ false, false, false,  typeid(test2).hash_code(), sizeof(test2) });
 }
 
 class CodebaseTest : public ::testing::Test
@@ -252,7 +255,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 				allPasses[k->dependencies[j]->passIndex].wait();
 			constexpr int MinParallelTask = 10;
 			constexpr bool ForceParallel = false;
-			const bool recommandParallel = !k->hasRandomAccess && tasks.size > MinParallelTask;
+			const bool recommandParallel = !k->hasRandomWrite && tasks.size > MinParallelTask;
 			auto Job = [k, &counter](task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
@@ -284,6 +287,80 @@ TEST_F(CodebaseTest, MarlIntergration)
 			pair.second.wait();
 	}
 	EXPECT_EQ(counter, 5000050000);
+}
+
+TEST_F(CodebaseTest, Dependency)
+{
+	using namespace core::codebase;
+	{
+		entity_type type = { complist<test>() };
+		ctx.allocate(type);
+	}
+	{
+		entity_type type = { complist<test, test2>() };
+		ctx.allocate(type);
+	}
+
+	core::codebase::pipeline ppl(ctx);
+	pass* p1, *p2, *p3, *p4, *p5;
+
+	{
+		entity_type type = { complist<test>() };
+		filters filter;
+		filter.archetypeFilter = { type };
+		auto params = hana::make_tuple(param<test>);
+		p1 = ppl.create_pass(filter, params);
+		EXPECT_EQ(p1->dependencyCount, 0);
+	}
+	//基于 comp 的依赖和分享
+	{
+		//依赖 p1 : const test -> test
+		entity_type type = { complist<test>() };
+		filters filter;
+		filter.archetypeFilter = { type };
+		auto params = hana::make_tuple(param<const test>);
+		p2 = ppl.create_pass(filter, params);
+		EXPECT_EQ(p2->dependencyCount, 1);
+		EXPECT_EQ(p2->dependencies[0], p1);
+	}
+
+	{
+		//依赖 p1 : const test -> test
+		//与 p2 分享 const test
+		entity_type type = { complist<test>() };
+		filters filter;
+		filter.archetypeFilter = { type };
+		auto params = hana::make_tuple(param<const test>);
+		p3 = ppl.create_pass(filter, params);
+		EXPECT_EQ(p3->dependencyCount, 1);
+		EXPECT_EQ(p3->dependencies[0], p1);
+	}
+	//基于 filter 的依赖和分享
+	{
+		//在 [test] chunk 上依赖 p2, p3 : test -> const test
+		entity_type type = { complist<test>() };
+		entity_type type2 = { complist<test2>() };
+		filters filter;
+		filter.archetypeFilter = { type, {}, type2 };
+		auto params = hana::make_tuple(param<test>);
+		p4 = ppl.create_pass(filter, params);
+		EXPECT_EQ(p4->dependencyCount, 2);
+		EXPECT_EQ(p4->dependencies[0], p2);
+		EXPECT_EQ(p4->dependencies[1], p3);
+	}
+
+	{
+		//在 [test, test2] chunk 上依赖 p2, p3 : test -> const test
+		//因为和 p4 在不同的 archetype 上，所以不冲突
+		entity_type type = { complist<test, test2>() };
+		filters filter;
+		filter.archetypeFilter = { type };
+		auto params = hana::make_tuple(param<test>);
+		p5 = ppl.create_pass(filter, params);
+		EXPECT_EQ(p5->dependencyCount, 2);
+		EXPECT_EQ(p5->dependencies[0], p2);
+		EXPECT_EQ(p5->dependencies[1], p3);
+	}
 }
 
 int main(int argc, char** argv)
