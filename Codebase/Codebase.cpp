@@ -124,8 +124,8 @@ void pipeline::sync_archetype(archetype* at)
 	{
 		if (entries[i].shared.empty())
 		{
-			if(entries[i].owned)
-				deps.push_back(entries[i].owned)
+			if (entries[i].owned)
+				deps.push_back(entries[i].owned);
 		}
 		else
 		{
@@ -146,7 +146,7 @@ void pipeline::sync_entry(archetype* at, index_t type)
 	if (entries[i].shared.empty())
 	{
 		if (entries[i].owned)
-			deps.push_back(entries[i].owned)
+			deps.push_back(entries[i].owned);
 	}
 	else
 	{
