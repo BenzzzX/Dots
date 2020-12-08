@@ -121,7 +121,7 @@ namespace core
 			int paramCount;
 			pass** dependencies;
 			int dependencyCount;
-			bool hasRandomAccess;
+			bool hasRandomWrite;
 		};
 
 		template<class T>

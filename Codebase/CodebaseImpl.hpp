@@ -35,7 +35,7 @@ namespace core
 			k->readonly = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
 			k->randomAccess = allocate_inplace<index_t>(buffer, paramCount / 4 + 1);
 			k->localType = allocate_inplace<index_t>(buffer, paramCount * archs.size);
-			k->hasRandomAccess = false;
+			k->hasRandomWrite = false;
 			int t = 0;
 			hana::for_each(paramList, [&](auto p)
 				{
@@ -43,7 +43,7 @@ namespace core
 					k->types[t] = cid<decltype(p.comp_type)::type>;
 					set_bit(k->readonly, type::readonly);
 					set_bit(k->randomAccess, type::randomAccess);
-					k->hasRandomAccess |= type::randomAccess;
+					k->hasRandomWrite |= (type::randomAccess && !type::readonly);
 					t++;
 				});
 			int counter = 0;
@@ -120,45 +120,48 @@ namespace core
 			auto param = hana::at(paramList, paramId_c);
 			void* ptr = nullptr;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
+			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (value_type*)nullptr;
 			if constexpr (param.readonly)
 				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
 			else
 				ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
-			return (ptr && operation_base::is_owned(paramId)) ? (value_type*)ptr + slice.start : (value_type*)ptr;
+			return (ptr && operation_base::is_owned(paramId)) ? (return_type*)ptr + slice.start : (return_type*)ptr;
 		}
 
 		template<class ...params>
 		template<class T>
 		auto operation<params...>::get_parameter(entity e)
 		{
+			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
 			using value_type = component_value_type_t<T>;
 			auto paramId_c = param_id<T>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			if constexpr (!param::randomAccess)
+			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
+			if constexpr (!)
 				return nullptr;
 			if constexpr (param.readonly)
-				return (value_type*)const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
+				return (return_type*)const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
 			else
-				return (value_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
+				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
 		}
 
 		template<class ...params>
 		template<class T>
 		auto operation<params...>::get_parameter_owned(entity e)
 		{
+			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
 			using value_type = component_value_type_t<T>;
 			auto paramId_c = param_id<T>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			if constexpr (!param::randomAccess)
-				return nullptr;
+			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
 			if constexpr (param.readonly)
-				return (value_type*)const_cast<void*>(ctx.ctx.get_owned_ro(e, ctx.types[paramId]));
+				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_ro(e, ctx.types[paramId]));
 			else
-				return (value_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
+				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
 		}
 	}
 }

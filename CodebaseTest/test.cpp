@@ -260,7 +260,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 				allPasses[k->dependencies[j]->passIndex].wait();
 			constexpr int MinParallelTask = 10;
 			constexpr bool ForceParallel = false;
-			const bool recommandParallel = !k->hasRandomAccess && tasks.size > MinParallelTask;
+			const bool recommandParallel = !k->hasRandomWrite && tasks.size > MinParallelTask;
 			if (recommandParallel || ForceParallel) // task交付marl
 			{
 				marl::WaitGroup tasksGroup(tasks.size);
@@ -307,6 +307,20 @@ TEST_F(CodebaseTest, MarlIntergration)
 			allPasses[i].wait();
 	}
 	EXPECT_EQ(counter, 5000050000);
+}
+
+TEST_F(CodebaseTest, Dependency)
+{
+	using namespace core::codebase;
+	entity_type type = { complist<test>() };
+	ctx.allocate(type);
+
+	core::codebase::pipeline ppl(ctx);
+	filters filter;
+	filter.archetypeFilter = { type };
+	auto params = hana::make_tuple(param<test>);
+	auto k = ppl.create_pass(filter, params);
+	EXPECT_EQ(k->chunkCount, 1);
 }
 
 int main(int argc, char** argv)
