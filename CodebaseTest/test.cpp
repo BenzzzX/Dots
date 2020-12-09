@@ -289,6 +289,137 @@ TEST_F(CodebaseTest, MarlIntergration)
 	EXPECT_EQ(counter, 5000050000);
 }
 
+
+namespace ecs
+{
+	using namespace core::database;
+	using core::entity;
+	//using namespace core::codebase;
+	using pass = core::codebase::pass;
+	using filters = core::codebase::filters;
+	using task = core::codebase::task;
+
+	using core::codebase::component_value_type_t;
+	using core::codebase::cid;
+	using core::codebase::param;
+	using core::codebase::operation;
+
+	struct pipeline final : public core::codebase::pipeline
+	{
+		using base_t = core::codebase::pipeline;
+		pipeline(world& ctx) :base_t(ctx) {};
+		template<class T>
+		pass* create_pass(const filters& v, T paramList)
+		{
+			pass_events.emplace_back(marl::Event::Mode::Manual);
+			return static_cast<pass*>(base_t::create_pass(v, paramList));
+		}
+		void wait()
+		{
+			forloop(i, 0u, pass_events.size())
+				pass_events[i].wait();
+		}
+		std::vector<marl::Event> pass_events;
+	};
+
+	template<typename F, bool ForceParallel = false, bool ForceNoParallel = false>
+	FORCEINLINE marl::Event schedule(ecs::pipeline& pipeline, ecs::pass& pass, F&& f)
+	{
+		static_assert(std::is_invocable_v<std::decay_t<F>, ecs::pipeline&, ecs::pass&, ecs::task&>,
+			"F must be an invokable of void(ecs::pipeline&, ecs::pass&, ecs::task&)>");
+		static_assert(!(ForceParallel & ForceNoParallel),
+			"A schedule can not force both parallel and not parallel!");
+		marl::schedule([&, f]
+			{
+				auto tasks = pipeline.create_tasks(pass); //从 pass 提取 task
+				defer(pipeline.pass_events[pass.passIndex].wait());
+				for (auto i = 0u; i < pass.dependencyCount; i++)
+					pipeline.pass_events[pass.dependencies[i]->passIndex].wait();
+
+				constexpr auto MinParallelTask = 10u;
+				const bool recommandParallel = !pass.hasRandomWrite && tasks.size > MinParallelTask;
+				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
+				{
+					marl::WaitGroup tasksGroup(tasks.size);
+					forloop(tsk, 0, tasks.size)
+					{
+						auto& tk = tasks[tsk];
+						marl::schedule([&, tasksGroup] {
+							// Decrement the WaitGroup counter when the task has finished.
+							defer(tasksGroup.done());
+							f(pipeline, pass, tasks[tsk]);
+							});
+					}
+					tasksGroup.wait();
+				}
+				else // 串行
+				{
+					std::for_each(
+						tasks.begin(), tasks.end(), [&, f](auto& tk)
+						{
+							f(pipeline, pass, tk);
+						});
+				}
+				pipeline.pass_events[pass.passIndex].signal();
+			});
+		return pipeline.pass_events[pass.passIndex];
+	}
+}
+
+
+TEST_F(CodebaseTest, MarlIntergration2)
+{
+	using namespace ecs;
+	entity_type type = { complist<test>() }; //定义 entity 类型
+	{
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
+		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
+			auto tests = init_component<test>(ctx, c);
+			forloop(i, 0, c.count)
+				tests[i] = counter++;
+		}
+	}
+
+	std::atomic<long long> counter = 0;
+	{
+		marl::Scheduler scheduler(marl::Scheduler::Config::allCores());
+		scheduler.bind();
+		defer(scheduler.unbind());  // Automatically unbind before returning.
+		std::unordered_map<int, marl::WaitGroup> allPasses;
+
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		ecs::pipeline ppl(ctx);
+
+		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
+		{
+			forloop(i, 0, dependencyCount)
+				allPasses[dependencies[i]->passIndex].wait();
+		};
+
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
+		auto passHdl = ecs::schedule(ppl, *ppl.create_pass(filter, params),
+			[&](ecs::pipeline& pipeline, ecs::pass& pass, ecs::task& tk)
+			{
+				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+				auto o = operation{ params, pass, tk };
+				//以 slice 为粒度执行具体的逻辑
+				const int* tests = o.get_parameter<test>();
+				const core::entity* es = o.get_entities();
+				forloop(i, 0, o.get_count())
+					counter.fetch_add(tests[i]);
+			});
+		// 等待单一pass
+		passHdl.wait();
+		// 等待pipeline
+		ppl.wait();
+	}
+	EXPECT_EQ(counter, 5000050000);
+}
+
 TEST_F(CodebaseTest, Dependency)
 {
 	using namespace core::codebase;
