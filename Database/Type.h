@@ -299,6 +299,7 @@ namespace core
 			size_t hash = 0; 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
+			uint16_t alignment = alignof(long long);
 			intptr_t* entityRefs = nullptr; 
 			uint16_t entityRefCount = 0;
 			component_vtable vtable;

@@ -213,82 +213,6 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 	EXPECT_EQ(counter, 5000050000);
 }
 
-TEST_F(CodebaseTest, MarlIntergration)
-{
-	using namespace core::codebase;
-	entity_type type = { complist<test>() }; //定义 entity 类型
-	{
-		int counter = 1;
-		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
-		{
-			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			auto tests = init_component<test>(ctx, c);
-			forloop(i, 0, c.count)
-				tests[i] = counter++;
-		}
-	}
-
-	std::atomic<long long> counter = 0;
-	{
-		marl::Scheduler scheduler(marl::Scheduler::Config::allCores());
-		scheduler.bind();
-		defer(scheduler.unbind());  // Automatically unbind before returning.
-		std::unordered_map<int, marl::WaitGroup> allPasses;
-
-		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
-		pipeline ppl(ctx);
-
-		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
-		{
-			forloop(i, 0, dependencyCount)
-				allPasses[dependencies[i]->passIndex].wait();
-		};
-
-		filters filter;
-		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<const test>); //定义 pass 的参数
-		auto k = ppl.create_pass(filter, params); //创建 pass
-		auto tasks = ppl.create_tasks(*k, 10000); //从 pass 提取 task
-		
-		{
-			forloop(j, 0, k->dependencyCount)
-				allPasses[k->dependencies[j]->passIndex].wait();
-			constexpr int MinParallelTask = 10;
-			constexpr bool ForceParallel = false;
-			const bool recommandParallel = !k->hasRandomWrite && tasks.size > MinParallelTask;
-			auto Job = [k, &counter](task& tk)
-			{
-				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
-				auto o = operation{ params, *k, tk };
-				//以 slice 为粒度执行具体的逻辑
-				const int* tests = o.get_parameter<test>();
-				const core::entity* es = o.get_entities();
-				forloop(i, 0, o.get_count())
-					counter.fetch_add(tests[i]);
-			};
-			if (recommandParallel || ForceParallel) // task交付marl
-			{
-				auto tasksGroup = allPasses.try_emplace(k->passIndex, marl::WaitGroup(tasks.size)).first->second;
-				forloop(tsk, 0, tasks.size)
-				{
-					auto& tk = tasks[tsk];
-					marl::schedule([=, &tk] {
-						// Decrement the WaitGroup counter when the task has finished.
-						defer(tasksGroup.done());
-						std::cout << std::this_thread::get_id() << std::endl;
-						Job(tk);
-					});
-				}
-			}
-			else // 强制串行
-				std::for_each( tasks.begin(), tasks.end(), Job);
-		}
-		for(auto pair : allPasses)
-			pair.second.wait();
-	}
-	EXPECT_EQ(counter, 5000050000);
-}
-
 
 namespace ecs
 {
@@ -367,7 +291,7 @@ namespace ecs
 }
 
 
-TEST_F(CodebaseTest, MarlIntergration2)
+TEST_F(CodebaseTest, MarlIntergration)
 {
 	using namespace ecs;
 	entity_type type = { complist<test>() }; //定义 entity 类型

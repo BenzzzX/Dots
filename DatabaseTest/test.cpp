@@ -51,6 +51,46 @@ TEST(MetaTest, ReadGlobal)
 	EXPECT_TRUE(true);
 }
 
+TEST(DSTest, ChunkVector)
+{
+	using namespace core::database;
+	void* ptr = nullptr, *ptr2 = nullptr, * ptr3 = nullptr;
+	chunk_vector<int> v = 
+		[&]()
+	{
+		chunk_vector<int> r;
+		r.push(1);
+		ptr = r.data;
+		return r; //RVO
+	}();
+	EXPECT_EQ(v.data, ptr);
+	{
+		auto l = [&, v, this]() //caputure
+		{
+			EXPECT_EQ(v[0], 1);
+			ptr2 = v.data;
+		};
+		{
+			l();
+			EXPECT_TRUE(ptr != ptr2);
+			ptr3 = ptr2;
+		}
+		{
+			auto l2 = l; //copy
+			l2();
+			EXPECT_TRUE(ptr2 != ptr3);
+		}
+		{
+			auto l3 = std::move(l); //move
+			l3();
+			EXPECT_TRUE(ptr2 == ptr3);
+		}
+	}
+	EXPECT_EQ(v.data, ptr);
+	EXPECT_EQ(v[0], 1);
+
+}
+
 class DatabaseTest : public ::testing::Test
 {
 protected:

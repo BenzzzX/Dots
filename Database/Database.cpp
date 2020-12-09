@@ -16,6 +16,7 @@ struct type_data
 	size_t hash;
 	uint16_t size;
 	uint16_t elementSize;
+	uint16_t alignment;
 	uint32_t entityRefs;
 	uint16_t entityRefCount;
 	const char* name;
@@ -246,7 +247,7 @@ index_t database::register_type(component_desc desc)
 
 	index_t id = (index_t)gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
-	type_data i{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
+	type_data i{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
 	if (desc.manualClean)
@@ -260,7 +261,7 @@ index_t database::register_type(component_desc desc)
 	{
 		index_t id2 = (index_t)gd.infos.size();
 		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
-		type_data i2{ desc.hash, desc.size, desc.elementSize, rid, desc.entityRefCount, desc.name, desc.vtable };
+		type_data i2{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
 		gd.infos.push_back(i2);
 	}
@@ -1001,12 +1002,14 @@ archetype* world::get_archetype(const entity_type& key)
 		if ((gd.tracks[type.index()] & Copying) != 0)
 			g->copying = true;
 	}
+	stack_array(size_t, align, firstTag);
 	forloop(i, 0, firstTag)
 	{
 		auto type = (tagged_index)key.types[i];
 		auto& info = gd.infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.hash;
+		align[i] = info.alignment;
 		stableOrder[i] = i;
 		entitySize += info.size;
 	}
@@ -1028,6 +1031,7 @@ archetype* world::get_archetype(const entity_type& key)
 		forloop(j, 0, firstTag)
 		{
 			tsize_t id = stableOrder[j];
+			offset = align[j] * ((offset + align[j] - 1) / align[j]);
 			offsets[id] = offset;
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
