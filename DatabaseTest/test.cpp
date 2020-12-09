@@ -27,6 +27,11 @@ struct test_not_exist
 	
 };
 
+struct alignas(16) test_align
+{
+	float X, Y, Z, W;
+};
+
 struct test_ref
 {
 	core::entity ref;
@@ -244,6 +249,21 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 	((test*)ctx.get_owned_rw(e, tid<test>))->f = 1.f;
 	component = (test*)ctx.get_component_ro(e, tid<test>);
 	EXPECT_EQ(component->f, 1.f);
+}
+
+
+
+TEST_F(DatabaseTest, Align)
+{
+	using namespace core::database;
+	core::entity e;
+
+	index_t t[] = { tid<test_align> };
+	entity_type type{ t };
+	//就地初始化，避免多次查询
+	ctx.allocate(type);
+	auto component = (test_align*)ctx.get_component_ro(e, tid<test_align>);
+	EXPECT_EQ((size_t)component % 16, 0);
 }
 
 TEST_F(DatabaseTest, LifeTimeTrack) 
@@ -848,8 +868,8 @@ void install_test_components()
 	tid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
 	tid<test_track> = register_type({ false, true, true, typeid(test_track).hash_code(), sizeof(test_track) });
 	tid<test_element> = register_type({ true, false, false, typeid(test_track).hash_code(), 128, sizeof(test_element) });
-
-	tid<test_not_exist> = register_type({ true, false, false, typeid(test_not_exist).hash_code(), 128, sizeof(test_not_exist) });
+	tid<test_not_exist> = register_type({ false, false, false, typeid(test_not_exist).hash_code(), 0 });
+	tid<test_align> = register_type({ false, false, false, typeid(test_align).hash_code(), sizeof(test_align), 0, alignof(test_align) });
 	{
 		component_desc desc;
 		desc.isElement = false; desc.manualCopy = false;

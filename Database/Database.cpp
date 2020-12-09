@@ -1031,7 +1031,7 @@ archetype* world::get_archetype(const entity_type& key)
 		forloop(j, 0, firstTag)
 		{
 			tsize_t id = stableOrder[j];
-			offset = align[j] * ((offset + align[j] - 1) / align[j]);
+			offset = align[id] * ((offset + align[id] - 1) / align[id]);
 			offsets[id] = offset;
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
