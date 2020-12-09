@@ -2778,3 +2778,8 @@ void core::database::initialize()
 {
 	gd.initialize();
 }
+
+void entity_filter::apply(core::database::matched_archetype& ma) const
+{
+	ma.matched &= ~ma.type->get_mask(inverseMask);
+}
