@@ -258,12 +258,18 @@ TEST_F(DatabaseTest, Align)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { tid<test_align> };
+	index_t t[] = { tid<test>, tid<test_align>, tid<test_element> };
 	entity_type type{ t };
 	//就地初始化，避免多次查询
 	ctx.allocate(type);
-	auto component = (test_align*)ctx.get_component_ro(e, tid<test_align>);
-	EXPECT_EQ((size_t)component % 16, 0);
+	{
+		auto component = (test_align*)ctx.get_component_ro(e, tid<test_align>);
+		EXPECT_EQ((size_t)component % 16, 0);
+	}
+	{
+		auto component = (test*)ctx.get_component_ro(e, tid<test>);
+		EXPECT_EQ((size_t)component % 8, 0);
+	}
 }
 
 TEST_F(DatabaseTest, LifeTimeTrack) 

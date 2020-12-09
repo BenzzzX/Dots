@@ -570,6 +570,26 @@ namespace core
 			}
 		};
 
+		template<class T>
+		class buffer_array_t
+		{
+			void* buffer;
+			size_t strip;
+
+		public:
+			buffer_array_t(void* buffer, size_t strip)
+				:buffer(buffer), strip(strip) {}
+			buffer_t<T> operator[](size_t i)
+			{
+				return buffer_t<T>(buffer + strip * i);
+			}
+
+			const buffer_t<T> operator[](size_t i) const
+			{
+				return buffer_t<T>(buffer + strip * i);
+			}
+		};
+
 		struct ECS_API stack_allocator
 		{
 			char* stackbuffer = nullptr;

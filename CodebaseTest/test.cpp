@@ -51,18 +51,21 @@ protected:
 
 
 template<class ...Ts>
-struct complist
+struct complist_t
 {
-	operator core::database::typeset()
+	operator core::database::typeset() const
 	{
 		static core::database::index_t list[] = { core::codebase::cid<Ts>... };
 		return list;
 	}
 };
 
+template<class ...T>
+static const complist_t<T...> complist;
+
 TEST_F(CodebaseTest, CreatePass) {
 	using namespace core::codebase;
-	entity_type type = { complist<test>() };
+	entity_type type = { complist<test> };
 	ctx.allocate(type);
 
 	core::codebase::pipeline ppl(ctx);
@@ -84,7 +87,7 @@ auto init_component(core::database::world& ctx, core::database::chunk_slice c)
 TEST_F(CodebaseTest, TaskSingleThread)
 {
 	using namespace core::codebase;
-	entity_type type = { complist<test>() }; //定义 entity 类型
+	entity_type type = { complist<test> }; //定义 entity 类型
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
@@ -123,7 +126,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 TEST_F(CodebaseTest, TaskMultiThreadStd)
 {
 	using namespace core::codebase;
-	entity_type type = { complist<test>() }; //定义 entity 类型
+	entity_type type = { complist<test> }; //定义 entity 类型
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
@@ -162,7 +165,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 TEST_F(CodebaseTest, TaskflowIntergration)
 {
 	using namespace core::codebase;
-	entity_type type = { complist<test>() }; //定义 entity 类型
+	entity_type type = { complist<test> }; //定义 entity 类型
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
@@ -294,7 +297,7 @@ namespace ecs
 TEST_F(CodebaseTest, MarlIntergration)
 {
 	using namespace ecs;
-	entity_type type = { complist<test>() }; //定义 entity 类型
+	entity_type type = { complist<test> }; //定义 entity 类型
 	{
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
@@ -324,7 +327,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 
 		filters filter;
 		filter.archetypeFilter = { 
-			{complist<test>()}
+			{complist<test>}
 		}; //筛选所有的 test
 		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
 		auto passHdl = ecs::schedule(ppl, *ppl.create_pass(filter, params),
@@ -350,11 +353,11 @@ TEST_F(CodebaseTest, Dependency)
 {
 	using namespace core::codebase;
 	{
-		entity_type type = { complist<test>() };
+		entity_type type = { complist<test> };
 		ctx.allocate(type);
 	}
 	{
-		entity_type type = { complist<test, test2>() };
+		entity_type type = { complist<test, test2> };
 		ctx.allocate(type);
 	}
 
@@ -362,7 +365,7 @@ TEST_F(CodebaseTest, Dependency)
 	pass* p1, *p2, *p3, *p4, *p5;
 
 	{
-		entity_type type = { complist<test>() };
+		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
 		auto params = hana::make_tuple(param<test>);
@@ -372,7 +375,7 @@ TEST_F(CodebaseTest, Dependency)
 	//基于 comp 的依赖和分享
 	{
 		//依赖 p1 : const test -> test
-		entity_type type = { complist<test>() };
+		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
 		auto params = hana::make_tuple(param<const test>);
@@ -384,7 +387,7 @@ TEST_F(CodebaseTest, Dependency)
 	{
 		//依赖 p1 : const test -> test
 		//与 p2 分享 const test
-		entity_type type = { complist<test>() };
+		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
 		auto params = hana::make_tuple(param<const test>);
@@ -395,8 +398,8 @@ TEST_F(CodebaseTest, Dependency)
 	//基于 filter 的依赖和分享
 	{
 		//在 [test] chunk 上依赖 p2, p3 : test -> const test
-		entity_type type = { complist<test>() };
-		entity_type type2 = { complist<test2>() };
+		entity_type type = { complist<test> };
+		entity_type type2 = { complist<test2> };
 		filters filter;
 		filter.archetypeFilter = { type, {}, type2 };
 		auto params = hana::make_tuple(param<test>);
@@ -409,7 +412,7 @@ TEST_F(CodebaseTest, Dependency)
 	{
 		//在 [test, test2] chunk 上依赖 p2, p3 : test -> const test
 		//因为和 p4 在不同的 archetype 上，所以不冲突
-		entity_type type = { complist<test, test2>() };
+		entity_type type = { complist<test, test2> };
 		filters filter;
 		filter.archetypeFilter = { type };
 		auto params = hana::make_tuple(param<test>);
