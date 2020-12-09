@@ -337,14 +337,14 @@ namespace ecs
 			{
 				auto tasks = pipeline.create_tasks(pass); //从 pass 提取 task
 				defer(pipeline.pass_events[pass.passIndex].wait());
-				for (auto i = 0u; i < pass.dependencyCount; i++)
+				for (auto i = 0; i < pass.dependencyCount; i++)
 					pipeline.pass_events[pass.dependencies[i]->passIndex].wait();
 
 				constexpr auto MinParallelTask = 10u;
 				const bool recommandParallel = !pass.hasRandomWrite && tasks.size > MinParallelTask;
 				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
 				{
-					marl::WaitGroup tasksGroup(tasks.size);
+					marl::WaitGroup tasksGroup(static_cast<unsigned>(tasks.size));
 					forloop(tsk, 0, tasks.size)
 					{
 						auto& tk = tasks[tsk];

@@ -47,7 +47,7 @@ void pipeline::setup_pass_dependency(pass& k)
 		}
 	}
 	k.dependencies = (pass**)passStack.alloc(dependencies.size() * sizeof(pass*));
-	k.dependencyCount = dependencies.size();
+	k.dependencyCount = static_cast<int>(dependencies.size());
 	int i = 0;
 	for (auto dp : dependencies)
 		k.dependencies[i++] = dp;
@@ -133,7 +133,7 @@ void pipeline::sync_archetype(archetype* at)
 				deps.push_back(p);
 		}
 	}
-	on_sync(deps.data(), deps.size());
+	on_sync(deps.data(), static_cast<int>(deps.size()));
 }
 
 void pipeline::sync_entry(archetype* at, index_t type)
@@ -153,7 +153,7 @@ void pipeline::sync_entry(archetype* at, index_t type)
 		for (auto p : entries[i].shared)
 			deps.push_back(p);
 	}
-	on_sync(deps.data(), deps.size());
+	on_sync(deps.data(), static_cast<int>(deps.size()));
 }
 
 const core::entity* operation_base::get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }

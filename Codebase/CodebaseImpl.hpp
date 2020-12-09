@@ -165,7 +165,7 @@ namespace core
 			int paramId = paramId_c.value;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
 			if constexpr (param.readonly)
-			{
+			{ 
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
 			}
