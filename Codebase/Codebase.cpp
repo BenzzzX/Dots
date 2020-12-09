@@ -4,7 +4,6 @@
 using namespace core::codebase;
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 
-
 constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
 template<class T>
@@ -165,4 +164,3 @@ bool operation_base::is_owned(int paramId)
 {
 	return ctx.localType[paramId] != InvalidIndex;
 }
-

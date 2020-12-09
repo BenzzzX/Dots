@@ -10,21 +10,24 @@
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 #define def static constexpr auto
-
+using namespace core::guid_parse::literals;
 struct test
 {
 	using value_type = int;
+	def guid = "7BF73C4A-44D6-47AE-ABBF-917C037AE803"_guid;
 	int v;
 };
 struct test2
 {
 	using value_type = int;
+	def guid = "13882ADC-05EF-49A8-8EBE-99F331C07FDD"_guid;
 	int v;
 };
 struct test3
 {
 	using value_type = core::database::buffer_t<int>;
 	def buffer_capacity = 10;
+	def guid = "3092A278-B54D-4ED5-B3A8-7BBD77870782"_guid;
 	int v;
 };
 
@@ -60,7 +63,7 @@ core::database::index_t register_component(intptr_t* entityRefs = nullptr, int e
 	desc.manualCopy = get_manual_copy_v<T>;
 	desc.size = get_buffer_capacity_v<T> * sizeof(T);
 	desc.elementSize = sizeof(T);
-	desc.uuid = typeid(T).hash_code();
+	desc.GUID = T::guid;
 	desc.entityRefs = entityRefs;
 	desc.entityRefCount = entityRefCount;
 	desc.alignment = alignof(T);

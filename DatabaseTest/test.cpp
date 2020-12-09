@@ -724,7 +724,7 @@ struct buffer_deserializer : core::database::serializer_i
 TEST_F(DatabaseTest, Deserialize) 
 {
 	using namespace core::database;
-	index_t t[] = { tid<test> };
+	index_t t[] = { tid<test_element>, tid<test>, tid<test_align> };
 	entity_type type{ t };
 	{
 		int counter = 1;
@@ -870,33 +870,34 @@ TEST_F(DatabaseTest, Tag)
 void install_test_components()
 {
 	using namespace core::database;
+	using namespace core::guid_parse::literals;
 	
 	tid<test> = register_type({ false, false, false,
-		"3CFC8364-417F-45C0-B8D3-9E48F04C3DAF",
+		"3CFC8364-417F-45C0-B8D3-9E48F04C3DAF"_guid,
 		sizeof(test) });
 	tid<test_track> = register_type({ false, true, true,
-		"23DFDC29-F1FC-439A-B57E-C6E86F577CA1",
+		"23DFDC29-F1FC-439A-B57E-C6E86F577CA1"_guid,
 		sizeof(test_track) });
 	tid<test_element> = register_type({ true, false, false,
-		"48D74F82-D070-4494-907A-0BC72F873FF5",
+		"48D74F82-D070-4494-907A-0BC72F873FF5"_guid,
 		128, sizeof(test_element) });
 	tid<test_not_exist> = register_type({ false, false, false,
-		"742DE13F-14B0-444C-B546-F21B99ACC335",
+		"742DE13F-14B0-444C-B546-F21B99ACC335"_guid,
 		0 });
 	tid<test_align> = register_type({ false, false, false,
-		"9C9C1EE9-1312-45E4-A746-3B7915D2B093",
+		"9C9C1EE9-1312-45E4-A746-3B7915D2B093"_guid,
 		sizeof(test_align), 0, alignof(test_align) });
 	{
 		component_desc desc;
 		desc.isElement = false; desc.manualCopy = false;
-		desc.manualClean = false; desc.uuid = "45FE8BDE-209E-4736-AF5D-7136DD061D8E";
+		desc.manualClean = false; desc.GUID = "45FE8BDE-209E-4736-AF5D-7136DD061D8E"_guid;
 		desc.size = sizeof(test_ref); desc.elementSize = 0;
 		intptr_t refs[] = { offsetof(test_ref, ref) };
 		desc.entityRefs = refs; desc.entityRefCount = 1;
 		tid<test_ref> = register_type(desc);
 	}
 	tid<test_tag> = register_type({ false, false, false,
-		"6AB0D784-CD4A-4EB1-8CF9-EE8C6BADEB81",
+		"6AB0D784-CD4A-4EB1-8CF9-EE8C6BADEB81"_guid,
 		0 });
 }
 
