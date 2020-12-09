@@ -121,7 +121,7 @@ namespace core
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
-			using value_type = component_value_type_t<DT>;
+			//using value_type = component_value_type_t<DT>;
 			auto paramId_c = param_id<DT>();
 			auto param = hana::at(paramList, paramId_c);
 			using array_type = array_type_t<T>;
@@ -154,7 +154,7 @@ namespace core
 		auto operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			auto param = hana::at(paramList, paramId_c);
 			using array_type = array_type_t<T>;
@@ -178,12 +178,11 @@ namespace core
 		template<class T>
 		auto operation<params...>::get_parameter(entity e)
 		{
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = value_type_t<T>;
 			using array_type = array_type_t<T>;
 			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
 			if constexpr (param.readonly)
@@ -199,12 +198,11 @@ namespace core
 		template<class T>
 		auto operation<params...>::get_parameter_owned(entity e)
 		{
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = value_type_t<T>;
 			using array_type = array_type_t<T>;
 			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
 			if constexpr (param.readonly)
