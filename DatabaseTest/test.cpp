@@ -22,6 +22,11 @@ struct test_element
 	int v;
 };
 
+struct test_not_exist
+{
+	
+};
+
 struct test_ref
 {
 	core::entity ref;
@@ -127,6 +132,23 @@ TEST_F(DatabaseTest, Cast)
 	for (auto c : ctx.batch(&e, 1))
 		ctx.cast(c, type);
 	EXPECT_TRUE(ctx.has_component(e, { t, 1 }));
+}
+
+TEST_F(DatabaseTest, NotExist)
+{
+	using namespace core::database;
+	index_t t[] = { tid<test> };
+	entity_type type{ t };
+	core::entity e = pick(ctx.allocate(type));
+	EXPECT_TRUE(ctx.exist(e));
+
+	auto component = (test_not_exist*)ctx.get_component_ro(e, tid<test_not_exist>);
+	EXPECT_TRUE(!component);
+
+	index_t nt[] = { tid<test_not_exist> };
+	entity_type none_type{ nt };
+	auto atypes = ctx.query({ none_type });
+	EXPECT_TRUE(atypes.size == 0);
 }
 
 TEST_F(DatabaseTest, CastDiff)
@@ -786,6 +808,8 @@ void install_test_components()
 	tid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
 	tid<test_track> = register_type({ false, true, true, typeid(test_track).hash_code(), sizeof(test_track) });
 	tid<test_element> = register_type({ true, false, false, typeid(test_track).hash_code(), 128, sizeof(test_element) });
+
+	tid<test_not_exist> = register_type({ true, false, false, typeid(test_not_exist).hash_code(), 128, sizeof(test_not_exist) });
 	{
 		component_desc desc;
 		desc.isElement = false; desc.manualCopy = false;

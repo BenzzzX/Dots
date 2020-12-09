@@ -347,7 +347,7 @@ namespace ecs
 						marl::schedule([&, tasksGroup] {
 							// Decrement the WaitGroup counter when the task has finished.
 							defer(tasksGroup.done());
-							f(pipeline, pass, tasks[tsk]);
+							f(pipeline, pass, tk);
 							});
 					}
 					tasksGroup.wait();
@@ -399,7 +399,9 @@ TEST_F(CodebaseTest, MarlIntergration2)
 		};
 
 		filters filter;
-		filter.archetypeFilter = { type }; //筛选所有的 test
+		filter.archetypeFilter = { 
+			{complist<test>()}
+		}; //筛选所有的 test
 		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
 		auto passHdl = ecs::schedule(ppl, *ppl.create_pass(filter, params),
 			[&](ecs::pipeline& pipeline, ecs::pass& pass, ecs::task& tk)
