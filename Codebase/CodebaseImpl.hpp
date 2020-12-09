@@ -89,17 +89,19 @@ namespace core
 		auto operation<params...>::get_parameter()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			using value_type = component_value_type_t<T>;
-			auto paramId_c = param_id<T>();
+			using value_type = component_value_type_t<std::decay_t<T>>;
+			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			void* ptr = nullptr;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
-			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
+			using return_type =
+				std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<value_type>, value_type>;
 			if (localType >= ctx.archetypes[matched]->firstTag)
 				return (return_type*)nullptr;
 			if constexpr (param.readonly)
 			{
+				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				if (localType == InvalidIndex)
 					ptr = const_cast<void*>(ctx.ctx.get_shared_ro(ctx.archetypes[matched], ctx.types[paramId]));
 				else
@@ -120,17 +122,21 @@ namespace core
 		auto operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			using value_type = component_value_type_t<T>;
-			auto paramId_c = param_id<T>();
+			using value_type = component_value_type_t<std::decay_t<T>>;
+			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			void* ptr = nullptr;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
-			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
+			using return_type =
+				std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<value_type>, value_type>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (value_type*)nullptr;
 			if constexpr (param.readonly)
+			{
+				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
+			}
 			else
 				ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
 			return (ptr && operation_base::is_owned(paramId)) ? (return_type*)ptr + slice.start : (return_type*)ptr;
@@ -141,13 +147,17 @@ namespace core
 		auto operation<params...>::get_parameter(entity e)
 		{
 			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<T>;
-			auto paramId_c = param_id<T>();
+			using value_type = component_value_type_t<std::decay_t<T>>;
+			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
+			using return_type = 
+				std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<value_type>, value_type>;
 			if constexpr (param.readonly)
+			{
+				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				return (return_type*)const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
+			}
 			else
 				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
 		}
@@ -157,13 +167,17 @@ namespace core
 		auto operation<params...>::get_parameter_owned(entity e)
 		{
 			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<T>;
-			auto paramId_c = param_id<T>();
+			using value_type = component_value_type_t<std::decay_t<T>>;
+			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using return_type = std::conditional_t<param.readonly, std::add_const_t<value_type>, value_type>;
+			using return_type =
+				std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<value_type>, value_type>;
 			if constexpr (param.readonly)
+			{
+				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_ro(e, ctx.types[paramId]));
+			}
 			else
 				return (return_type*)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
 		}
