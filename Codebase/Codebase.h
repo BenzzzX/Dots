@@ -50,6 +50,20 @@ namespace core
 		template<class T, bool randomAccess = false>
 		static constexpr param_t<T, randomAccess> param;
 
+
+		template<class ...Ts>
+		struct complist_t
+		{
+			operator core::database::typeset() const
+			{
+				static core::database::index_t list[] = { core::codebase::cid<Ts>... };
+				return list;
+			}
+		};
+
+		template<class ...T>
+		static const complist_t<T...> complist;
+
 		
 		struct filters
 		{
@@ -97,6 +111,8 @@ namespace core
 			auto get_parameter(entity e);
 			template<class T>
 			auto get_parameter_owned(entity e);
+			template<class T>
+			bool has_component(entity e);
 			uint32_t get_count() { return slice.count; }
 			uint32_t get_index() { return indexInKernel; }
 		};

@@ -570,15 +570,14 @@ namespace core
 			}
 		};
 
-		template<class T>
-		class buffer_array_t
+		template<class T, size_t strip>
+		class buffer_pointer_t
 		{
-			void* buffer;
-			size_t strip;
+			char* buffer;
 
 		public:
-			buffer_array_t(void* buffer, size_t strip)
-				:buffer(buffer), strip(strip) {}
+			buffer_pointer_t(void* buffer)
+				:buffer((char*)buffer) {}
 			buffer_t<T> operator[](size_t i)
 			{
 				return buffer_t<T>(buffer + strip * i);
@@ -587,6 +586,18 @@ namespace core
 			const buffer_t<T> operator[](size_t i) const
 			{
 				return buffer_t<T>(buffer + strip * i);
+			}
+
+			buffer_pointer_t operator+(size_t i) const
+			{
+				buffer_pointer_t r{ *this };
+				r.buffer = r.buffer + strip * i;
+				return r;
+			}
+
+			operator bool()
+			{
+				return buffer != nullptr;
 			}
 		};
 

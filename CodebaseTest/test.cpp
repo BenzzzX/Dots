@@ -21,6 +21,53 @@ struct test2
 	using value_type = int;
 	int v;
 };
+struct test3
+{
+	using value_type = core::database::buffer_t<int>;
+	def buffer_capacity = 10;
+	int v;
+};
+
+#define DEFINE_GETTER(Name, Default) \
+template<class T, class = void> \
+struct get_##Name{ def value = Default; }; \
+template<class T> \
+struct get_##Name<T, std::void_t<decltype(T::Name)>> { def value = T::Name; }; \
+template<class T> \
+def get_##Name##_v = get_##Name<T>::value;
+
+DEFINE_GETTER(manual_clean, false);
+DEFINE_GETTER(manual_copy, false);
+DEFINE_GETTER(buffer_capacity, 1);
+
+template<template<class...> class TP, class T>
+struct is_template : std::false_type {};
+
+template<template<class...> class TP, class... T>
+struct is_template<TP, TP<T...>> : std::true_type {};
+
+template<template<class...> class TP, class... T>
+def is_template_v = is_template<TP, T...>{};
+
+
+template<class T>
+core::database::index_t register_component(intptr_t* entityRefs = nullptr, int entityRefCount = 0, core::database::component_vtable vtable = {})
+{
+	using namespace core::codebase;
+	component_desc desc;
+	desc.isElement = is_template_v<buffer_t, component_value_type_t<T>>;
+	desc.manualClean = get_manual_clean_v<T>;
+	desc.manualCopy = get_manual_copy_v<T>;
+	desc.size = get_buffer_capacity_v<T> * sizeof(T);
+	desc.elementSize = sizeof(T);
+	desc.hash = typeid(T).hash_code();
+	desc.entityRefs = entityRefs;
+	desc.entityRefCount = entityRefCount;
+	desc.alignment = alignof(T);
+	desc.name = typeid(T).name();
+	desc.vtable = vtable;
+	return register_type(desc);
+}
 
 void install_test_components()
 {
@@ -29,8 +76,9 @@ void install_test_components()
 	core::codebase::cid<disable> = disable_id;
 	core::codebase::cid<cleanup> = cleanup_id;
 	core::codebase::cid<mask> = mask_id;
-	core::codebase::cid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
-	core::codebase::cid<test2> = register_type({ false, false, false,  typeid(test2).hash_code(), sizeof(test2) });
+	core::codebase::cid<test> = register_component<test>();
+	core::codebase::cid<test2> = register_component<test2>();
+	core::codebase::cid<test3> = register_component<test3>();
 }
 
 class CodebaseTest : public ::testing::Test
@@ -48,20 +96,6 @@ protected:
 	}
 	core::database::world ctx;
 };
-
-
-template<class ...Ts>
-struct complist_t
-{
-	operator core::database::typeset() const
-	{
-		static core::database::index_t list[] = { core::codebase::cid<Ts>... };
-		return list;
-	}
-};
-
-template<class ...T>
-static const complist_t<T...> complist;
 
 TEST_F(CodebaseTest, CreatePass) {
 	using namespace core::codebase;
@@ -120,6 +154,46 @@ TEST_F(CodebaseTest, TaskSingleThread)
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
+
+TEST_F(CodebaseTest, BufferAPI)
+{
+	using namespace core::codebase;
+	entity_type type = { complist<test3> }; //定义 entity 类型
+	{
+		int counter = 1;
+		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
+		{
+			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
+			array_type_t<test3> components = init_component<test3>(ctx, c);
+			forloop(i, 0, c.count)
+				components[i].push(counter++);
+		}
+	}
+
+	long long counter = 0;
+	{
+		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
+		pipeline ppl(ctx);
+		filters filter;
+		filter.archetypeFilter = { type }; //筛选所有的 test
+		def params = hana::make_tuple(param<const test3>); //定义 pass 的参数
+		auto k = ppl.create_pass(filter, params); //创建 pass
+		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
+		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
+			{
+				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
+				auto o = operation{ params, *k, tk };
+				core::entity e;
+				o.has_component<test3>(e);
+				//以 slice 为粒度执行具体的逻辑
+				auto tests = o.get_parameter<const test3>();
+				forloop(i, 0, o.get_count())
+					counter += tests[i][0];
+			});
+	}
+	EXPECT_EQ(counter, 5000050000);
+}
+
 #if defined(_WIN32) || defined(_WIN64)
 // Only MSVC support this.
 #include <execution>
@@ -201,7 +275,7 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
 				//以 slice 为粒度执行具体的逻辑
-				const int* tests = o.get_parameter<test>();
+				const int* tests = o.get_parameter<const test>();
 				const core::entity* es = o.get_entities();
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
@@ -297,6 +371,7 @@ namespace ecs
 TEST_F(CodebaseTest, MarlIntergration)
 {
 	using namespace ecs;
+	using namespace core::codebase;
 	entity_type type = { complist<test> }; //定义 entity 类型
 	{
 		int counter = 1;
@@ -336,7 +411,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, pass, tk };
 				//以 slice 为粒度执行具体的逻辑
-				const int* tests = o.get_parameter<test>();
+				const int* tests = o.get_parameter<const test>();
 				const core::entity* es = o.get_entities();
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
