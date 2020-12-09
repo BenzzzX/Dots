@@ -13,7 +13,7 @@ constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
 struct type_data
 {
-	size_t hash;
+	core::uuid uuid = core::uuid();
 	uint16_t size;
 	uint16_t elementSize;
 	uint16_t alignment;
@@ -74,15 +74,15 @@ struct global_data
 	{
 		component_desc desc{};
 		desc.size = 0;
-		desc.hash = 0;
-		desc.name = "cleaning";
+		desc.uuid = "00000000-0000-0000-0000-000000000001";
+		desc.name = "cleanup";
 		cleanup_id = register_type(desc);
 		desc.size = 0;
-		desc.hash = 1;
+		desc.uuid = "00000000-0000-0000-0000-000000000002";
 		desc.name = "disabled";
 		disable_id = register_type(desc);
 		desc.size = sizeof(entity) * 5;
-		desc.hash = 2;
+		desc.uuid = "00000000-0000-0000-0000-000000000003";
 		desc.isElement = true;
 		desc.elementSize = sizeof(entity);
 		static intptr_t ers[] = { (intptr_t)offsetof(group, e) };
@@ -91,7 +91,7 @@ struct global_data
 		desc.name = "group";
 		group_id = register_type(desc);
 		desc.size = sizeof(mask);
-		desc.hash = std::numeric_limits<size_t>::max();
+		desc.uuid = "00000000-0000-0000-0000-000000000004";
 		desc.isElement = false;
 		desc.name = "mask";
 		desc.entityRefCount = 0;
@@ -247,7 +247,7 @@ index_t database::register_type(component_desc desc)
 
 	index_t id = (index_t)gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
-	type_data i{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
+	type_data i{ desc.uuid, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
 	if (desc.manualClean)
@@ -255,13 +255,13 @@ index_t database::register_type(component_desc desc)
 	if (desc.manualCopy)
 		s = s | ManualCopying;
 	gd.tracks.push_back((track_state)s);
-	gd.hash2type.insert({ desc.hash, id });
+	gd.hash2type.insert({ std::hash<core::uuid>()(desc.uuid), id });
 
 	if (desc.manualCopy)
 	{
 		index_t id2 = (index_t)gd.infos.size();
 		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
-		type_data i2{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
+		type_data i2{ desc.uuid, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
 		gd.infos.push_back(i2);
 	}
@@ -985,7 +985,7 @@ archetype* world::get_archetype(const entity_type& key)
 	const index_t maskType = mask_id;
 
 	uint16_t* sizes = g->sizes();
-	stack_array(size_t, hash, firstTag);
+	stack_array(core::uuid, hash, firstTag);
 	stack_array(tsize_t, stableOrder, firstTag);
 	uint16_t entitySize = sizeof(entity);
 	forloop(i, 0, count)
@@ -1008,7 +1008,7 @@ archetype* world::get_archetype(const entity_type& key)
 		auto type = (tagged_index)key.types[i];
 		auto& info = gd.infos[type.index()];
 		sizes[i] = info.size;
-		hash[i] = info.hash;
+		hash[i] = info.uuid;
 		align[i] = info.alignment;
 		stableOrder[i] = i;
 		entitySize += info.size;
@@ -1308,7 +1308,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
-		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
+		s->stream(&gd.infos[tagged_index(type.types[i]).index()].uuid, sizeof(core::uuid));
 	s->stream(&mlength, sizeof(tsize_t));
 	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
@@ -1322,10 +1322,10 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 		return nullptr;
 	forloop(i, 0, tlength)
 	{
-		size_t hash;
-		s->stream(&hash, sizeof(size_t));
+		core::uuid uu;
+		s->stream(&uu, sizeof(core::uuid));
 		//todo: check validation
-		types[i] = (index_t)gd.hash2type[hash];
+		types[i] = (index_t)gd.hash2type[std::hash<core::uuid>()(uu)];
 	}
 	tsize_t mlength;
 	s->stream(&mlength, sizeof(tsize_t));
@@ -2728,6 +2728,97 @@ chunk_vector_base& chunk_vector_base::operator=(chunk_vector_base&& r) noexcept
 	return *this;
 }
 
+
+
+// converts a single hex char to a number (0 - 15)
+unsigned char hexDigitToChar(char ch)
+{
+	// 0-9
+	if (ch > 47 && ch < 58)
+		return ch - 48;
+	// a-f
+	if (ch > 96 && ch < 103)
+		return ch - 87;
+	// A-F
+	if (ch > 64 && ch < 71)
+		return ch - 55;
+	return 0;
+}
+
+bool isValidHexChar(char ch)
+{
+	// 0-9
+	if (ch > 47 && ch < 58)
+		return true;
+	// a-f
+	if (ch > 96 && ch < 103)
+		return true;
+	// A-F
+	if (ch > 64 && ch < 71)
+		return true;
+	return false;
+}
+// converts the two hexadecimal characters to an unsigned char (a byte)
+std::byte hexPairToChar(char a, char b)
+{
+	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
+}
+
+using core::uuid;
+
+uuid::uuid(const std::array<std::byte, 16>& bytes)
+	: _bytes(bytes)
+{
+
+}
+
+uuid::uuid(std::array<std::byte, 16>&& bytes)
+	: _bytes(std::move(bytes))
+{
+
+}
+
+uuid::uuid(std::string_view fromString)
+{
+	char charOne = '\0';
+	char charTwo = '\0';
+	bool lookingForFirstChar = true;
+	unsigned nextByte = 0;
+
+	for (const char& ch : fromString)
+	{
+		if (ch == '-')
+			continue;
+
+		if (nextByte >= 16 || !isValidHexChar(ch))
+		{
+			// Invalid string so bail
+			zeroify();
+			return;
+		}
+
+		if (lookingForFirstChar)
+		{
+			charOne = ch;
+			lookingForFirstChar = false;
+		}
+		else
+		{
+			charTwo = ch;
+			auto byte = hexPairToChar(charOne, charTwo);
+			_bytes[nextByte++] = byte;
+			lookingForFirstChar = true;
+		}
+	}
+
+	// if there were fewer than 16 bytes in the string then guid is bad
+	if (nextByte < 16)
+	{
+		zeroify();
+		return;
+	}
+}
+
 void core::database::initialize()
 {
 	gd.initialize();
@@ -2737,3 +2828,77 @@ void entity_filter::apply(core::database::matched_archetype& ma) const
 {
 	ma.matched &= ~ma.type->get_mask(inverseMask);
 }
+
+
+uuid::uuid(const char* fromString)
+{
+	uuid(std::string_view(fromString));
+}
+
+uuid::uuid()
+	: _bytes{ std::byte{0} }
+{
+
+}
+
+bool uuid::operator==(const uuid& other) const
+{
+	return _bytes == other._bytes;
+}
+
+bool uuid::operator!=(const uuid& other) const
+{
+	return !((*this) == other);
+}
+
+std::string uuid::str() const
+{
+	char one[10], two[6], three[6], four[6], five[14];
+
+	snprintf(one, 10, "%02x%02x%02x%02x",
+		_bytes[0], _bytes[1], _bytes[2], _bytes[3]);
+	snprintf(two, 6, "%02x%02x",
+		_bytes[4], _bytes[5]);
+	snprintf(three, 6, "%02x%02x",
+		_bytes[6], _bytes[7]);
+	snprintf(four, 6, "%02x%02x",
+		_bytes[8], _bytes[9]);
+	snprintf(five, 14, "%02x%02x%02x%02x%02x%02x",
+		_bytes[10], _bytes[11], _bytes[12], _bytes[13], _bytes[14], _bytes[15]);
+	const std::string sep("-");
+	std::string out(one);
+
+	out += sep + two;
+	out += sep + three;
+	out += sep + four;
+	out += sep + five;
+
+	return out;
+}
+
+uuid::operator std::string() const
+{
+	return str();
+}
+
+const std::array<std::byte, 16>& uuid::bytes() const
+{
+	return _bytes;
+}
+
+void uuid::swap(uuid& other)
+{
+	_bytes.swap(other._bytes);
+}
+
+bool uuid::valid() const
+{
+	uuid empty;
+	return *this != empty;
+}
+
+void uuid::zeroify()
+{
+	std::fill(_bytes.begin(), _bytes.end(), static_cast<std::byte>(0));
+}
+

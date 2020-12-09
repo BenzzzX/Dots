@@ -115,6 +115,7 @@ chunk_vector<task> pipeline::create_tasks(pass& k, int maxSlice)
 	return result;
 }
 
+
 void pipeline::sync_archetype(archetype* at)
 {
 	auto pair = dependencyEntries.find(at);
@@ -164,3 +165,4 @@ bool operation_base::is_owned(int paramId)
 {
 	return ctx.localType[paramId] != InvalidIndex;
 }
+

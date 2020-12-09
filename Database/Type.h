@@ -38,6 +38,38 @@
 
 namespace core
 {
+	struct ECS_API uuid
+	{
+		using value_type = std::array<std::byte, 16>;
+		explicit uuid(const std::array<std::byte, 16>& bytes);
+		explicit uuid(std::array<std::byte, 16>&& bytes);
+		explicit uuid(std::string_view fromString);
+		uuid(const char* fromString);
+
+		uuid();
+
+		uuid(const uuid& other) = default;
+		uuid& operator=(const uuid& other) = default;
+		uuid(uuid&& other) = default;
+		uuid& operator=(uuid&& other) = default;
+
+		bool operator==(const uuid& other) const;
+		bool operator!=(const uuid& other) const;
+
+		std::string str() const;
+		operator std::string() const;
+		const std::array<std::byte, 16>& bytes() const;
+		void swap(uuid& other);
+		bool valid() const;
+
+	private:
+		std::array<std::byte, 16> _bytes;
+		void zeroify();
+		inline friend bool operator<(const uuid& lhs, const uuid& rhs)
+		{
+			return lhs.bytes() < rhs.bytes();
+		}
+	};
 
 	namespace database
 	{
@@ -296,7 +328,7 @@ namespace core
 			bool isElement = false;
 			bool manualCopy = false;
 			bool manualClean = false;
-			size_t hash = 0; 
+			core::uuid uuid = core::uuid(); 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			uint16_t alignment = alignof(long long);
@@ -766,4 +798,39 @@ namespace core
 		};
 	}
 	
+	namespace details
+	{
+		template <typename...> struct hash;
+
+		template<typename T>
+		struct hash<T> : public std::hash<T>
+		{
+			using std::hash<T>::hash;
+		};
+		template <typename T, typename... Rest>
+		struct hash<T, Rest...>
+		{
+			inline std::size_t operator()(const T& v, const Rest&... rest) {
+				std::size_t seed = hash<Rest...>{}(rest...);
+				seed ^= hash<T>{}(v)+0x9e3779b9 + (seed << 6) + (seed >> 2);
+				return seed;
+			}
+		};
+	}
+}
+
+namespace std
+{
+	// Specialization for std::hash<Guid> -- this implementation
+	// uses std::hash<sakura::string> on the stringification of the guid
+	// to calculate the hash
+	template <>
+	struct hash<core::uuid>
+	{
+		std::size_t operator()(core::uuid const& guid) const
+		{
+			const uint64_t* p = reinterpret_cast<const uint64_t*>(guid.bytes().data());
+			return core::details::hash<uint64_t, uint64_t>{}(p[0], p[1]);
+		}
+	};
 }

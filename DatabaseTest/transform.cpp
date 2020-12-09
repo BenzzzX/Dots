@@ -38,14 +38,20 @@ namespace TransformSystem
 
 void TransformSystem::Install()
 {
-	rotation_id = register_type({ false, false, false, 14, sizeof(rotation) });
-	location_id = register_type({ false, false, false, 15, sizeof(location) });
+	rotation_id = register_type({ false, false, false,
+		"57D3B6C8-3A88-415E-8CAE-0791FD8B8A01", sizeof(rotation) });
+	location_id = register_type({ false, false, false,
+		"131AAD40-E028-4A5A-945D-8BDD9C1A2725", sizeof(location) });
 
-	local_to_world_id = register_type({ false, false, false, 16, sizeof(transform) });
-	local_to_parent_id = register_type({ false, false, false, 17, sizeof(transform) });
+	local_to_world_id = register_type({ false, false, false,
+		"EC0CA40F-C06C-4A41-A416-33249E2A4956", sizeof(transform) });
+	local_to_parent_id = register_type({ false, false, false, 
+		"BD2F6D31-9FD4-4B35-9459-C3448F7DB7D0", sizeof(transform) });
 
-	parent_id = register_type({ false, false, true, 18, sizeof(entity) });
-	child_id = register_type({ true, false, true, 19, child_size, sizeof(entity) });
+	parent_id = register_type({ false, false, true,
+		"C4B15435-970B-48F3-8141-915BED7DC684", sizeof(entity) });
+	child_id = register_type({ true, false, true,
+		"2A84AC10-EF85-467A-9815-7E734173E96E", child_size, sizeof(entity) });
 }
 
 void TransformSystem::SetParent(world& ctx, entity e, void* data, entity inParent)

@@ -256,7 +256,7 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 TEST_F(DatabaseTest, Align)
 {
 	using namespace core::database;
-	core::entity e;
+	core::entity e = {};
 
 	index_t t[] = { tid<test>, tid<test_align>, tid<test_element> };
 	entity_type type{ t };
@@ -871,21 +871,33 @@ void install_test_components()
 {
 	using namespace core::database;
 	
-	tid<test> = register_type({ false, false, false, typeid(test).hash_code(), sizeof(test) });
-	tid<test_track> = register_type({ false, true, true, typeid(test_track).hash_code(), sizeof(test_track) });
-	tid<test_element> = register_type({ true, false, false, typeid(test_track).hash_code(), 128, sizeof(test_element) });
-	tid<test_not_exist> = register_type({ false, false, false, typeid(test_not_exist).hash_code(), 0 });
-	tid<test_align> = register_type({ false, false, false, typeid(test_align).hash_code(), sizeof(test_align), 0, alignof(test_align) });
+	tid<test> = register_type({ false, false, false,
+		"3CFC8364-417F-45C0-B8D3-9E48F04C3DAF",
+		sizeof(test) });
+	tid<test_track> = register_type({ false, true, true,
+		"23DFDC29-F1FC-439A-B57E-C6E86F577CA1",
+		sizeof(test_track) });
+	tid<test_element> = register_type({ true, false, false,
+		"48D74F82-D070-4494-907A-0BC72F873FF5",
+		128, sizeof(test_element) });
+	tid<test_not_exist> = register_type({ false, false, false,
+		"742DE13F-14B0-444C-B546-F21B99ACC335",
+		0 });
+	tid<test_align> = register_type({ false, false, false,
+		"9C9C1EE9-1312-45E4-A746-3B7915D2B093",
+		sizeof(test_align), 0, alignof(test_align) });
 	{
 		component_desc desc;
 		desc.isElement = false; desc.manualCopy = false;
-		desc.manualClean = false; desc.hash = typeid(test_element).hash_code();
+		desc.manualClean = false; desc.uuid = "45FE8BDE-209E-4736-AF5D-7136DD061D8E";
 		desc.size = sizeof(test_ref); desc.elementSize = 0;
 		intptr_t refs[] = { offsetof(test_ref, ref) };
 		desc.entityRefs = refs; desc.entityRefCount = 1;
 		tid<test_ref> = register_type(desc);
 	}
-	tid<test_tag> = register_type({ false, false, false, typeid(test_tag).hash_code(), 0 });
+	tid<test_tag> = register_type({ false, false, false,
+		"6AB0D784-CD4A-4EB1-8CF9-EE8C6BADEB81",
+		0 });
 }
 
 int main(int argc, char** argv)
