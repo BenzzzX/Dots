@@ -140,6 +140,7 @@ namespace core
 
 		class pipeline //计算管线，Database 的多线程交互封装
 		{
+		protected:
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
 			stack_allocator passStack;
