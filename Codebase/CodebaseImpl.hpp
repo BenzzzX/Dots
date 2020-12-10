@@ -75,7 +75,7 @@ namespace core
 			hana::for_each(paramList, [&](auto p)
 				{
 					using type = decltype(p);
-					k->types[t] = cid<decltype(p.comp_type)::type>;
+					k->types[t] = cid<typename decltype(p.comp_type)::type>;
 					if(type::readonly)
 						set_bit(k->readonly, t);
 					if(type::randomAccess)
@@ -103,7 +103,7 @@ namespace core
 		template<class T>
 		inline constexpr auto operation<params...>::param_id()
 		{
-			def compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
+			constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
 			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
 		}
 
@@ -121,7 +121,7 @@ namespace core
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
-			using value_type = component_value_type_t<DT>;
+			//using value_type = component_value_type_t<DT>;
 			auto paramId_c = param_id<DT>();
 			auto param = hana::at(paramList, paramId_c);
 			using array_type = array_type_t<T>;
@@ -154,7 +154,7 @@ namespace core
 		auto operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			auto param = hana::at(paramList, paramId_c);
 			using array_type = array_type_t<T>;
@@ -165,7 +165,7 @@ namespace core
 			int paramId = paramId_c.value;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
 			if constexpr (param.readonly)
-			{
+			{ 
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
 			}
@@ -178,12 +178,12 @@ namespace core
 		template<class T>
 		auto operation<params...>::get_parameter(entity e)
 		{
-			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using value_type = value_type_t<T>;
+			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
+			using array_type = array_type_t<T>;
 			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
 			if constexpr (param.readonly)
 			{
@@ -198,12 +198,12 @@ namespace core
 		template<class T>
 		auto operation<params...>::get_parameter_owned(entity e)
 		{
-			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using value_type = value_type_t<T>;
+			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
+			using array_type = array_type_t<T>;
 			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
 			if constexpr (param.readonly)
 			{

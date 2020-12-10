@@ -34,10 +34,102 @@
 #include <unordered_map>
 #include <vector>
 #include <bitset>
+#include <stdexcept>
+#include <string>
+#include <cassert>
 #include "Set.h"
 
 namespace core
 {
+	struct GUID {
+		uint32_t Data1;
+		uint16_t Data2;
+		uint16_t Data3;
+		uint8_t Data4[8];
+	};
+
+	namespace guid_parse
+	{
+		namespace details
+		{
+			constexpr const size_t short_guid_form_length = 36;	// XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+			constexpr const size_t long_guid_form_length = 38;	// {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
+
+			//
+			constexpr int parse_hex_digit(const char c)
+			{
+				using namespace std::string_literals;
+				if ('0' <= c && c <= '9')
+					return c - '0';
+				else if ('a' <= c && c <= 'f')
+					return 10 + c - 'a';
+				else if ('A' <= c && c <= 'F')
+					return 10 + c - 'A';
+				else
+					throw std::domain_error{ "invalid character in GUID"s };
+			}
+
+			template<class T>
+			constexpr T parse_hex(const char* ptr)
+			{
+				constexpr size_t digits = sizeof(T) * 2;
+				T result{};
+				for (size_t i = 0; i < digits; ++i)
+					result |= parse_hex_digit(ptr[i]) << (4 * (digits - i - 1));
+				return result;
+			}
+
+			constexpr GUID make_guid_helper(const char* begin)
+			{
+				GUID result{};
+				result.Data1 = parse_hex<uint32_t>(begin);
+				begin += 8 + 1;
+				result.Data2 = parse_hex<uint16_t>(begin);
+				begin += 4 + 1;
+				result.Data3 = parse_hex<uint16_t>(begin);
+				begin += 4 + 1;
+				result.Data4[0] = parse_hex<uint8_t>(begin);
+				begin += 2;
+				result.Data4[1] = parse_hex<uint8_t>(begin);
+				begin += 2 + 1;
+				for (size_t i = 0; i < 6; ++i)
+					result.Data4[i + 2] = parse_hex<uint8_t>(begin + i * 2);
+				return result;
+			}
+
+			template<size_t N>
+			constexpr GUID make_guid(const char(&str)[N])
+			{
+				using namespace std::string_literals;
+				static_assert(N == (long_guid_form_length + 1) || N == (short_guid_form_length + 1), "String GUID of the form {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} or XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX is expected");
+
+				if constexpr (N == (long_guid_form_length + 1))
+				{
+					if (str[0] != '{' || str[long_guid_form_length - 1] != '}')
+						throw std::domain_error{ "Missing opening or closing brace"s };
+				}
+
+				return make_guid_helper(str + (N == (long_guid_form_length + 1) ? 1 : 0));
+			}
+		}
+		using details::make_guid;
+
+		namespace literals
+		{
+			constexpr GUID operator "" _guid(const char* str, size_t N)
+			{
+				using namespace std::string_literals;
+				using namespace details;
+
+				if (!(N == long_guid_form_length || N == short_guid_form_length))
+					throw std::domain_error{ "String GUID of the form {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} or XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX is expected"s };
+				if (N == long_guid_form_length && (str[0] != '{' || str[long_guid_form_length - 1] != '}'))
+					throw std::domain_error{ "Missing opening or closing brace"s };
+
+				return make_guid_helper(str + (N == long_guid_form_length ? 1 : 0));
+			}
+		}
+	}
 
 	namespace database
 	{
@@ -296,7 +388,7 @@ namespace core
 			bool isElement = false;
 			bool manualCopy = false;
 			bool manualClean = false;
-			size_t hash = 0; 
+			core::GUID GUID = core::GUID(); 
 			uint16_t size = 0; 
 			uint16_t elementSize = 0; 
 			uint16_t alignment = alignof(long long);
@@ -766,4 +858,23 @@ namespace core
 		};
 	}
 	
+	namespace details
+	{
+		template <typename...> struct hash;
+
+		template<typename T>
+		struct hash<T> : public std::hash<T>
+		{
+			using std::hash<T>::hash;
+		};
+		template <typename T, typename... Rest>
+		struct hash<T, Rest...>
+		{
+			inline std::size_t operator()(const T& v, const Rest&... rest) {
+				std::size_t seed = hash<Rest...>{}(rest...);
+				seed ^= hash<T>{}(v)+0x9e3779b9 + (seed << 6) + (seed >> 2);
+				return seed;
+			}
+		};
+	}
 }

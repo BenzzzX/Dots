@@ -36,6 +36,10 @@ namespace core
 	{
 		using ut = handle<24, 8>;
 		using ut::handle;
+		inline static constexpr entity invalid()
+		{
+			return UINT_MAX;
+		}
 	};
 	constexpr entity NullEntity = UINT_MAX;
 
@@ -53,7 +57,7 @@ namespace core
 #endif
 
 		inline size_t hash_append(size_t val, const unsigned char* const data, const size_t length) noexcept
-		{ // accumulate range [data, data + length) into partial FNV-1a hash val
+		{ // accumulate range [data, data + length) into partial FNV-1a uuid val
 			for (size_t i = 0; i < length; ++i) {
 				val ^= static_cast<size_t>(data[i]);
 				val *= _FNV_prime;

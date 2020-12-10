@@ -10,21 +10,24 @@
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 #define def static constexpr auto
-
+using namespace core::guid_parse::literals;
 struct test
 {
 	using value_type = int;
+	def guid = "7BF73C4A-44D6-47AE-ABBF-917C037AE803"_guid;
 	int v;
 };
 struct test2
 {
 	using value_type = int;
+	def guid = "13882ADC-05EF-49A8-8EBE-99F331C07FDD"_guid;
 	int v;
 };
 struct test3
 {
 	using value_type = core::database::buffer_t<int>;
 	def buffer_capacity = 10;
+	def guid = "3092A278-B54D-4ED5-B3A8-7BBD77870782"_guid;
 	int v;
 };
 
@@ -60,7 +63,7 @@ core::database::index_t register_component(intptr_t* entityRefs = nullptr, int e
 	desc.manualCopy = get_manual_copy_v<T>;
 	desc.size = get_buffer_capacity_v<T> * sizeof(T);
 	desc.elementSize = sizeof(T);
-	desc.hash = typeid(T).hash_code();
+	desc.GUID = T::guid;
 	desc.entityRefs = entityRefs;
 	desc.entityRefCount = entityRefCount;
 	desc.alignment = alignof(T);
@@ -183,7 +186,7 @@ TEST_F(CodebaseTest, BufferAPI)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
-				core::entity e;
+				core::entity e = core::entity::invalid();
 				o.has_component<test3>(e);
 				//以 slice 为粒度执行具体的逻辑
 				auto tests = o.get_parameter<const test3>();
@@ -334,14 +337,14 @@ namespace ecs
 			{
 				auto tasks = pipeline.create_tasks(pass); //从 pass 提取 task
 				defer(pipeline.pass_events[pass.passIndex].wait());
-				for (auto i = 0u; i < pass.dependencyCount; i++)
+				for (auto i = 0; i < pass.dependencyCount; i++)
 					pipeline.pass_events[pass.dependencies[i]->passIndex].wait();
 
 				constexpr auto MinParallelTask = 10u;
 				const bool recommandParallel = !pass.hasRandomWrite && tasks.size > MinParallelTask;
 				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
 				{
-					marl::WaitGroup tasksGroup(tasks.size);
+					marl::WaitGroup tasksGroup(static_cast<unsigned>(tasks.size));
 					forloop(tsk, 0, tasks.size)
 					{
 						auto& tk = tasks[tsk];

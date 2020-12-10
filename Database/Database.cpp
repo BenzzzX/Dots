@@ -1,5 +1,6 @@
 #include "Database.h"
 #include <iostream>
+#include <map>
 #define cat(a, b) a##b
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 #define AO(type, name, size) \
@@ -11,9 +12,18 @@ using namespace database;
 
 constexpr uint16_t InvalidIndex = (uint16_t)-1;
 
+namespace core
+{
+	bool operator<(const GUID& lhs, const GUID& rhs)
+	{
+		using value_type = std::array<std::byte, 16>;
+		return reinterpret_cast<const value_type&>(lhs) < reinterpret_cast<const value_type&>(rhs);
+	}
+}
+
 struct type_data
 {
-	size_t hash;
+	core::GUID GUID = core::GUID();
 	uint16_t size;
 	uint16_t elementSize;
 	uint16_t alignment;
@@ -59,7 +69,7 @@ struct global_data
 	std::vector<type_data> infos;
 	std::vector<track_state> tracks;
 	std::vector<intptr_t> entityRefs;
-	std::unordered_map<size_t, size_t> hash2type;
+	std::map<core::GUID, size_t> hash2type;
 
 	std::array<void*, kFastBinCapacity> fastbin{};
 	std::array<void*, kSmallBinCapacity> smallbin{};
@@ -72,17 +82,18 @@ struct global_data
 
 	void initialize()
 	{
+		using namespace guid_parse::literals;
 		component_desc desc{};
 		desc.size = 0;
-		desc.hash = 0;
-		desc.name = "cleaning";
+		desc.GUID = "00000000-0000-0000-0000-000000000001"_guid;
+		desc.name = "cleanup";
 		cleanup_id = register_type(desc);
 		desc.size = 0;
-		desc.hash = 1;
+		desc.GUID = "00000000-0000-0000-0000-000000000002"_guid;
 		desc.name = "disabled";
 		disable_id = register_type(desc);
 		desc.size = sizeof(entity) * 5;
-		desc.hash = 2;
+		desc.GUID = "00000000-0000-0000-0000-000000000003"_guid;
 		desc.isElement = true;
 		desc.elementSize = sizeof(entity);
 		static intptr_t ers[] = { (intptr_t)offsetof(group, e) };
@@ -91,7 +102,7 @@ struct global_data
 		desc.name = "group";
 		group_id = register_type(desc);
 		desc.size = sizeof(mask);
-		desc.hash = std::numeric_limits<size_t>::max();
+		desc.GUID = "00000000-0000-0000-0000-000000000004"_guid;
 		desc.isElement = false;
 		desc.name = "mask";
 		desc.entityRefCount = 0;
@@ -247,7 +258,7 @@ index_t database::register_type(component_desc desc)
 
 	index_t id = (index_t)gd.infos.size();
 	id = tagged_index{ id, desc.isElement, desc.size == 0 };
-	type_data i{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
+	type_data i{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 	gd.infos.push_back(i);
 	uint8_t s = 0;
 	if (desc.manualClean)
@@ -255,13 +266,13 @@ index_t database::register_type(component_desc desc)
 	if (desc.manualCopy)
 		s = s | ManualCopying;
 	gd.tracks.push_back((track_state)s);
-	gd.hash2type.insert({ desc.hash, id });
+	gd.hash2type.insert({ desc.GUID, id });
 
 	if (desc.manualCopy)
 	{
 		index_t id2 = (index_t)gd.infos.size();
 		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
-		type_data i2{ desc.hash, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
+		type_data i2{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 		gd.tracks.push_back(Copying);
 		gd.infos.push_back(i2);
 	}
@@ -985,7 +996,7 @@ archetype* world::get_archetype(const entity_type& key)
 	const index_t maskType = mask_id;
 
 	uint16_t* sizes = g->sizes();
-	stack_array(size_t, hash, firstTag);
+	stack_array(core::GUID, hash, firstTag);
 	stack_array(tsize_t, stableOrder, firstTag);
 	uint16_t entitySize = sizeof(entity);
 	forloop(i, 0, count)
@@ -1008,7 +1019,7 @@ archetype* world::get_archetype(const entity_type& key)
 		auto type = (tagged_index)key.types[i];
 		auto& info = gd.infos[type.index()];
 		sizes[i] = info.size;
-		hash[i] = info.hash;
+		hash[i] = info.GUID;
 		align[i] = info.alignment;
 		stableOrder[i] = i;
 		entitySize += info.size;
@@ -1308,7 +1319,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
-		s->stream(&gd.infos[tagged_index(type.types[i]).index()].hash, sizeof(size_t));
+		s->stream(&gd.infos[tagged_index(type.types[i]).index()].GUID, sizeof(core::GUID));
 	s->stream(&mlength, sizeof(tsize_t));
 	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
@@ -1322,10 +1333,10 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 		return nullptr;
 	forloop(i, 0, tlength)
 	{
-		size_t hash;
-		s->stream(&hash, sizeof(size_t));
+		core::GUID uu;
+		s->stream(&uu, sizeof(core::GUID));
 		//todo: check validation
-		types[i] = (index_t)gd.hash2type[hash];
+		types[i] = (index_t)gd.hash2type[uu];
 	}
 	tsize_t mlength;
 	s->stream(&mlength, sizeof(tsize_t));
@@ -2728,6 +2739,41 @@ chunk_vector_base& chunk_vector_base::operator=(chunk_vector_base&& r) noexcept
 	return *this;
 }
 
+
+
+// converts a single hex char to a number (0 - 15)
+unsigned char hexDigitToChar(char ch)
+{
+	// 0-9
+	if (ch > 47 && ch < 58)
+		return ch - 48;
+	// a-f
+	if (ch > 96 && ch < 103)
+		return ch - 87;
+	// A-F
+	if (ch > 64 && ch < 71)
+		return ch - 55;
+	return 0;
+}
+
+bool isValidHexChar(char ch)
+{
+	// 0-9
+	if (ch > 47 && ch < 58)
+		return true;
+	// a-f
+	if (ch > 96 && ch < 103)
+		return true;
+	// A-F
+	if (ch > 64 && ch < 71)
+		return true;
+	return false;
+}
+// converts the two hexadecimal characters to an unsigned char (a byte)
+std::byte hexPairToChar(char a, char b)
+{
+	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
+}
 void core::database::initialize()
 {
 	gd.initialize();
