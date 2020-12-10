@@ -111,11 +111,11 @@ TEST_F(CodebaseTest, CreatePass) {
 }
 
 template<class T>
-auto init_component(core::database::world& ctx, core::database::chunk_slice c)
+core::codebase::array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
 {
 	using namespace core::codebase;
 	using value_type = component_value_type_t<T>;
-	return (value_type*)ctx.get_component_ro(c.c, cid<T>) + c.start;
+	return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
 }
 
 TEST_F(CodebaseTest, TaskSingleThread)
@@ -164,7 +164,7 @@ TEST_F(CodebaseTest, BufferAPI)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			array_type_t<test3> components = init_component<test3>(ctx, c);
+			auto components = init_component<test3>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i].push(counter++);
 		}
