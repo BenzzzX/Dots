@@ -703,7 +703,7 @@ namespace core
 			void init(size_t size)
 			{
 				stackSize = size;
-				stacktop = stackbuffer = (char*)::malloc(10000);
+				stacktop = stackbuffer = (char*)::malloc(size);
 			}
 			void reset()
 			{

@@ -174,6 +174,8 @@ namespace core
 			pass** dependencies;
 			int dependencyCount;
 			bool hasRandomWrite;
+
+			chunk_vector<task> tasks;
 		};
 
 		template<class T>
