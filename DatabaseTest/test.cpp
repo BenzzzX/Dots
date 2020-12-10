@@ -135,14 +135,6 @@ TEST_F(DatabaseTest, AllocateMillion)
 	EXPECT_TRUE(true);
 }
 
-TEST_F(DatabaseTest, AllocateMillion2)
-{
-	using namespace core::database;
-	entity_type emptyType;
-	ctx.allocate(emptyType, 1000000);
-	EXPECT_TRUE(true);
-}
-
 TEST_F(DatabaseTest, Instatiate)
 {
 	using namespace core::database;

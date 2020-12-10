@@ -170,6 +170,7 @@ namespace core
 
 		struct ECS_API chunk_vector_base
 		{
+			constexpr static size_t kChunkSize = 1024 * 8;
 			size_t chunkSize = 0;
 			size_t size = 0;
 			void** data = nullptr;
@@ -286,7 +287,7 @@ namespace core
 			{
 				return &((T**)data)[i / kChunkCapacity][i % kChunkCapacity];
 			}
-			static constexpr size_t kChunkCapacity = kFastBinSize / sizeof(T);
+			static constexpr size_t kChunkCapacity = kChunkSize / sizeof(T);
 
 			using const_iterator = chunk_vector_detail::const_iterator<chunk_vector>;
 			using iterator = chunk_vector_detail::iterator<chunk_vector>;

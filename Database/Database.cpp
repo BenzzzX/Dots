@@ -1307,8 +1307,12 @@ void world::unmark_free(archetype* g, chunk* c)
 	if (g->lastChunk == nullptr)
 		g->lastChunk = c;
 	if (g->firstChunk != c)
-		if(g->firstFree == nullptr || c->next != g->firstFree)
+		if (g->firstFree == nullptr || c->next != g->firstFree)
+		{
+			if (g->firstChunk == g->lastChunk)
+				g->lastChunk = c;
 			g->firstChunk->link(c);
+		}
 }
 
 void world::release_reference(archetype* g)
@@ -2473,7 +2477,7 @@ bool world::exist(entity e) const noexcept
 void world::entities::clear()
 {
 	free = 0;
-	datas.~chunk_vector<data>();
+	datas.reset();
 }
 
 void world::entities::new_entities(chunk_slice s)
@@ -2499,6 +2503,8 @@ void world::entities::new_entities(chunk_slice s)
 	{
 		entity newE(newId, datas[newId].v);
 		dst[i] = newE;
+		if(newE.id != newId)
+			assert(false);
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
 		i++;
@@ -2665,20 +2671,44 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 	return true;
 }
 
+namespace chunk_vector_pool
+{
+	constexpr size_t kThreadBinCapacity = 40;
+	thread_local std::array<void*, kThreadBinCapacity> threadbin{};
+	thread_local size_t threadbinSize = 0;
+	constexpr size_t kChunkSize = chunk_vector_base::kChunkSize;
+
+	void free(void* data)
+	{
+		if (threadbinSize < kThreadBinCapacity)
+			threadbin[threadbinSize++] = data;
+		else
+			::free(data);
+	}
+
+	void* malloc()
+	{
+		if (threadbinSize == 0)
+			return ::malloc(kChunkSize);
+		else
+			return threadbin[--threadbinSize];
+	}
+}
+
 void chunk_vector_base::grow()
 {
 	if (data == nullptr)
-		data = (void**)::malloc(kFastBinSize);
-	data[chunkSize++] = ::malloc(1024*8);
+		data = (void**)chunk_vector_pool::malloc();
+	data[chunkSize++] = chunk_vector_pool::malloc();
 }
 
 void chunk_vector_base::shrink(size_t n)
 {
 	forloop(i, 0, n)
-		gd.free(alloc_type::fastbin, data[--chunkSize]);
+		chunk_vector_pool::free(data[--chunkSize]);
 	if (data && chunkSize == 0)
 	{
-		gd.free(alloc_type::fastbin, data);
+		chunk_vector_pool::free(data);
 		data = nullptr;
 	}
 }
@@ -2686,10 +2716,9 @@ void chunk_vector_base::shrink(size_t n)
 void chunk_vector_base::flatten(void* dst, size_t eleSize)
 {
 	auto remainSize = size * eleSize;
-	auto chunkCapacity = kFastBinSize;
 	forloop(i, 0, chunkSize)
 	{
-		auto sizeToCopy = std::min(kFastBinSize, remainSize);
+		auto sizeToCopy = std::min(kChunkSize, remainSize);
 		memcpy(dst, data[i], sizeToCopy);
 		dst = (char*)dst + sizeToCopy;
 		remainSize -= sizeToCopy;
@@ -2714,11 +2743,11 @@ chunk_vector_base::chunk_vector_base(chunk_vector_base&& r) noexcept
 chunk_vector_base::chunk_vector_base(const chunk_vector_base& r) noexcept
 {
 	if (r.chunkSize > 0)
-		data = (void**)gd.malloc(alloc_type::fastbin);
+		data = (void**)chunk_vector_pool::malloc();
 	forloop(i, 0, r.chunkSize)
 	{
-		void* newChunk = gd.malloc(alloc_type::fastbin);
-		memcpy(newChunk, r.data[i], kFastBinSize);
+		void* newChunk = chunk_vector_pool::malloc();
+		memcpy(newChunk, r.data[i], kChunkSize);
 		data[i] = newChunk;
 	}
 	size = r.size;
