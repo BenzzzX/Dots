@@ -74,9 +74,9 @@ struct global_data
 	std::array<void*, kFastBinCapacity> fastbin{};
 	std::array<void*, kSmallBinCapacity> smallbin{};
 	std::array<void*, kLargeBinCapacity> largebin{};
-	size_t fastbinSize = 0;
-	size_t smallbinSize = 0;
-	size_t largebinSize = 0;
+	std::atomic<size_t> fastbinSize = 0;
+	std::atomic<size_t> smallbinSize = 0;
+	std::atomic<size_t> largebinSize = 0;
 
 	stack_allocator stack;
 
