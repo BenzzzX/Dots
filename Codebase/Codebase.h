@@ -159,9 +159,7 @@ namespace core
 		{
 			world& ctx;
 			int passIndex;
-			//int* archetypeIndex;
 			archetype** archetypes;
-			int* archetypeIndices;
 			mask* matched;
 			index_t* localType;
 			int archetypeCount;

@@ -11,6 +11,8 @@ namespace core
 		{
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);
+			constexpr size_t bits = std::numeric_limits<index_t>::digits;
+			const auto bal = paramCount / bits + 1;
 			chunk_vector<chunk*> chunks;
 			for (auto i : archs)
 				for (auto j : ctx.query(i.type, v.chunkFilter))
@@ -20,7 +22,7 @@ namespace core
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
-				+ (paramCount / 4 + 1) * sizeof(index_t) * 2; //readonly + random access
+				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)passStack.alloc(bufferSize, alignof(pass));
 			pass* k = new(buffer) pass{ ctx };
 			passes.push(k);
@@ -33,8 +35,6 @@ namespace core
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
 			k->matched = allocate_inplace<mask>(buffer, archs.size);
 			k->types = allocate_inplace<index_t>(buffer, paramCount);
-			constexpr size_t bits = std::numeric_limits<index_t>::digits;
-			const auto bal = paramCount / bits + 1;
 			k->readonly = allocate_inplace<index_t>(buffer, bal);
 			k->randomAccess = allocate_inplace<index_t>(buffer, bal);
 			memset(k->readonly, 0, sizeof(index_t) * bal);
