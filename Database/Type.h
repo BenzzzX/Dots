@@ -788,7 +788,7 @@ namespace core
 			bool operator==(const archetype_filter& other) const
 			{
 				return all == other.all && any == other.any &&
-					none == other.any && all.metatypes == other.all.metatypes &&
+					none == other.none && all.metatypes == other.all.metatypes &&
 					any.metatypes == other.any.metatypes && none.metatypes == other.none.metatypes&&
 					shared == other.shared && owned == other.owned;
 			}

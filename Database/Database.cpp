@@ -794,7 +794,8 @@ size_t get_filter_size(const archetype_filter& f)
 {
 	auto totalSize = f.all.types.length * sizeof(index_t) + f.all.metatypes.length * sizeof(entity) +
 		f.any.types.length * sizeof(index_t) + f.any.metatypes.length * sizeof(entity) +
-		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity);
+		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity) +
+		f.owned.length * sizeof(index_t) + f.shared.length * sizeof(index_t);
 	return totalSize;
 }
 
@@ -821,6 +822,8 @@ archetype_filter clone_filter(const archetype_filter& f, char* data)
 	writetype(f.all, f2.all);
 	writetype(f.any, f2.any);
 	writetype(f.none, f2.none);
+	write(f.owned, f2.owned);
+	write(f.shared, f2.shared);
 	return f2;
 }
 
