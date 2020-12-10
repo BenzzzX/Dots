@@ -75,12 +75,11 @@ struct global_data
 	std::array<void*, kFastBinCapacity + 10> fastbin{};
 	std::array<void*, kSmallBinCapacity + 10> smallbin{};
 	std::array<void*, kLargeBinCapacity + 10> largebin{};
-	std::atomic<size_t> fastbinSize = 0;
-	std::atomic<size_t> smallbinSize = 0;
-	std::atomic<size_t> largebinSize = 0;
+	size_t fastbinSize = 0;
+	size_t smallbinSize = 0;
+	size_t largebinSize = 0;
 
 	stack_allocator stack;
-	std::mutex m;
 	void initialize()
 	{
 		using namespace guid_parse::literals;
@@ -124,7 +123,6 @@ struct global_data
 
 	void free(alloc_type type, void* data)
 	{
-		std::lock_guard _(m);
 		switch (type)
 		{
 		case alloc_type::fastbin:
@@ -150,7 +148,6 @@ struct global_data
 
 	void* malloc(alloc_type type)
 	{
-		std::lock_guard _(m);
 		switch (type)
 		{
 		case alloc_type::fastbin:
@@ -2668,8 +2665,8 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 void chunk_vector_base::grow()
 {
 	if (data == nullptr)
-		data = (void**)gd.malloc(alloc_type::fastbin);
-	data[chunkSize++] = gd.malloc(alloc_type::fastbin);
+		data = (void**)::malloc(kFastBinSize);
+	data[chunkSize++] = ::malloc(1024*8);
 }
 
 void chunk_vector_base::shrink(size_t n)
