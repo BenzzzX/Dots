@@ -25,16 +25,6 @@ namespace core
 			return (set[index / bits] & (1 << (index % bits)))!=0;
 		}
 
-		template<class T, class = void>
-		struct component_value_type { using type = T; };
-		template<class T>
-		struct component_value_type<T, std::void_t<typename T::value_type>>
-		{
-			using type = typename T::value_type;
-		};
-		template<class T>
-		using component_value_type_t = typename component_value_type<T>::type;
-
 		template<class T>
 		inline index_t cid;
 
@@ -43,7 +33,6 @@ namespace core
 		{
 			using TT = std::remove_const_t<T>;
 			def comp_type = hana::type_c<TT>;
-			def value_type = hana::type_c< component_value_type_t<TT>>;
 			def readonly = std::is_const_v<T>;
 			def randomAccess = inRandomAccess;
 		};

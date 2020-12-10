@@ -52,13 +52,19 @@ struct is_template<TP, TP<T...>> : std::true_type {};
 template<template<class...> class TP, class... T>
 def is_template_v = is_template<TP, T...>{};
 
+template<class T, class = void>
+struct is_buffer : std::false_type {};
+
+template<class T>
+struct is_buffer<T, std::void_t<typename T::value_type>> : is_template<core::database::buffer_t, typename T::value_type> {};
+
 
 template<class T>
 core::database::index_t register_component(intptr_t* entityRefs = nullptr, int entityRefCount = 0, core::database::component_vtable vtable = {})
 {
 	using namespace core::codebase;
 	component_desc desc;
-	desc.isElement = is_template_v<buffer_t, component_value_type_t<T>>;
+	desc.isElement = is_buffer<T>{};
 	desc.manualClean = get_manual_clean_v<T>;
 	desc.manualCopy = get_manual_copy_v<T>;
 	desc.size = get_buffer_capacity_v<T> * sizeof(T);
@@ -117,7 +123,6 @@ template<class T>
 core::codebase::array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
 {
 	using namespace core::codebase;
-	using value_type = component_value_type_t<T>;
 	return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
 }
 
@@ -303,7 +308,7 @@ namespace ecs
 	using filters = core::codebase::filters;
 	using task = core::codebase::task;
 
-	using core::codebase::component_value_type_t;
+	//using core::codebase::component_value_type_t;
 	using core::codebase::cid;
 	using core::codebase::param;
 	using core::codebase::operation;
