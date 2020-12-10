@@ -5,36 +5,6 @@ namespace core
 {
 	namespace codebase
 	{
-		template<class T, class VT>
-		struct array_type_ { using type = VT*; };
-
-		template<class T, class VT>
-		struct array_type_<T, buffer_t<VT>> { using type = buffer_pointer_t<VT, T::buffer_capacity * sizeof(VT)>; };
-
-		template<class T, class = void>
-		struct array_type { using type = T*; };
-
-		template<class T>
-		struct array_type<T, std::void_t<typename T::value_type>> { using type = typename array_type_<T, typename T::value_type>::type; };
-
-		template<class T>
-		using array_type_t = typename array_type<std::remove_const_t<T>>::type;
-
-
-		template<class T>
-		struct value_type_ { using type = T*; };
-
-		template<class T>
-		struct value_type_<buffer_t<T>> { using type = buffer_t<T>; };
-
-		template<class T, class = void>
-		struct value_type { using type = T*; };
-
-		template<class T>
-		struct value_type<T, std::void_t<typename T::value_type>> { using type = typename  value_type_<typename T::value_type>::type; };
-
-		template<class T>
-		using value_type_t = typename value_type<std::remove_const_t<T>>::type;
 			
 		template<class T>
 		pass* pipeline::create_pass(const filters& v, T paramList)
@@ -117,15 +87,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter()
+		detail::array_ret_t<T> operation<params...>::get_parameter()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
 			//using value_type = component_value_type_t<DT>;
 			auto paramId_c = param_id<DT>();
 			auto param = hana::at(paramList, paramId_c);
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::array_ret_t<T>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
@@ -151,14 +120,13 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter_owned()
+		detail::array_ret_t<T> operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			auto param = hana::at(paramList, paramId_c);
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::array_ret_t<T>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
@@ -176,15 +144,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::value_ret_t<T>;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
@@ -196,15 +163,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter_owned(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter_owned(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::value_ret_t<T>;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");

@@ -150,7 +150,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
 				//以 slice 为粒度执行具体的逻辑
-				int* tests = o.get_parameter<test>();
+				auto tests = o.get_parameter<test>();
 				forloop(i, 0, o.get_count())
 					counter += tests[i];
 			});
