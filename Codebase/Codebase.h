@@ -25,16 +25,6 @@ namespace core
 			return (set[index / bits] & (1 << (index % bits)))!=0;
 		}
 
-		template<class T, class = void>
-		struct component_value_type { using type = T; };
-		template<class T>
-		struct component_value_type<T, std::void_t<typename T::value_type>>
-		{
-			using type = typename T::value_type;
-		};
-		template<class T>
-		using component_value_type_t = typename component_value_type<T>::type;
-
 		template<class T>
 		inline index_t cid;
 
@@ -43,7 +33,6 @@ namespace core
 		{
 			using TT = std::remove_const_t<T>;
 			def comp_type = hana::type_c<TT>;
-			def value_type = hana::type_c< component_value_type_t<TT>>;
 			def readonly = std::is_const_v<T>;
 			def randomAccess = inRandomAccess;
 		};
@@ -64,6 +53,53 @@ namespace core
 		template<class ...T>
 		static const complist_t<T...> complist;
 
+
+		namespace detail
+		{
+			template<class T, class VT>
+			struct array_type_ { using type = VT*; };
+
+			template<class T, class VT>
+			struct array_type_<T, buffer_t<VT>> { using type = buffer_pointer_t<VT, T::buffer_capacity * sizeof(VT)>; };
+		}
+
+		template<class T, class = void>
+		struct array_type { using type = T*; };
+
+		template<class T>
+		struct array_type<T, std::void_t<typename T::value_type>> { using type = typename detail::array_type_<T, typename T::value_type>::type; };
+
+		template<class T>
+		using array_type_t = typename array_type<std::remove_const_t<T>>::type;
+
+
+		namespace detail
+		{
+			template<class T>
+			struct value_type_ { using type = T*; };
+
+			template<class T>
+			struct value_type_<buffer_t<T>> { using type = buffer_t<T>; };
+		}
+
+		template<class T, class = void>
+		struct value_type { using type = T*; };
+
+		template<class T>
+		struct value_type<T, std::void_t<typename T::value_type>> { using type = typename  detail::value_type_<typename T::value_type>::type; };
+
+		template<class T>
+		using value_type_t = typename value_type<std::remove_const_t<T>>::type;
+
+		namespace detail
+		{
+			template<class T>
+			using array_ret_t = std::conditional_t<std::is_const_v<T>, std::add_const_t<array_type_t<T>>, array_type_t<T>>;
+
+
+			template<class T>
+			using value_ret_t = std::conditional_t<std::is_const_v<T>, std::add_const_t<value_type_t<T>>, value_type_t<T>>;
+		}
 		
 		struct filters
 		{
@@ -104,13 +140,13 @@ namespace core
 			template<class T>
 			bool is_owned();
 			template<class T>
-			auto get_parameter();
+			detail::array_ret_t<T> get_parameter();
 			template<class T>
-			auto get_parameter_owned();
+			detail::array_ret_t<T> get_parameter_owned();
 			template<class T>
-			auto get_parameter(entity e);
+			detail::value_ret_t<T> get_parameter(entity e);
 			template<class T>
-			auto get_parameter_owned(entity e);
+			detail::value_ret_t<T> get_parameter_owned(entity e);
 			template<class T>
 			bool has_component(entity e);
 			uint32_t get_count() { return slice.count; }
@@ -123,9 +159,7 @@ namespace core
 		{
 			world& ctx;
 			int passIndex;
-			//int* archetypeIndex;
 			archetype** archetypes;
-			int* archetypeIndices;
 			mask* matched;
 			index_t* localType;
 			int archetypeCount;

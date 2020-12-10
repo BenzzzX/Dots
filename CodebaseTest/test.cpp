@@ -52,13 +52,19 @@ struct is_template<TP, TP<T...>> : std::true_type {};
 template<template<class...> class TP, class... T>
 def is_template_v = is_template<TP, T...>{};
 
+template<class T, class = void>
+struct is_buffer : std::false_type {};
+
+template<class T>
+struct is_buffer<T, std::void_t<typename T::value_type>> : is_template<core::database::buffer_t, typename T::value_type> {};
+
 
 template<class T>
 core::database::index_t register_component(intptr_t* entityRefs = nullptr, int entityRefCount = 0, core::database::component_vtable vtable = {})
 {
 	using namespace core::codebase;
 	component_desc desc;
-	desc.isElement = is_template_v<buffer_t, component_value_type_t<T>>;
+	desc.isElement = is_buffer<T>{};
 	desc.manualClean = get_manual_clean_v<T>;
 	desc.manualCopy = get_manual_copy_v<T>;
 	desc.size = get_buffer_capacity_v<T> * sizeof(T);
@@ -114,11 +120,10 @@ TEST_F(CodebaseTest, CreatePass) {
 }
 
 template<class T>
-auto init_component(core::database::world& ctx, core::database::chunk_slice c)
+core::codebase::array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
 {
 	using namespace core::codebase;
-	using value_type = component_value_type_t<T>;
-	return (value_type*)ctx.get_component_ro(c.c, cid<T>) + c.start;
+	return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
 }
 
 TEST_F(CodebaseTest, TaskSingleThread)
@@ -150,7 +155,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
 				//以 slice 为粒度执行具体的逻辑
-				int* tests = o.get_parameter<test>();
+				auto tests = o.get_parameter<test>();
 				forloop(i, 0, o.get_count())
 					counter += tests[i];
 			});
@@ -167,7 +172,7 @@ TEST_F(CodebaseTest, BufferAPI)
 		for (auto c : ctx.allocate(type, 100000)) // 生产 10w 个 entity
 		{
 			//返回创建的 slice，在 slice 中就地初始化生成的 entity 的数据
-			array_type_t<test3> components = init_component<test3>(ctx, c);
+			auto components = init_component<test3>(ctx, c);
 			forloop(i, 0, c.count)
 				components[i].push(counter++);
 		}
@@ -186,7 +191,7 @@ TEST_F(CodebaseTest, BufferAPI)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
-				core::entity e;
+				core::entity e = core::entity::invalid();
 				o.has_component<test3>(e);
 				//以 slice 为粒度执行具体的逻辑
 				auto tests = o.get_parameter<const test3>();
@@ -303,7 +308,7 @@ namespace ecs
 	using filters = core::codebase::filters;
 	using task = core::codebase::task;
 
-	using core::codebase::component_value_type_t;
+	//using core::codebase::component_value_type_t;
 	using core::codebase::cid;
 	using core::codebase::param;
 	using core::codebase::operation;
@@ -337,14 +342,14 @@ namespace ecs
 			{
 				auto tasks = pipeline.create_tasks(pass); //从 pass 提取 task
 				defer(pipeline.pass_events[pass.passIndex].wait());
-				for (auto i = 0u; i < pass.dependencyCount; i++)
+				for (auto i = 0; i < pass.dependencyCount; i++)
 					pipeline.pass_events[pass.dependencies[i]->passIndex].wait();
 
 				constexpr auto MinParallelTask = 10u;
 				const bool recommandParallel = !pass.hasRandomWrite && tasks.size > MinParallelTask;
 				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
 				{
-					marl::WaitGroup tasksGroup(tasks.size);
+					marl::WaitGroup tasksGroup(static_cast<unsigned>(tasks.size));
 					forloop(tsk, 0, tasks.size)
 					{
 						auto& tk = tasks[tsk];

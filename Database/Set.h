@@ -36,6 +36,10 @@ namespace core
 	{
 		using ut = handle<24, 8>;
 		using ut::handle;
+		inline static constexpr entity invalid()
+		{
+			return UINT_MAX;
+		}
 	};
 	constexpr entity NullEntity = UINT_MAX;
 

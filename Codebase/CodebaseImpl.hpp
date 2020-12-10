@@ -5,42 +5,14 @@ namespace core
 {
 	namespace codebase
 	{
-		template<class T, class VT>
-		struct array_type_ { using type = VT*; };
-
-		template<class T, class VT>
-		struct array_type_<T, buffer_t<VT>> { using type = buffer_pointer_t<VT, T::buffer_capacity * sizeof(VT)>; };
-
-		template<class T, class = void>
-		struct array_type { using type = T*; };
-
-		template<class T>
-		struct array_type<T, std::void_t<typename T::value_type>> { using type = typename array_type_<T, typename T::value_type>::type; };
-
-		template<class T>
-		using array_type_t = typename array_type<std::remove_const_t<T>>::type;
-
-
-		template<class T>
-		struct value_type_ { using type = T*; };
-
-		template<class T>
-		struct value_type_<buffer_t<T>> { using type = buffer_t<T>; };
-
-		template<class T, class = void>
-		struct value_type { using type = T*; };
-
-		template<class T>
-		struct value_type<T, std::void_t<typename T::value_type>> { using type = typename  value_type_<typename T::value_type>::type; };
-
-		template<class T>
-		using value_type_t = typename value_type<std::remove_const_t<T>>::type;
 			
 		template<class T>
 		pass* pipeline::create_pass(const filters& v, T paramList)
 		{
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);
+			constexpr size_t bits = std::numeric_limits<index_t>::digits;
+			const auto bal = paramCount / bits + 1;
 			chunk_vector<chunk*> chunks;
 			for (auto i : archs)
 				for (auto j : ctx.query(i.type, v.chunkFilter))
@@ -50,7 +22,7 @@ namespace core
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
-				+ (paramCount / 4 + 1) * sizeof(index_t) * 2; //readonly + random access
+				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)passStack.alloc(bufferSize, alignof(pass));
 			pass* k = new(buffer) pass{ ctx };
 			passes.push(k);
@@ -63,8 +35,6 @@ namespace core
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
 			k->matched = allocate_inplace<mask>(buffer, archs.size);
 			k->types = allocate_inplace<index_t>(buffer, paramCount);
-			constexpr size_t bits = std::numeric_limits<index_t>::digits;
-			const auto bal = paramCount / bits + 1;
 			k->readonly = allocate_inplace<index_t>(buffer, bal);
 			k->randomAccess = allocate_inplace<index_t>(buffer, bal);
 			memset(k->readonly, 0, sizeof(index_t) * bal);
@@ -75,7 +45,7 @@ namespace core
 			hana::for_each(paramList, [&](auto p)
 				{
 					using type = decltype(p);
-					k->types[t] = cid<decltype(p.comp_type)::type>;
+					k->types[t] = cid<typename decltype(p.comp_type)::type>;
 					if(type::readonly)
 						set_bit(k->readonly, t);
 					if(type::randomAccess)
@@ -103,7 +73,7 @@ namespace core
 		template<class T>
 		inline constexpr auto operation<params...>::param_id()
 		{
-			def compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
+			constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
 			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
 		}
 
@@ -117,15 +87,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter()
+		detail::array_ret_t<T> operation<params...>::get_parameter()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
-			using value_type = component_value_type_t<DT>;
+			//using value_type = component_value_type_t<DT>;
 			auto paramId_c = param_id<DT>();
 			auto param = hana::at(paramList, paramId_c);
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::array_ret_t<T>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
@@ -151,21 +120,20 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter_owned()
+		detail::array_ret_t<T> operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			auto param = hana::at(paramList, paramId_c);
-			using array_type = array_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			using return_type = detail::array_ret_t<T>;
 			//if (localType >= ctx.archetypes[matched]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
 			int paramId = paramId_c.value;
 			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
 			if constexpr (param.readonly)
-			{
+			{ 
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
 			}
@@ -176,15 +144,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter(entity e)
 		{
-			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using value_type = value_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
+			using return_type = detail::value_ret_t<T>;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
@@ -196,15 +163,14 @@ namespace core
 
 		template<class ...params>
 		template<class T>
-		auto operation<params...>::get_parameter_owned(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter_owned(entity e)
 		{
-			static_assert(param::randomAccess, "only random access parameter can be accessed by entity");
-			using value_type = component_value_type_t<std::decay_t<T>>;
+			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
 			int paramId = paramId_c.value;
 			auto param = hana::at(paramList, paramId_c);
-			using value_type = value_type_t<T>;
-			using return_type = std::conditional_t<param.readonly | std::is_const_v<T>, std::add_const_t<array_type>, array_type>;
+			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
+			using return_type = detail::value_ret_t<T>;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
