@@ -30,35 +30,35 @@ else()
     )
 endif(${DOTS_BUILD_AS_STATIC})
 
-if(DOTS_BUILD_CODEBASE)
-    ## Glob codebase files.
-    file(GLOB_RECURSE 
-        DotsCodebaseSource
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cxx
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hxx
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.inl
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.natvis
-        ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
-    )
+## Glob codebase files.
+file(GLOB_RECURSE 
+    DotsCodebaseSource
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.hxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.inl
+    ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/*.natvis
+    ${CMAKE_CURRENT_SOURCE_DIR}/Database/*.natvis
+)
 
-    if(${DOTS_BUILD_AS_STATIC})
-        add_library(DotsCodebase STATIC ${DotsCodebaseSource})
-    else()
-        add_library(DotsCodebase SHARED ${DotsCodebaseSource})
-        target_compile_definitions(DotsCodebase
-            PRIVATE MAKEDLL 
-        )
-    endif(${DOTS_BUILD_AS_STATIC})
-
-    target_include_directories(DotsCodebase
-        PUBLIC 
-        ${CMAKE_CURRENT_SOURCE_DIR}/Codebase/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/Database
+if(${DOTS_BUILD_AS_STATIC})
+    add_library(DotsCodebase STATIC ${DotsCodebaseSource})
+else()
+    add_library(DotsCodebase SHARED ${DotsCodebaseSource})
+    target_compile_definitions(DotsCodebase
+        PRIVATE MAKEDLL 
     )
-    target_link_libraries(DotsCodebase PUBLIC DotsDatabase)
-endif(DOTS_BUILD_CODEBASE)
+endif(${DOTS_BUILD_AS_STATIC})
+
+target_include_directories(DotsCodebase
+    PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Codebase/include>
+    $<INSTALL_INTERFACE:Codebase/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Database>
+    $<INSTALL_INTERFACE:Database>
+)
+target_link_libraries(DotsCodebase PUBLIC DotsDatabase)
