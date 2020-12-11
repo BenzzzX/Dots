@@ -2678,7 +2678,7 @@ namespace chunk_vector_pool
 	{
 		return std::this_thread::get_id() == kMainThreadId ? kMainThreadBinCapacity : kThreadBinCapacity;
 	}
-	thread_local std::array<void*, kThreadBinCapacity> threadbin{};
+	thread_local std::array<void*, kMainThreadBinCapacity> threadbin{};
 	thread_local size_t threadbinSize = 0;
 	constexpr size_t kChunkSize = chunk_vector_base::kChunkSize;
 
