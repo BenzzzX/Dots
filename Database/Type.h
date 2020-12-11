@@ -170,7 +170,7 @@ namespace core
 
 		struct ECS_API chunk_vector_base
 		{
-			constexpr static size_t kChunkSize = 1024 * 8;
+			constexpr static size_t kChunkSize = 1024 * 16;
 			size_t chunkSize = 0;
 			size_t size = 0;
 			void** data = nullptr;

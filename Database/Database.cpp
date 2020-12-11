@@ -2699,6 +2699,7 @@ void chunk_vector_base::grow()
 {
 	if (data == nullptr)
 		data = (void**)chunk_vector_pool::malloc();
+	assert(chunkSize * sizeof(void*) < kChunkSize);
 	data[chunkSize++] = chunk_vector_pool::malloc();
 }
 
