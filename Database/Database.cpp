@@ -2498,13 +2498,11 @@ void world::entities::new_entities(chunk_slice s)
 		return;
 	//fast path
 	uint32_t newId = datas.size;
-	datas.resize(datas.size + s.count - i);
+	datas.resize(datas.size + s.count - i + 1);
 	while (i < s.count)
 	{
 		entity newE(newId, datas[newId].v);
 		dst[i] = newE;
-		if(newE.id != newId)
-			assert(false);
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
 		i++;
@@ -2674,13 +2672,19 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 namespace chunk_vector_pool
 {
 	constexpr size_t kThreadBinCapacity = 40;
+	constexpr size_t kMainThreadBinCapacity = 100;
+	const std::thread::id kMainThreadId = std::this_thread::get_id();
+	inline size_t GetThreadBinCapacity()
+	{
+		return std::this_thread::get_id() == kMainThreadId ? kMainThreadBinCapacity : kThreadBinCapacity;
+	}
 	thread_local std::array<void*, kThreadBinCapacity> threadbin{};
 	thread_local size_t threadbinSize = 0;
 	constexpr size_t kChunkSize = chunk_vector_base::kChunkSize;
 
 	void free(void* data)
 	{
-		if (threadbinSize < kThreadBinCapacity)
+		if (threadbinSize < GetThreadBinCapacity())
 			threadbin[threadbinSize++] = data;
 		else
 			::free(data);
@@ -2699,7 +2703,18 @@ void chunk_vector_base::grow()
 {
 	if (data == nullptr)
 		data = (void**)chunk_vector_pool::malloc();
-	assert(chunkSize * sizeof(void*) < kChunkSize);
+	if(chunkSize * sizeof(void*) >= chunkCapacity)
+	{
+		auto oldCap = chunkCapacity;
+		chunkCapacity *= 2;
+		auto newData = ::malloc(chunkCapacity);
+		memcpy(newData, data, oldCap);
+		if (oldCap == kChunkSize)
+			chunk_vector_pool::free(data);
+		else
+			::free(data);
+		data = (void**)newData;
+	}
 	data[chunkSize++] = chunk_vector_pool::malloc();
 }
 
@@ -2709,7 +2724,10 @@ void chunk_vector_base::shrink(size_t n)
 		chunk_vector_pool::free(data[--chunkSize]);
 	if (data && chunkSize == 0)
 	{
-		chunk_vector_pool::free(data);
+		if (chunkCapacity == kChunkSize)
+			chunk_vector_pool::free(data);
+		else
+			::free(data);
 		data = nullptr;
 	}
 }
@@ -2744,7 +2762,12 @@ chunk_vector_base::chunk_vector_base(chunk_vector_base&& r) noexcept
 chunk_vector_base::chunk_vector_base(const chunk_vector_base& r) noexcept
 {
 	if (r.chunkSize > 0)
-		data = (void**)chunk_vector_pool::malloc();
+	{
+		if (r.chunkCapacity == kChunkSize)
+			data = (void**)chunk_vector_pool::malloc();
+		else
+			data = (void**)::malloc(r.chunkCapacity);
+	}
 	forloop(i, 0, r.chunkSize)
 	{
 		void* newChunk = chunk_vector_pool::malloc();

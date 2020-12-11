@@ -173,6 +173,7 @@ namespace core
 			constexpr static size_t kChunkSize = 1024 * 16;
 			size_t chunkSize = 0;
 			size_t size = 0;
+			size_t chunkCapacity = kChunkSize;
 			void** data = nullptr;
 
 			void grow();
@@ -328,7 +329,11 @@ namespace core
 				while (n > chunkSize * kChunkCapacity)
 					grow();
 			}
-			T& operator[](size_t i) noexcept { return *get(data, i); }
+			T& operator[](size_t i) noexcept 
+			{ 
+				assert(i < size);
+				return *get(data, i); 
+			}
 			const T& operator[](size_t i) const noexcept { return *get(data, i); }
 		};
 
