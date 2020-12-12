@@ -893,8 +893,8 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 		cache.data.reset(new char[totalSize]);
 		char* data = cache.data.get();
 		cache.filter = clone_filter(f, data);
-		auto p = queries.insert({ cache.filter, std::move(cache) });
-		return p.first->second;
+		queries[cache.filter] = std::move(cache);
+		return queries[cache.filter];
 	}
 }
 
