@@ -5,18 +5,25 @@
 #define ECS_API EMSCRIPTEN_KEEPALIVE
 #define DLLLOCAL __attribute__((visibility("hidden")))
 #define __stdcall 
+#elif defined(__PROSPERO__)
+	#define DLLEXPORT __declspec(dllexport)
+	#ifdef MAKEDLL
+	#define ECS_API __declspec(dllexport)
+	#else
+	#define ECS_API __declspec(dllimport)
+	#endif
 #elif defined(__GNUC__)
 #define ECS_API __attribute__((visibility("default")))
 #define DLLEXPORT __attribute__((visibility("default")))
 #define DLLLOCAL __attribute__((visibility("hidden")))
 #define __stdcall 
 #else
-#define DLLEXPORT __declspec(dllexport)
-#ifdef MAKEDLL
-#define ECS_API __declspec(dllexport)
-#else
-#define ECS_API __declspec(dllimport)
-#endif
+	#define DLLEXPORT __declspec(dllexport)
+	#ifdef MAKEDLL
+	#define ECS_API __declspec(dllexport)
+	#else
+	#define ECS_API __declspec(dllimport)
+	#endif
 #endif
 
 #ifndef FORCEINLINE
@@ -66,7 +73,7 @@ namespace core
 				else if ('A' <= c && c <= 'F')
 					return 10 + c - 'A';
 				else
-					throw std::domain_error{ "invalid character in GUID"s };
+					assert(0 && "invalid character in GUID");
 			}
 
 			template<class T>
@@ -106,7 +113,7 @@ namespace core
 				if constexpr (N == (long_guid_form_length + 1))
 				{
 					if (str[0] != '{' || str[long_guid_form_length - 1] != '}')
-						throw std::domain_error{ "Missing opening or closing brace"s };
+						assert(0 && "Missing opening or closing brace" );
 				}
 
 				return make_guid_helper(str + (N == (long_guid_form_length + 1) ? 1 : 0));
@@ -122,9 +129,9 @@ namespace core
 				using namespace details;
 
 				if (!(N == long_guid_form_length || N == short_guid_form_length))
-					throw std::domain_error{ "String GUID of the form {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} or XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX is expected"s };
+					assert(0 && "String GUID of the form {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} or XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX is expected");
 				if (N == long_guid_form_length && (str[0] != '{' || str[long_guid_form_length - 1] != '}'))
-					throw std::domain_error{ "Missing opening or closing brace"s };
+					assert(0 && "Missing opening or closing brace");
 
 				return make_guid_helper(str + (N == long_guid_form_length ? 1 : 0));
 			}
