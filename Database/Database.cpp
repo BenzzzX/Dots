@@ -2503,8 +2503,6 @@ void world::entities::new_entities(chunk_slice s)
 	{
 		entity newE(newId, datas[newId].v);
 		dst[i] = newE;
-		if(newE.id != newId)
-			assert(false);
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
 		i++;
@@ -2680,6 +2678,7 @@ namespace chunk_vector_pool
 
 	void free(void* data)
 	{
+		//return gd.free(alloc_type::fastbin, data);
 		if (threadbinSize < kThreadBinCapacity)
 			threadbin[threadbinSize++] = data;
 		else
@@ -2688,6 +2687,7 @@ namespace chunk_vector_pool
 
 	void* malloc()
 	{
+		//return gd.malloc(alloc_type::fastbin);
 		if (threadbinSize == 0)
 			return ::malloc(kChunkSize);
 		else

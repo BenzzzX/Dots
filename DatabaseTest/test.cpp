@@ -69,7 +69,8 @@ TEST(DSTest, ChunkVector)
 		[&]()
 	{
 		chunk_vector<int> r;
-		r.push(1);
+		for(int i=1;i<100000;++i)
+			r.push(i);
 		ptr = r.data;
 		return r; //RVO
 	}();
