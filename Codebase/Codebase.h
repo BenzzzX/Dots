@@ -1,6 +1,7 @@
 #pragma once
 #include "Database.h"
 #include "boost/hana.hpp"
+#include "gsl/span"
 
 #define def static constexpr auto
 namespace core
@@ -14,7 +15,7 @@ namespace core
 		{
 			constexpr size_t bits = std::numeric_limits<T>::digits;
 			//if(value)
-				set[index / bits] |= 1 << (index % bits);
+			set[index / bits] |= 1 << (index % bits);
 			//else
 			//	set[index / bits] &= ~(1 << (index % bits));
 		}
@@ -22,7 +23,7 @@ namespace core
 		bool check_bit(T* set, int index)
 		{
 			constexpr size_t bits = std::numeric_limits<T>::digits;
-			return (set[index / bits] & (1 << (index % bits)))!=0;
+			return (set[index / bits] & (1 << (index % bits))) != 0;
 		}
 
 		template<class T>
@@ -38,7 +39,6 @@ namespace core
 		};
 		template<class T, bool randomAccess = false>
 		static constexpr param_t<T, randomAccess> param;
-
 
 		template<class ...Ts>
 		struct complist_t
@@ -188,6 +188,31 @@ namespace core
 			std::vector<pass*> shared;
 		};
 
+		template<class T>
+		struct shared_ref
+		{
+			T& value;
+			dependency_entry entry;
+		};
+
+		struct shared_entry
+		{
+			bool readonly;
+			dependency_entry& entry;
+		};
+
+		template<class T>
+		shared_entry write(shared_ref<T>& target)
+		{
+			return { false, target.entry };
+		}
+
+		template<class T>
+		shared_entry read(shared_ref<T>& target)
+		{
+			return { true, target.entry };
+		}
+
 		class pipeline //计算管线，Database 的多线程交互封装
 		{
 		protected:
@@ -196,7 +221,7 @@ namespace core
 			stack_allocator passStack;
 			chunk_vector<pass*> passes;
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
-			ECS_API void setup_pass_dependency(pass& k);
+			ECS_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
@@ -206,7 +231,7 @@ namespace core
 			ECS_API pipeline(world& ctx);
 			ECS_API ~pipeline();
 			template<class T>
-			pass* create_pass(const filters& v, T paramList);
+			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
 			ECS_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 			
 			std::function<void(pass** dependencies, int dependencyCount)> on_sync;
@@ -214,9 +239,11 @@ namespace core
 }
 	/*
 	auto params = make_params(param<counter>, param<const material>, param<fuck, access::random_acesss>>);
-	auto pass = create_pass(ctx, params);
+	auto refs = make_refs(write(fishTree));
+
+	auto pass = create_pass(ctx, params, refs);
 	chunk_vector<task> tasks = create_tasks(pass, -1);
-	auto handle = xxx::parallel_for(tasks, [&pass](task& curr)
+	auto handle = xxx::parallel_for(tasks, [&pass, &fishTree](task& curr)
 	{
 		operation o{params, pass, curr}
 		auto counters = o.get_parameter<counter>(); // component

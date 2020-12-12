@@ -5,10 +5,11 @@ namespace core
 {
 	namespace codebase
 	{
-			
 		template<class T>
-		pass* pipeline::create_pass(const filters& v, T paramList)
+		pass* pipeline::create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries)
 		{
+			static_assert(hana::is_a<hana::tuple_tag>(paramList), "parameter list should be a hana::list");
+
 			auto paramCount = hana::length(paramList).value;
 			auto archs = ctx.query(v.archetypeFilter);
 			constexpr size_t bits = std::numeric_limits<index_t>::digits;
@@ -64,7 +65,7 @@ namespace core
 					k->localType[j + counter * paramCount] = i.type->index(k->types[j]);
 				counter++;
 			}
-			setup_pass_dependency(*k);
+			setup_pass_dependency(*k, sharedEntries);
 			return k;
 		}
 

@@ -445,13 +445,13 @@ TEST_F(CodebaseTest, Dependency)
 	}
 
 	core::codebase::pipeline ppl(ctx);
-	pass* p1, *p2, *p3, *p4, *p5;
+	pass* p1, *p2, *p3, *p4, *p5, *p6;
 
 	{
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		auto params = hana::make_tuple(param<test>);
+		hana::tuple params = { param<test> };
 		p1 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p1->dependencyCount, 0);
 	}
@@ -461,7 +461,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		auto params = hana::make_tuple(param<const test>);
+		hana::tuple params = { param<const test> };
 		p2 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p2->dependencyCount, 1);
 		EXPECT_EQ(p2->dependencies[0], p1);
@@ -473,11 +473,13 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		auto params = hana::make_tuple(param<const test>);
+		hana::tuple params = { param<const test> };
 		p3 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p3->dependencyCount, 1);
 		EXPECT_EQ(p3->dependencies[0], p1);
 	}
+	std::vector<int> externalResource;
+	shared_ref<std::vector<int>> resourceRef{ externalResource };
 	//基于 filter 的依赖和分享
 	{
 		//在 [test] chunk 上依赖 p2, p3 : test -> const test
@@ -485,8 +487,9 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type2 = { complist<test2> };
 		filters filter;
 		filter.archetypeFilter = { type, {}, type2 };
-		auto params = hana::make_tuple(param<test>);
-		p4 = ppl.create_pass(filter, params);
+		hana::tuple params = { param<test> };
+		shared_entry refs[] = { write(resourceRef) };
+		p4 = ppl.create_pass(filter, params, refs);
 		EXPECT_EQ(p4->dependencyCount, 2);
 		EXPECT_EQ(p4->dependencies[0], p2);
 		EXPECT_EQ(p4->dependencies[1], p3);
@@ -498,11 +501,26 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test, test2> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		auto params = hana::make_tuple(param<test>);
+		hana::tuple params = { param<test> };
 		p5 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p5->dependencyCount, 2);
 		EXPECT_EQ(p5->dependencies[0], p2);
 		EXPECT_EQ(p5->dependencies[1], p3);
+	}
+
+	//基于 shared 的分享和依赖
+	{
+		//在 [test, test2] chunk 上依赖 p4 : test -> test
+		//在 resource 上依赖 p5 : resource -> resource
+		entity_type type = { complist<test, test2> };
+		filters filter;
+		filter.archetypeFilter = { type };
+		hana::tuple params = { param<test> };
+		shared_entry refs[] = { write(resourceRef) };
+		p6 = ppl.create_pass(filter, params, refs);
+		EXPECT_EQ(p6->dependencyCount, 2);
+		EXPECT_EQ(p6->dependencies[0], p4);
+		EXPECT_EQ(p6->dependencies[1], p5);
 	}
 }
 

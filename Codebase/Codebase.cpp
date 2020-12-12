@@ -14,9 +14,28 @@ T* allocate_inplace(char*& buffer, size_t size)
 	return (T*)allocated;
 }
 
-void pipeline::setup_pass_dependency(pass& k)
+void pipeline::setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries)
 {
 	std::set<pass*> dependencies;
+	for(auto& i : sharedEntries)
+	{
+		auto& entry = i.entry;
+		if (i.readonly)
+		{
+			if (entry.owned)
+				dependencies.insert(entry.owned);
+			entry.shared.push_back(&k);
+		}
+		else
+		{
+			for (auto dp : entry.shared)
+				dependencies.insert(dp);
+			if (entry.shared.empty() && entry.owned)
+				dependencies.insert(entry.owned);
+			entry.shared.clear();
+			entry.owned = &k;
+		}
+	}
 	forloop(i, 0, k.archetypeCount)
 	{
 		auto at = k.archetypes[i];
@@ -41,6 +60,8 @@ void pipeline::setup_pass_dependency(pass& k)
 			{
 				for (auto dp : entry.shared)
 					dependencies.insert(dp);
+				if(entry.shared.empty() && entry.owned)
+					dependencies.insert(entry.owned);
 				entry.shared.clear();
 				entry.owned = &k;
 			}
