@@ -120,7 +120,7 @@ namespace core
 		{
 			ECS_API const entity* get_entities();
 		protected:
-			operation_base(const pass& k, task& t)
+			operation_base(const pass& k, const task& t)
 				:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel) {}
 			const pass& ctx;
 			int matched;
@@ -133,7 +133,7 @@ namespace core
 		struct operation : operation_base //用于简化api
 		{
 			static constexpr hana::tuple<params...> paramList;
-			operation(hana::tuple<params...> ps, const pass& k, task& t)
+			operation(hana::tuple<params...> ps, const pass& k, const task& t)
 				:operation_base(k, t) {}
 			template<class T>
 			constexpr auto param_id();
