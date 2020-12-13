@@ -56,9 +56,8 @@ endif(${DOTS_BUILD_AS_STATIC})
 
 target_include_directories(DotsCodebase
     PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Codebase/include>
-    $<INSTALL_INTERFACE:Codebase/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Database>
-    $<INSTALL_INTERFACE:Database>
 )
 target_link_libraries(DotsCodebase PUBLIC DotsDatabase)
