@@ -43,6 +43,7 @@ namespace core
 {
 	namespace codebase
 	{
+		using core::entity;
 		namespace hana = boost::hana;
 		using namespace database;
 		template<class T>
@@ -191,6 +192,15 @@ def get_##Name##_v = get_##Name<T>::value;
 
 			template<class T>
 			using value_ret_t = std::conditional_t<std::is_const_v<T>, std::add_const_t<value_type_t<T>>, value_type_t<T>>;
+		}
+
+
+
+		template<class T>
+		array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
+		{
+			using namespace core::codebase;
+			return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
 		}
 		
 		struct filters
