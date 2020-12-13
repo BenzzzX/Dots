@@ -185,3 +185,11 @@ bool operation_base::is_owned(int paramId)
 {
 	return ctx.localType[paramId] != InvalidIndex;
 }
+
+CODE_API void core::codebase::initialize()
+{
+	cid<group> = group_id;
+	cid<disable> = disable_id;
+	cid<cleanup> = cleanup_id;
+	cid<mask> = mask_id;
+}

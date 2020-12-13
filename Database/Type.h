@@ -7,7 +7,7 @@
 #define __stdcall 
 #elif defined(__PROSPERO__)
 	#define DLLEXPORT __declspec(dllexport)
-	#ifdef MAKEDLL
+	#ifdef DATABASE_DLL
 	#define ECS_API __declspec(dllexport)
 	#else
 	#define ECS_API __declspec(dllimport)
@@ -19,7 +19,7 @@
 #define __stdcall 
 #else
 	#define DLLEXPORT __declspec(dllexport)
-	#ifdef MAKEDLL
+	#ifdef DATABASE_DLL
 	#define ECS_API __declspec(dllexport)
 	#else
 	#define ECS_API __declspec(dllimport)

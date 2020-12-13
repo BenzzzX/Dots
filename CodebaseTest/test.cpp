@@ -31,65 +31,6 @@ struct test3
 	int v;
 };
 
-#define DEFINE_GETTER(Name, Default) \
-template<class T, class = void> \
-struct get_##Name{ def value = Default; }; \
-template<class T> \
-struct get_##Name<T, std::void_t<decltype(T::Name)>> { def value = T::Name; }; \
-template<class T> \
-def get_##Name##_v = get_##Name<T>::value;
-
-DEFINE_GETTER(manual_clean, false);
-DEFINE_GETTER(manual_copy, false);
-DEFINE_GETTER(buffer_capacity, 1);
-
-template<template<class...> class TP, class T>
-struct is_template : std::false_type {};
-
-template<template<class...> class TP, class... T>
-struct is_template<TP, TP<T...>> : std::true_type {};
-
-template<template<class...> class TP, class... T>
-def is_template_v = is_template<TP, T...>{};
-
-template<class T, class = void>
-struct is_buffer : std::false_type {};
-
-template<class T>
-struct is_buffer<T, std::void_t<typename T::value_type>> : is_template<core::database::buffer_t, typename T::value_type> {};
-
-
-template<class T>
-core::database::index_t register_component(intptr_t* entityRefs = nullptr, int entityRefCount = 0, core::database::component_vtable vtable = {})
-{
-	using namespace core::codebase;
-	component_desc desc;
-	desc.isElement = is_buffer<T>{};
-	desc.manualClean = get_manual_clean_v<T>;
-	desc.manualCopy = get_manual_copy_v<T>;
-	desc.size = get_buffer_capacity_v<T> * sizeof(T);
-	desc.elementSize = sizeof(T);
-	desc.GUID = T::guid;
-	desc.entityRefs = entityRefs;
-	desc.entityRefCount = entityRefCount;
-	desc.alignment = alignof(T);
-	desc.name = typeid(T).name();
-	desc.vtable = vtable;
-	return register_type(desc);
-}
-
-void install_test_components()
-{
-	using namespace core::database;
-	core::codebase::cid<group> = group_id;
-	core::codebase::cid<disable> = disable_id;
-	core::codebase::cid<cleanup> = cleanup_id;
-	core::codebase::cid<mask> = mask_id;
-	core::codebase::cid<test> = register_component<test>();
-	core::codebase::cid<test2> = register_component<test2>();
-	core::codebase::cid<test3> = register_component<test3>();
-}
-
 class CodebaseTest : public ::testing::Test
 {
 protected:
@@ -532,7 +473,6 @@ struct point3df : std::array<float, 3>
 
 TEST(DSTest, KDTree)
 {
-	core::algo::kdtree<point3df> test;
 
 	std::vector<point3df> points;
 	std::random_device r;
@@ -553,6 +493,7 @@ TEST(DSTest, KDTree)
 				indices.push_back(i);
 		}
 	};
+	core::algo::kdtree<point3df> test(points);
 	std::vector<int> truth, output;
 	forloop(i, 0, 20)
 	{
@@ -571,6 +512,7 @@ int main(int argc, char** argv)
 {
 	::testing::InitGoogleTest(&argc, argv);
 	core::database::initialize();
-	install_test_components();
+	core::codebase::initialize();
+	core::codebase::register_components<test, test2, test3>();
 	return RUN_ALL_TESTS();
 }

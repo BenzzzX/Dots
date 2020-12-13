@@ -44,17 +44,17 @@ namespace core
 				if (indices.empty())
 					return nullptr;
 				const int axis = depth % Point::dim;
-				const int mid = (indices.size() - 1) / 2;
-				std::nth_element(indices.begin(), indices.begin() + mid, indices.end(), [this](int lhs, int rhs)
+				const size_t mid = (indices.size() - 1) / 2;
+				std::nth_element(indices.begin(), indices.begin() + mid, indices.end(), [&](int lhs, int rhs)
 					{
 						return points[lhs][axis] < points[rhs][axis];
 					});
-				nodes.push_back();
+				nodes.push_back({});
 				node& n = nodes.back();
 				n.index = indices[mid];
 				n.axis = axis;
-				n.children[0] = build_recursive({ indices.begin(), indices.begin() + mid }, depth + 1);
-				n.children[1] = build_recursive({ indices.begin() + mid + 1, indices.end() }, depth + 1);
+				n.children[0] = build_recursive({ indices.data(), mid }, depth + 1);
+				n.children[1] = build_recursive({ indices.data() + mid + 1, indices.size() - mid - 1 }, depth + 1);
 			}
 
 			static Distance sdistance(const Point& lhs, const Point& rhs)

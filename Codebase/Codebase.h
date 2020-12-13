@@ -3,6 +3,41 @@
 #include "boost/hana.hpp"
 #include "gsl/span"
 
+#ifdef __EMSCRIPTEN__
+#include "emscripten.h"
+#define DLLEXPORT EMSCRIPTEN_KEEPALIVE
+#define CODE_API EMSCRIPTEN_KEEPALIVE
+#define DLLLOCAL __attribute__((visibility("hidden")))
+#define __stdcall 
+#elif defined(__PROSPERO__)
+#define DLLEXPORT __declspec(dllexport)
+#ifdef CODEBASE_DLL
+#define CODE_API __declspec(dllexport)
+#else
+#define CODE_API __declspec(dllimport)
+#endif
+#elif defined(__GNUC__)
+#define CODE_API __attribute__((visibility("default")))
+#define DLLEXPORT __attribute__((visibility("default")))
+#define DLLLOCAL __attribute__((visibility("hidden")))
+#define __stdcall 
+#else
+#define DLLEXPORT __declspec(dllexport)
+#ifdef CODEBASE_DLL
+#define CODE_API __declspec(dllexport)
+#else
+#define CODE_API __declspec(dllimport)
+#endif
+#endif
+
+#ifndef FORCEINLINE
+#ifdef _MSC_VER
+#define FORCEINLINE __forceinline
+#else
+#define FORCEINLINE inline
+#endif
+#endif
+
 #define def static constexpr auto
 namespace core
 {
@@ -26,8 +61,65 @@ namespace core
 			return (set[index / bits] & (1 << (index % bits))) != 0;
 		}
 
+#define DEFINE_GETTER(Name, Default) \
+template<class T, class = void> \
+struct get_##Name{ def value = Default; }; \
+template<class T> \
+struct get_##Name<T, std::void_t<decltype(T::Name)>> { def value = T::Name; }; \
+template<class T> \
+def get_##Name##_v = get_##Name<T>::value;
+
+		DEFINE_GETTER(manual_clean, false);
+		DEFINE_GETTER(manual_copy, false);
+		DEFINE_GETTER(buffer_capacity, 1);
+		DEFINE_GETTER(entity_refs, gsl::span<intptr_t>{});
+		DEFINE_GETTER(vtable, component_vtable{});
+#undef	DEFINE_GETTER
+
+		template<template<class...> class TP, class T>
+		struct is_template : std::false_type {};
+
+		template<template<class...> class TP, class... T>
+		struct is_template<TP, TP<T...>> : std::true_type {};
+
+		template<template<class...> class TP, class... T>
+		def is_template_v = is_template<TP, T...>{};
+
+		template<class T, class = void>
+		struct is_buffer : std::false_type {};
+
+		template<class T>
+		struct is_buffer<T, std::void_t<typename T::value_type>> : is_template<buffer_t, typename T::value_type> {};
+
 		template<class T>
 		inline index_t cid;
+
+		template<class T>
+		index_t register_component()
+		{
+			component_desc desc;
+			desc.isElement = is_buffer<T>{};
+			desc.manualClean = get_manual_clean_v<T>;
+			desc.manualCopy = get_manual_copy_v<T>;
+			desc.size = get_buffer_capacity_v<T> *sizeof(T);
+			desc.elementSize = sizeof(T);
+			desc.GUID = T::guid;
+			def entityRefs = get_entity_refs_v<T>;
+			desc.entityRefs = entityRefs.data();
+			desc.entityRefCount = entityRefs.size();
+			desc.alignment = alignof(T);
+			desc.name = typeid(T).name();
+			desc.vtable = get_vtable_v<T>;
+			return cid<T> = register_type(desc);
+		}
+
+		template<class ...Ts>
+		void register_components()
+		{
+			std::initializer_list<int> _{ (register_component<Ts>(), 0)... };
+		}
+
+		CODE_API void initialize();
 
 		template<class T, bool inRandomAccess = false>
 		struct param_t
@@ -118,7 +210,7 @@ namespace core
 
 		struct operation_base
 		{
-			ECS_API const entity* get_entities();
+			CODE_API const entity* get_entities();
 		protected:
 			operation_base(const pass& k, const task& t)
 				:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel) {}
@@ -126,8 +218,8 @@ namespace core
 			int matched;
 			chunk_slice slice;
 			int indexInKernel;
-			ECS_API mask get_mask();
-			ECS_API bool is_owned(int paramId);
+			CODE_API mask get_mask();
+			CODE_API bool is_owned(int paramId);
 		};
 		template<class... params>
 		struct operation : operation_base //用于简化api
@@ -221,18 +313,18 @@ namespace core
 			stack_allocator passStack;
 			chunk_vector<pass*> passes;
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
-			ECS_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
+			CODE_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
 			void sync_archetype(archetype* at);
 			void sync_entry(archetype* at, index_t type);
 		public:
-			ECS_API pipeline(world& ctx);
-			ECS_API ~pipeline();
+			CODE_API pipeline(world& ctx);
+			CODE_API ~pipeline();
 			template<class T>
 			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
-			ECS_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
+			CODE_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 			
 			std::function<void(pass** dependencies, int dependencyCount)> on_sync;
 		};
