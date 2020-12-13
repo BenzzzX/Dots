@@ -2,7 +2,7 @@
 #include "Codebase.h"
 
 #include "taskflow.hpp"
-
+#include "kdtree.h"
 #include "marl/defer.h"
 #include "marl/event.h"
 #include "marl/scheduler.h"
@@ -521,6 +521,49 @@ TEST_F(CodebaseTest, Dependency)
 		EXPECT_EQ(p6->dependencyCount, 2);
 		EXPECT_EQ(p6->dependencies[0], p4);
 		EXPECT_EQ(p6->dependencies[1], p5);
+	}
+}
+
+struct point3df : std::array<float, 3>
+{
+	def dim = 3;
+	using value_type = float;
+};
+
+TEST(DSTest, KDTree)
+{
+	core::algo::kdtree<point3df> test;
+
+	std::vector<point3df> points;
+	std::random_device r;
+	std::default_random_engine el(r());
+	std::uniform_real_distribution<float> uniform_dist(0, 100);
+	forloop(i, 0, 100)
+		points.emplace_back(point3df{ uniform_dist(el), uniform_dist(el), uniform_dist(el) });
+
+	auto search_radius = [&](const point3df& query, float radius, std::vector<int> indices)
+	{
+		float sradius = radius * radius;
+		forloop(i, 0, 100)
+		{
+			float sdist = 0;
+			forloop(j, 0, 3)
+				sdist += (points[i][j] - query[j])* (points[i][j] - query[j]);
+			if (sdist < sradius)
+				indices.push_back(i);
+		}
+	};
+	std::vector<int> truth, output;
+	forloop(i, 0, 20)
+	{
+		truth.resize(0);
+		output.resize(0);
+		point3df p = { uniform_dist(el), uniform_dist(el), uniform_dist(el) };
+		search_radius(p, 10, truth);
+		test.search_radius(p, 10, output);
+		std::sort(truth.begin(), truth.end());
+		std::sort(output.begin(), output.end());
+		EXPECT_TRUE(std::equal(truth.begin(), truth.end(), output.begin(), output.end()));
 	}
 }
 
