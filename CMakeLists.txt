@@ -26,7 +26,7 @@ if(${DOTS_BUILD_AS_STATIC})
 else()
     add_library(DotsDatabase SHARED ${DotsDatabaseSource})
     target_compile_definitions(DotsDatabase
-        PRIVATE MAKEDLL 
+        PRIVATE DATABASE_DLL 
     )
 endif(${DOTS_BUILD_AS_STATIC})
 
@@ -50,7 +50,7 @@ if(${DOTS_BUILD_AS_STATIC})
 else()
     add_library(DotsCodebase SHARED ${DotsCodebaseSource})
     target_compile_definitions(DotsCodebase
-        PRIVATE MAKEDLL 
+        PRIVATE CODEBASE_DLL 
     )
 endif(${DOTS_BUILD_AS_STATIC})
 
