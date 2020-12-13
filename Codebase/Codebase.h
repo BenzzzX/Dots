@@ -107,7 +107,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			desc.GUID = T::guid;
 			def entityRefs = get_entity_refs_v<T>;
 			desc.entityRefs = entityRefs.data();
-			desc.entityRefCount = entityRefs.size();
+			desc.entityRefCount = (uint16_t)entityRefs.size();
 			desc.alignment = alignof(T);
 			desc.name = typeid(T).name();
 			desc.vtable = get_vtable_v<T>;
@@ -294,8 +294,12 @@ def get_##Name##_v = get_##Name<T>::value;
 		struct shared_ref
 		{
 			T& value;
+			shared_ref(T& value)
+				: value(value) {}
 			dependency_entry entry;
 		};
+		template<class T>
+		shared_ref(T& value)->shared_ref<T>;
 
 		struct shared_entry
 		{
