@@ -58,6 +58,7 @@ TEST_F(CodebaseTest, CreatePass) {
 	auto params = hana::make_tuple(param<test>);
 	auto k = ppl.create_pass(filter, params);
 	EXPECT_EQ(k->chunkCount, 1);
+	delete k;
 }
 
 template<class T>
@@ -100,6 +101,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 				forloop(i, 0, o.get_count())
 					counter += tests[i];
 			});
+		delete k;
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -139,6 +141,7 @@ TEST_F(CodebaseTest, BufferAPI)
 				forloop(i, 0, o.get_count())
 					counter += tests[i][0];
 			});
+		delete k;
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -180,6 +183,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
 			});
+		delete k;
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -364,6 +368,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 				const core::entity* es = o.get_entities();
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
+				delete& pass;
 			});
 		// 等待单一pass
 		passHdl.wait();
@@ -463,6 +468,8 @@ TEST_F(CodebaseTest, Dependency)
 		EXPECT_EQ(p6->dependencies[0], p4);
 		EXPECT_EQ(p6->dependencies[1], p5);
 	}
+	delete p1; delete p2; delete p3; delete p4;
+	delete p5; delete p6;
 }
 
 struct point3df : std::array<float, 3>

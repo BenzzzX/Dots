@@ -98,12 +98,13 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class T>
 		index_t register_component()
 		{
+			
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
 			desc.manualClean = get_manual_clean_v<T>;
 			desc.manualCopy = get_manual_copy_v<T>;
-			desc.size = get_buffer_capacity_v<T> *sizeof(T);
-			desc.elementSize = sizeof(T);
+			desc.size = std::is_empty_v<T> ? 0 : get_buffer_capacity_v<T> *sizeof(T);
+			desc.elementSize = std::is_empty_v<T> ? 0 : sizeof(T);
 			desc.GUID = T::guid;
 			def entityRefs = get_entity_refs_v<T>;
 			desc.entityRefs = entityRefs.data();
@@ -273,6 +274,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			int paramCount;
 			pass** dependencies;
 			int dependencyCount;
+			int entityCount;
 			bool hasRandomWrite;
 		};
 
@@ -291,15 +293,37 @@ def get_##Name##_v = get_##Name<T>::value;
 		};
 
 		template<class T>
-		struct shared_ref
+		struct shared_resource
 		{
-			T& value;
-			shared_ref(T& value)
-				: value(value) {}
-			dependency_entry entry;
+			struct inner
+			{
+				T value;
+				dependency_entry entry;
+			};
+			std::shared_ptr<inner> ptr;
+			T* operator->()
+			{
+				return &ptr->value;
+			}
+			const T* operator->() const
+			{
+				return &ptr->value;
+			}
+			T& operator*()
+			{
+				return ptr->value;
+			}
+			const T& operator*() const
+			{
+				return ptr->value;
+			}
 		};
-		template<class T>
-		shared_ref(T& value)->shared_ref<T>;
+
+		template<class T, class ...TArgs>
+		shared_resource<T> make_resource(TArgs&&... args)
+		{
+			return { std::make_shared<shared_resource::inner>(std::forward<TArgs>(args)...) };
+		}
 
 		struct shared_entry
 		{
@@ -308,15 +332,15 @@ def get_##Name##_v = get_##Name<T>::value;
 		};
 
 		template<class T>
-		shared_entry write(shared_ref<T>& target)
+		shared_entry write(shared_resource<T>& target)
 		{
-			return { false, target.entry };
+			return { false, target.ptr->entry };
 		}
 
 		template<class T>
-		shared_entry read(shared_ref<T>& target)
+		shared_entry read(shared_resource<T>& target)
 		{
-			return { true, target.entry };
+			return { true, target.ptr->entry };
 		}
 
 		class pipeline //计算管线，Database 的多线程交互封装

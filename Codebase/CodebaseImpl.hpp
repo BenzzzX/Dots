@@ -24,13 +24,14 @@ namespace core
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
-			char* buffer = (char*)passStack.alloc(bufferSize, alignof(pass));
+			char* buffer = (char*)::malloc(bufferSize);
 			pass* k = new(buffer) pass{ ctx };
 			passes.push(k);
 			buffer += sizeof(pass);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
+			k->entityCount = 0;
 			k->paramCount = (int)paramCount;
 			k->archetypes = allocate_inplace<archetype*>(buffer, archs.size);
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
@@ -58,6 +59,7 @@ namespace core
 			chunks.flatten(k->chunks);
 			for (auto i : archs)
 			{
+				k->entityCount += i.type->entitySize;
 				k->archetypes[counter] = i.type;
 				v.entityFilter.apply(i);
 				k->matched[counter] = i.matched;
