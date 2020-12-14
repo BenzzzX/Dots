@@ -258,10 +258,16 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class... params>
 		operation(hana::tuple<params...> ps, const pass& k, task& t)->operation<params...>;
 
-		struct pass
+		struct custom_pass
 		{
 			world& ctx;
 			int passIndex;
+			custom_pass** dependencies;
+			int dependencyCount;
+		};
+
+		struct pass : custom_pass
+		{
 			archetype** archetypes;
 			mask* matched;
 			index_t* localType;
@@ -272,8 +278,6 @@ def get_##Name##_v = get_##Name<T>::value;
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
-			pass** dependencies;
-			int dependencyCount;
 			int entityCount;
 			bool hasRandomWrite;
 		};
@@ -288,8 +292,8 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct dependency_entry
 		{
-			pass* owned = nullptr;
-			std::vector<pass*> shared;
+			custom_pass* owned = nullptr;
+			std::vector<custom_pass*> shared;
 		};
 
 		template<class T>
@@ -322,7 +326,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class T, class ...TArgs>
 		shared_resource<T> make_resource(TArgs&&... args)
 		{
-			return { std::make_shared<shared_resource::inner>(std::forward<TArgs>(args)...) };
+			return { std::make_shared<shared_resource<T>::inner>(std::forward<TArgs>(args)...) };
 		}
 
 		struct shared_entry
@@ -348,10 +352,10 @@ def get_##Name##_v = get_##Name<T>::value;
 		protected:
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
-			stack_allocator passStack;
-			chunk_vector<pass*> passes;
+			stack_allocator passStack; //TODO: 改成 ring buffer
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
 			CODE_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
+			CODE_API void setup_pass_dependency(custom_pass& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
@@ -362,9 +366,10 @@ def get_##Name##_v = get_##Name<T>::value;
 			CODE_API ~pipeline();
 			template<class T>
 			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
+			CODE_API custom_pass* create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			CODE_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 			
-			std::function<void(pass** dependencies, int dependencyCount)> on_sync;
+			std::function<void(gsl::span<custom_pass*> dependencies)> on_sync;
 		};
 }
 	/*

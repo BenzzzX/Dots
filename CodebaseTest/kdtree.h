@@ -19,6 +19,7 @@ namespace core
 			{
 				std::vector<int> indices(points.size());
 				std::iota(indices.begin(), indices.end(), 0);
+				nodes.reserve(points.size());
 				build_recursive(indices, 0);
 			}
 			
@@ -55,6 +56,7 @@ namespace core
 				n.axis = axis;
 				n.children[0] = build_recursive({ indices.data(), mid }, depth + 1);
 				n.children[1] = build_recursive({ indices.data() + mid + 1, indices.size() - mid - 1 }, depth + 1);
+				return &n;
 			}
 
 			static Distance sdistance(const Point& lhs, const Point& rhs)

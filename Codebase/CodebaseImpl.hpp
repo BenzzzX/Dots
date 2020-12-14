@@ -24,9 +24,8 @@ namespace core
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
-			char* buffer = (char*)::malloc(bufferSize);
+			char* buffer = (char*)passStack.alloc(bufferSize);
 			pass* k = new(buffer) pass{ ctx };
-			passes.push(k);
 			buffer += sizeof(pass);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
