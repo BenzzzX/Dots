@@ -15,9 +15,13 @@ namespace core
 			constexpr size_t bits = std::numeric_limits<index_t>::digits;
 			const auto bal = paramCount / bits + 1;
 			chunk_vector<chunk*> chunks;
+			size_t entityCount = 0;
 			for (auto i : archs)
 				for (auto j : ctx.query(i.type, v.chunkFilter))
+				{
 					chunks.push(j);
+					entityCount += j->get_count();
+				}
 			size_t bufferSize =
 				sizeof(pass) //自己
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
@@ -30,7 +34,7 @@ namespace core
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
-			k->entityCount = 0;
+			k->entityCount = entityCount;
 			k->paramCount = (int)paramCount;
 			k->archetypes = allocate_inplace<archetype*>(buffer, archs.size);
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
@@ -58,7 +62,6 @@ namespace core
 			chunks.flatten(k->chunks);
 			for (auto i : archs)
 			{
-				k->entityCount += i.type->size;
 				k->archetypes[counter] = i.type;
 				v.entityFilter.apply(i);
 				k->matched[counter] = i.matched;
