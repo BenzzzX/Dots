@@ -368,7 +368,8 @@ def get_##Name##_v = get_##Name<T>::value;
 			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
 			CODE_API custom_pass* create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			CODE_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
-			
+			CODE_API int get_timestamp() { return ctx.timestamp; }
+			CODE_API void inc_timestamp() { ++ctx.timestamp; }
 			std::function<void(gsl::span<custom_pass*> dependencies)> on_sync;
 		};
 }
