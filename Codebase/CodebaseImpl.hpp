@@ -58,7 +58,7 @@ namespace core
 			chunks.flatten(k->chunks);
 			for (auto i : archs)
 			{
-				k->entityCount += i.type->entitySize;
+				k->entityCount += i.type->size;
 				k->archetypes[counter] = i.type;
 				v.entityFilter.apply(i);
 				k->matched[counter] = i.matched;

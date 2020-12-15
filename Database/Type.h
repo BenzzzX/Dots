@@ -832,6 +832,8 @@ namespace core
 			bool match(const entity_type& t, uint32_t* timestamps) const
 			{
 				uint16_t i = 0, j = 0;
+				if (changed.length == 0)
+					return true;
 				while (i < changed.length && j < t.types.length)
 				{
 					if (changed[i] > t.types[j])
