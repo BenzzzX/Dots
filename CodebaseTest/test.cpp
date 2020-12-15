@@ -58,13 +58,7 @@ TEST_F(CodebaseTest, CreatePass) {
 	auto params = hana::make_tuple(param<test>);
 	auto k = ppl.create_pass(filter, params);
 	EXPECT_EQ(k->chunkCount, 1);
-}
-
-template<class T>
-core::codebase::array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
-{
-	using namespace core::codebase;
-	return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
+	
 }
 
 TEST_F(CodebaseTest, TaskSingleThread)
@@ -100,6 +94,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 				forloop(i, 0, o.get_count())
 					counter += tests[i];
 			});
+		
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -139,6 +134,7 @@ TEST_F(CodebaseTest, BufferAPI)
 				forloop(i, 0, o.get_count())
 					counter += tests[i][0];
 			});
+		
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -180,6 +176,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
 			});
+		
 	}
 	EXPECT_EQ(counter, 5000050000);
 }
@@ -207,9 +204,8 @@ TEST_F(CodebaseTest, TaskflowIntergration)
 		std::vector<tf::Task> tfTasks;
 		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
 		pipeline ppl(ctx);
-		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
+		ppl.on_sync = [&](gsl::span<custom_pass*> dependencies)
 		{
-			forloop(i, 0, dependencyCount)
 				;// executer.wait(tkTasks[dependencies[dependencyCount]->passId]);
 		};
 
@@ -343,10 +339,10 @@ TEST_F(CodebaseTest, MarlIntergration)
 		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
 		ecs::pipeline ppl(ctx);
 
-		ppl.on_sync = [&](pass** dependencies, int dependencyCount)
+		ppl.on_sync = [&](gsl::span<custom_pass*> dependencies)
 		{
-			forloop(i, 0, dependencyCount)
-				allPasses[dependencies[i]->passIndex].wait();
+			for(auto dep : dependencies)
+				allPasses[dep->passIndex].wait();
 		};
 
 		filters filter;
@@ -419,8 +415,7 @@ TEST_F(CodebaseTest, Dependency)
 		EXPECT_EQ(p3->dependencyCount, 1);
 		EXPECT_EQ(p3->dependencies[0], p1);
 	}
-	std::vector<int> externalResource;
-	shared_ref<std::vector<int>> resourceRef{ externalResource };
+	auto resource = make_resource< std::vector<int>>();
 	//基于 filter 的依赖和分享
 	{
 		//在 [test] chunk 上依赖 p2, p3 : test -> const test
@@ -429,7 +424,7 @@ TEST_F(CodebaseTest, Dependency)
 		filters filter;
 		filter.archetypeFilter = { type, {}, type2 };
 		hana::tuple params = { param<test> };
-		shared_entry refs[] = { write(resourceRef) };
+		shared_entry refs[] = { write(resource) };
 		p4 = ppl.create_pass(filter, params, refs);
 		EXPECT_EQ(p4->dependencyCount, 2);
 		EXPECT_EQ(p4->dependencies[0], p2);
@@ -457,7 +452,7 @@ TEST_F(CodebaseTest, Dependency)
 		filters filter;
 		filter.archetypeFilter = { type };
 		hana::tuple params = { param<test> };
-		shared_entry refs[] = { write(resourceRef) };
+		shared_entry refs[] = { write(resource) };
 		p6 = ppl.create_pass(filter, params, refs);
 		EXPECT_EQ(p6->dependencyCount, 2);
 		EXPECT_EQ(p6->dependencies[0], p4);
@@ -481,7 +476,7 @@ TEST(DSTest, KDTree)
 	forloop(i, 0, 100)
 		points.emplace_back(point3df{ uniform_dist(el), uniform_dist(el), uniform_dist(el) });
 
-	auto search_radius = [&](const point3df& query, float radius, std::vector<int> indices)
+	auto search_radius = [&](const point3df& query, float radius, std::vector<int>& indices)
 	{
 		float sradius = radius * radius;
 		forloop(i, 0, 100)
@@ -504,7 +499,9 @@ TEST(DSTest, KDTree)
 		test.search_radius(p, 10, output);
 		std::sort(truth.begin(), truth.end());
 		std::sort(output.begin(), output.end());
-		EXPECT_TRUE(std::equal(truth.begin(), truth.end(), output.begin(), output.end()));
+		EXPECT_EQ(truth.size(), output.size());
+		for (int i = 0; i < truth.size(); ++i)
+			EXPECT_EQ(truth[i], output[i]);
 	}
 }
 

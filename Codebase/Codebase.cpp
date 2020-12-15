@@ -13,11 +13,18 @@ T* allocate_inplace(char*& buffer, size_t size)
 	buffer += size * sizeof(T);
 	return (T*)allocated;
 }
-
-void pipeline::setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries)
+custom_pass* pipeline::create_custom_pass(gsl::span<shared_entry> sharedEntries)
 {
-	std::set<pass*> dependencies;
-	for(auto& i : sharedEntries)
+	char* buffer = (char*)passStack.alloc(sizeof(custom_pass));
+	custom_pass* k = new(buffer) custom_pass{ctx};
+	k->passIndex = passIndex++;
+	setup_pass_dependency(*k, sharedEntries);
+	return k;
+}
+
+void setup_shared_dependency(custom_pass& k, gsl::span<shared_entry> sharedEntries, std::set<custom_pass*>& dependencies)
+{
+	for (auto& i : sharedEntries)
 	{
 		auto& entry = i.entry;
 		if (i.readonly)
@@ -36,6 +43,23 @@ void pipeline::setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntr
 			entry.owned = &k;
 		}
 	}
+}
+
+void pipeline::setup_pass_dependency(custom_pass& k, gsl::span<shared_entry> sharedEntries)
+{
+	std::set<custom_pass*> dependencies;
+	setup_shared_dependency(k, sharedEntries, dependencies);
+	k.dependencies = (custom_pass**)passStack.alloc(dependencies.size() * sizeof(custom_pass*));
+	k.dependencyCount = static_cast<int>(dependencies.size());
+	int i = 0;
+	for (auto dp : dependencies)
+		k.dependencies[i++] = dp;
+}
+
+void pipeline::setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries)
+{
+	std::set<custom_pass*> dependencies;
+	setup_shared_dependency(k, sharedEntries, dependencies);
 	forloop(i, 0, k.archetypeCount)
 	{
 		auto at = k.archetypes[i];
@@ -67,7 +91,7 @@ void pipeline::setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntr
 			}
 		}
 	}
-	k.dependencies = (pass**)passStack.alloc(dependencies.size() * sizeof(pass*));
+	k.dependencies = (custom_pass**)passStack.alloc(dependencies.size() * sizeof(custom_pass*));
 	k.dependencyCount = static_cast<int>(dependencies.size());
 	int i = 0;
 	for (auto dp : dependencies)
@@ -140,7 +164,7 @@ void pipeline::sync_archetype(archetype* at)
 {
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
-	std::vector<pass*> deps;
+	std::vector<custom_pass*> deps;
 	forloop(i, 0, at->firstTag)
 	{
 		if (entries[i].shared.empty())
@@ -154,14 +178,14 @@ void pipeline::sync_archetype(archetype* at)
 				deps.push_back(p);
 		}
 	}
-	on_sync(deps.data(), static_cast<int>(deps.size()));
+	on_sync(deps);
 }
 
 void pipeline::sync_entry(archetype* at, index_t type)
 {
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
-	std::vector<pass*> deps;
+	std::vector<custom_pass*> deps;
 	auto i = at->index(type);
 	//assert(i <= at->firstTag);
 	if (entries[i].shared.empty())
@@ -174,7 +198,7 @@ void pipeline::sync_entry(archetype* at, index_t type)
 		for (auto p : entries[i].shared)
 			deps.push_back(p);
 	}
-	on_sync(deps.data(), static_cast<int>(deps.size()));
+	on_sync(deps);
 }
 
 const core::entity* operation_base::get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }

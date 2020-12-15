@@ -98,16 +98,17 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class T>
 		index_t register_component()
 		{
+			
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
 			desc.manualClean = get_manual_clean_v<T>;
 			desc.manualCopy = get_manual_copy_v<T>;
-			desc.size = get_buffer_capacity_v<T> *sizeof(T);
-			desc.elementSize = sizeof(T);
+			desc.size = std::is_empty_v<T> ? 0 : get_buffer_capacity_v<T> *sizeof(T);
+			desc.elementSize = std::is_empty_v<T> ? 0 : sizeof(T);
 			desc.GUID = T::guid;
 			def entityRefs = get_entity_refs_v<T>;
 			desc.entityRefs = entityRefs.data();
-			desc.entityRefCount = entityRefs.size();
+			desc.entityRefCount = (uint16_t)entityRefs.size();
 			desc.alignment = alignof(T);
 			desc.name = typeid(T).name();
 			desc.vtable = get_vtable_v<T>;
@@ -257,10 +258,16 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class... params>
 		operation(hana::tuple<params...> ps, const pass& k, task& t)->operation<params...>;
 
-		struct pass
+		struct custom_pass
 		{
 			world& ctx;
 			int passIndex;
+			custom_pass** dependencies;
+			int dependencyCount;
+		};
+
+		struct pass : custom_pass
+		{
 			archetype** archetypes;
 			mask* matched;
 			index_t* localType;
@@ -271,8 +278,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
-			pass** dependencies;
-			int dependencyCount;
+			int entityCount;
 			bool hasRandomWrite;
 		};
 
@@ -286,16 +292,42 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct dependency_entry
 		{
-			pass* owned = nullptr;
-			std::vector<pass*> shared;
+			custom_pass* owned = nullptr;
+			std::vector<custom_pass*> shared;
 		};
 
 		template<class T>
-		struct shared_ref
+		struct shared_resource
 		{
-			T& value;
-			dependency_entry entry;
+			struct inner
+			{
+				T value;
+				dependency_entry entry;
+			};
+			std::shared_ptr<inner> ptr;
+			T* operator->()
+			{
+				return &ptr->value;
+			}
+			const T* operator->() const
+			{
+				return &ptr->value;
+			}
+			T& operator*()
+			{
+				return ptr->value;
+			}
+			const T& operator*() const
+			{
+				return ptr->value;
+			}
 		};
+
+		template<class T, class ...TArgs>
+		shared_resource<T> make_resource(TArgs&&... args)
+		{
+			return { std::make_shared<shared_resource<T>::inner>(std::forward<TArgs>(args)...) };
+		}
 
 		struct shared_entry
 		{
@@ -304,15 +336,15 @@ def get_##Name##_v = get_##Name<T>::value;
 		};
 
 		template<class T>
-		shared_entry write(shared_ref<T>& target)
+		shared_entry write(shared_resource<T>& target)
 		{
-			return { false, target.entry };
+			return { false, target.ptr->entry };
 		}
 
 		template<class T>
-		shared_entry read(shared_ref<T>& target)
+		shared_entry read(shared_resource<T>& target)
 		{
-			return { true, target.entry };
+			return { true, target.ptr->entry };
 		}
 
 		class pipeline //计算管线，Database 的多线程交互封装
@@ -320,10 +352,10 @@ def get_##Name##_v = get_##Name<T>::value;
 		protected:
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
-			stack_allocator passStack;
-			chunk_vector<pass*> passes;
+			stack_allocator passStack; //TODO: 改成 ring buffer
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
 			CODE_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
+			CODE_API void setup_pass_dependency(custom_pass& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
@@ -334,9 +366,10 @@ def get_##Name##_v = get_##Name<T>::value;
 			CODE_API ~pipeline();
 			template<class T>
 			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
+			CODE_API custom_pass* create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			CODE_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
 			
-			std::function<void(pass** dependencies, int dependencyCount)> on_sync;
+			std::function<void(gsl::span<custom_pass*> dependencies)> on_sync;
 		};
 }
 	/*
