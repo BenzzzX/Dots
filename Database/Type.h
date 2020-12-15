@@ -837,13 +837,13 @@ namespace core
 					if (changed[i] > t.types[j])
 						j++;
 					else if (changed[i] < t.types[j])
-						return false;
+						i++;
 					else if (timestamps[j] >= prevTimestamp)
-						(j++, i++);
+						return true;
 					else
-						return false;
+						(j++, i++);
 				}
-				return i == changed.length;
+				return false;
 			}
 		};
 
