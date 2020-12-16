@@ -144,7 +144,7 @@ chunk_vector<task> pipeline::create_tasks(pass& k, int maxSlice)
 		{
 			uint32_t sliceCount;
 			if (maxSlice == -1)
-				sliceCount = std::min(c->get_count(), c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
+				sliceCount = std::min(c->get_count() - allocated, c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
 			else
 				sliceCount = std::min(c->get_count() - allocated, (uint32_t)maxSlice);
 			task newTask{ };
