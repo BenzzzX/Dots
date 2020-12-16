@@ -326,7 +326,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class T, class ...TArgs>
 		shared_resource<T> make_resource(TArgs&&... args)
 		{
-			return { std::make_shared<shared_resource<T>::inner>(std::forward<TArgs>(args)...) };
+			return { std::make_shared<typename shared_resource<T>::inner>(std::forward<TArgs>(args)...) };
 		}
 
 		struct shared_entry
