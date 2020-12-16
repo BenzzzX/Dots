@@ -2028,6 +2028,7 @@ const void* world::get_owned_ro_local(chunk* c, index_t type) const noexcept
 
 void* world::get_owned_rw_local(chunk* c, index_t type) noexcept
 {
+	c->type->timestamps(c)[type] = timestamp;
 	return c->data() + c->type->offsets(c->ct)[type];
 }
 
