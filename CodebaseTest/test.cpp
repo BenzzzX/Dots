@@ -488,7 +488,8 @@ TEST(DSTest, KDTree)
 				indices.push_back(i);
 		}
 	};
-	core::algo::kdtree<point3df> test(points);
+	auto temp = points;
+	core::algo::kdtree<point3df> test(std::move(temp));
 	std::vector<int> truth, output;
 	forloop(i, 0, 20)
 	{
@@ -500,7 +501,7 @@ TEST(DSTest, KDTree)
 		std::sort(truth.begin(), truth.end());
 		std::sort(output.begin(), output.end());
 		EXPECT_EQ(truth.size(), output.size());
-		for (int i = 0; i < truth.size(); ++i)
+		for (int i = 0; i < output.size(); ++i)
 			EXPECT_EQ(truth[i], output[i]);
 	}
 }
