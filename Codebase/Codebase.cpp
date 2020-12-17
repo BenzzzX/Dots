@@ -97,7 +97,7 @@ CODE_API void core::codebase::initialize()
 	cid<mask> = mask_id;
 }
 
-custom_pass::~custom_pass()
+void custom_pass::release_dependencies()
 {
 	delete[] dependencies;
 }

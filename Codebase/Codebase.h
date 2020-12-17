@@ -266,7 +266,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			int passIndex;
 			std::shared_ptr<custom_pass>* dependencies;
 			int dependencyCount;
-			CODE_API ~custom_pass();
+			CODE_API void release_dependencies();
 		};
 
 		template<class base = custom_pass>
