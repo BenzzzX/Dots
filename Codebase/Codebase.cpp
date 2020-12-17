@@ -99,5 +99,13 @@ CODE_API void core::codebase::initialize()
 
 void custom_pass::release_dependencies()
 {
+	if (!dependencies)
+		return;
 	delete[] dependencies;
+	dependencies = nullptr;
+}
+
+custom_pass::~custom_pass()
+{
+	release_dependencies();
 }
