@@ -371,11 +371,11 @@ def get_##Name##_v = get_##Name<T>::value;
 		public:
 			CODE_API pipeline(world& ctx);
 			CODE_API ~pipeline();
-			template<class P, class T>
+			template<class P = pass, class T>
 			std::shared_ptr<P> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
-			template<class P>
+			template<class P = custom_pass>
 			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
-			template<class P>
+			template<class P = pass>
 			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
 			CODE_API int get_timestamp() { return ctx.timestamp; }
 			CODE_API void inc_timestamp() { ++ctx.timestamp; }

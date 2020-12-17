@@ -241,7 +241,6 @@ namespace ecs
 	using namespace core::database;
 	using core::entity;
 	//using namespace core::codebase;
-	using pass = core::codebase::pass;
 	using filters = core::codebase::filters;
 	using task = core::codebase::task;
 
@@ -249,16 +248,22 @@ namespace ecs
 	using core::codebase::cid;
 	using core::codebase::param;
 	using core::codebase::operation;
+	struct custom_pass : core::codebase::custom_pass
+	{
+		marl::Event event;
+	};
+	struct pass : core::codebase::pass_t<custom_pass> {};
 
 	struct pipeline final : public core::codebase::pipeline
 	{
 		using base_t = core::codebase::pipeline;
 		pipeline(world& ctx) :base_t(ctx) {};
 		template<class T>
-		pass* create_pass(const filters& v, T paramList)
+		std::shared_ptr<pass> create_pass(const filters& v, T paramList)
 		{
-			pass_events.emplace_back(marl::Event::Mode::Manual);
-			return static_cast<pass*>(base_t::create_pass(v, paramList));
+			auto p = base_t::create_pass<pass>(v, paramList);
+			pass_events.emplace_back(p->event);
+			return p;
 		}
 		void wait()
 		{
@@ -269,21 +274,21 @@ namespace ecs
 	};
 
 	template<typename F, bool ForceParallel = false, bool ForceNoParallel = false>
-	FORCEINLINE marl::Event schedule(ecs::pipeline& pipeline, ecs::pass& pass, F&& f)
+	FORCEINLINE void schedule(ecs::pipeline& pipeline, std::shared_ptr<pass> p, F&& f)
 	{
-		static_assert(std::is_invocable_v<std::decay_t<F>, ecs::pipeline&, ecs::pass&, ecs::task&>,
+		static_assert(std::is_invocable_v<std::decay_t<F>, ecs::pipeline&, pass&, ecs::task&>,
 			"F must be an invokable of void(ecs::pipeline&, ecs::pass&, ecs::task&)>");
 		static_assert(!(ForceParallel & ForceNoParallel),
 			"A schedule can not force both parallel and not parallel!");
-		marl::schedule([&, f]
+		marl::schedule([&, p, f]
 			{
-				auto tasks = pipeline.create_tasks(pass); //从 pass 提取 task
-				defer(pipeline.pass_events[pass.passIndex].wait());
-				for (auto i = 0; i < pass.dependencyCount; i++)
-					pipeline.pass_events[pass.dependencies[i]->passIndex].wait();
+				auto tasks = pipeline.create_tasks(*p); //从 pass 提取 task
+				defer(p->event.signal());
+				for (auto i = 0; i < p->dependencyCount; i++)
+					((pass*)p->dependencies[i].get())->event.wait();
 
 				constexpr auto MinParallelTask = 10u;
-				const bool recommandParallel = !pass.hasRandomWrite && tasks.size > MinParallelTask;
+				const bool recommandParallel = !p->hasRandomWrite && tasks.size > MinParallelTask;
 				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
 				{
 					marl::WaitGroup tasksGroup(static_cast<unsigned>(tasks.size));
@@ -293,7 +298,7 @@ namespace ecs
 						marl::schedule([&, tasksGroup] {
 							// Decrement the WaitGroup counter when the task has finished.
 							defer(tasksGroup.done());
-							f(pipeline, pass, tk);
+							f(pipeline, *p, tk);
 							});
 					}
 					tasksGroup.wait();
@@ -303,12 +308,10 @@ namespace ecs
 					std::for_each(
 						tasks.begin(), tasks.end(), [&, f](auto& tk)
 						{
-							f(pipeline, pass, tk);
+							f(pipeline, *p, tk);
 						});
 				}
-				pipeline.pass_events[pass.passIndex].signal();
 			});
-		return pipeline.pass_events[pass.passIndex];
 	}
 }
 
@@ -339,10 +342,10 @@ TEST_F(CodebaseTest, MarlIntergration)
 		//创建一个运算管线，运算管线生命周期内不应该直接操作 world
 		ecs::pipeline ppl(ctx);
 
-		ppl.on_sync = [&](gsl::span<custom_pass*> dependencies)
+		ppl.on_sync = [&](gsl::span<core::codebase::custom_pass*> dependencies)
 		{
 			for(auto dep : dependencies)
-				allPasses[dep->passIndex].wait();
+				((ecs::custom_pass*)dep)->event.wait();
 		};
 
 		filters filter;
@@ -350,7 +353,8 @@ TEST_F(CodebaseTest, MarlIntergration)
 			{complist<test>}
 		}; //筛选所有的 test
 		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
-		auto passHdl = ecs::schedule(ppl, *ppl.create_pass(filter, params),
+		auto pass = ppl.create_pass(filter, params);
+		ecs::schedule(ppl, pass,
 			[&](ecs::pipeline& pipeline, ecs::pass& pass, ecs::task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
@@ -362,7 +366,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 					counter.fetch_add(tests[i]);
 			});
 		// 等待单一pass
-		passHdl.wait();
+		pass->event.wait();
 		// 等待pipeline
 		ppl.wait();
 	}
@@ -382,7 +386,7 @@ TEST_F(CodebaseTest, Dependency)
 	}
 
 	core::codebase::pipeline ppl(ctx);
-	pass* p1, *p2, *p3, *p4, *p5, *p6;
+	std::shared_ptr<pass> p1, p2, p3, p4, p5, p6;
 
 	{
 		entity_type type = { complist<test> };
