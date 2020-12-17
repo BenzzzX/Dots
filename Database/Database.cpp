@@ -1674,9 +1674,9 @@ chunk_slice world::allocate_slice(archetype* g, uint32_t count)
 	if (c == nullptr)
 		c = new_chunk(g, count);
 	structural_change(g, c);
-	g->size += count;
 	uint32_t start = c->count;
 	uint32_t allocated = std::min(count, g->chunkCapacity[(int)c->ct] - start);
+	g->size += allocated;
 	resize_chunk(c, start + allocated);
 	return { c, start, allocated };
 }
@@ -2028,6 +2028,7 @@ const void* world::get_owned_ro_local(chunk* c, index_t type) const noexcept
 
 void* world::get_owned_rw_local(chunk* c, index_t type) noexcept
 {
+	c->type->timestamps(c)[type] = timestamp;
 	return c->data() + c->type->offsets(c->ct)[type];
 }
 

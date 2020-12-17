@@ -1,12 +1,23 @@
 #include "Codebase.h"
+#include <set>
 #pragma once
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 namespace core
 {
 	namespace codebase
 	{
-		template<class T>
-		pass* pipeline::create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries)
+		template<class P>
+		std::shared_ptr<P> pipeline::create_custom_pass(gsl::span<shared_entry> sharedEntries)
+		{
+			char* buffer = (char*)::malloc(sizeof(P));
+			P* k = new(buffer) P{ ctx };
+			std::shared_ptr<P> ret{ k };
+			k->passIndex = passIndex++;
+			setup_custom_pass_dependency(ret, sharedEntries);
+			return ret;
+		}
+		template<class P, class T>
+		std::shared_ptr<P> pipeline::create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries)
 		{
 			static_assert(hana::is_a<hana::tuple_tag>(paramList), "parameter list should be a hana::list");
 
@@ -15,22 +26,27 @@ namespace core
 			constexpr size_t bits = std::numeric_limits<index_t>::digits;
 			const auto bal = paramCount / bits + 1;
 			chunk_vector<chunk*> chunks;
+			size_t entityCount = 0;
 			for (auto i : archs)
 				for (auto j : ctx.query(i.type, v.chunkFilter))
+				{
 					chunks.push(j);
+					entityCount += j->get_count();
+				}
 			size_t bufferSize =
-				sizeof(pass) //自己
+				sizeof(P) //自己
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
 				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
-			char* buffer = (char*)passStack.alloc(bufferSize);
-			pass* k = new(buffer) pass{ ctx };
-			buffer += sizeof(pass);
+			char* buffer = (char*)::malloc(bufferSize);
+			P* k = new(buffer) P{ ctx };
+			std::shared_ptr<P> ret{ k };
+			buffer += sizeof(P);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->chunkCount = (int)chunks.size;
-			k->entityCount = 0;
+			k->entityCount = entityCount;
 			k->paramCount = (int)paramCount;
 			k->archetypes = allocate_inplace<archetype*>(buffer, archs.size);
 			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
@@ -58,7 +74,6 @@ namespace core
 			chunks.flatten(k->chunks);
 			for (auto i : archs)
 			{
-				k->entityCount += i.type->entitySize;
 				k->archetypes[counter] = i.type;
 				v.entityFilter.apply(i);
 				k->matched[counter] = i.matched;
@@ -66,30 +81,132 @@ namespace core
 					k->localType[j + counter * paramCount] = i.type->index(k->types[j]);
 				counter++;
 			}
-			setup_pass_dependency(*k, sharedEntries);
-			return k;
+			setup_pass_dependency(ret, sharedEntries);
+			return ret;
 		}
 
+		template<class P>
+		chunk_vector<task> pipeline::create_tasks(P& k, int maxSlice)
+		{
+			uint32_t count = k.chunkCount;
+			int archIndex = 0;
+			int indexInKernel = 0;
+			chunk_vector<task> result;
+			forloop(i, 0, count)
+			{
+				chunk* c = k.chunks[i];
+				for (; k.archetypes[archIndex] != c->get_type(); ++archIndex);
+				uint32_t allocated = 0;
+				while (allocated != c->get_count())
+				{
+					uint32_t sliceCount;
+					if (maxSlice == -1)
+						sliceCount = std::min(c->get_count() - allocated, c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
+					else
+						sliceCount = std::min(c->get_count() - allocated, (uint32_t)maxSlice);
+					task newTask{ };
+					newTask.matched = archIndex;
+					newTask.slice = chunk_slice{ c, allocated, sliceCount };
+					newTask.indexInKernel = indexInKernel;
+					allocated += sliceCount;
+					indexInKernel += sliceCount;
+					result.push(newTask);
+				}
+			}
+			return result;
+		}
 
-		template<class ...params>
+		template<class P>
+		void setup_shared_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries, std::set<std::shared_ptr<custom_pass>>& dependencies)
+		{
+			for (auto& i : sharedEntries)
+			{
+				auto& entry = i.entry;
+				if (i.readonly)
+				{
+					if (entry.owned)
+						dependencies.insert(entry.owned);
+					entry.shared.push_back(k);
+				}
+				else
+				{
+					for (auto dp : entry.shared)
+						dependencies.insert(dp);
+					if (entry.shared.empty() && entry.owned)
+						dependencies.insert(entry.owned);
+					entry.shared.clear();
+					entry.owned = k;
+				}
+			}
+		}
+
+		template<class P>
+		void pipeline::setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
+		{
+			std::set<std::shared_ptr<custom_pass>> dependencies;
+			setup_shared_dependency(k, sharedEntries, dependencies);
+			k->dependencies = new std::shared_ptr<custom_pass>[dependencies.size()];
+			k->dependencyCount = static_cast<int>(dependencies.size());
+			int i = 0;
+			for (auto dp : dependencies)
+				k->dependencies[i++] = dp;
+		}
+
+		template<class P>
+		void pipeline::setup_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
+		{
+			constexpr uint16_t InvalidIndex = (uint16_t)-1;
+			std::set<std::shared_ptr<custom_pass>> dependencies;
+			setup_shared_dependency(k, sharedEntries, dependencies);
+			forloop(i, 0, k->archetypeCount)
+			{
+				auto at = k->archetypes[i];
+				auto iter = dependencyEntries.find(at);
+				if (iter == dependencyEntries.end())
+					continue;
+
+				auto entries = (*iter).second.get();
+				forloop(j, 0, k->paramCount)
+				{
+					auto localType = k->localType[i * k->paramCount + j];
+					if (localType == InvalidIndex || localType > at->firstTag)
+						continue;
+					auto& entry = entries[localType];
+					if (check_bit(k->readonly, j))
+					{
+						if (entry.owned)
+							dependencies.insert(entry.owned);
+						entry.shared.push_back(k);
+					}
+					else
+					{
+						for (auto dp : entry.shared)
+							dependencies.insert(dp);
+						if (entry.shared.empty() && entry.owned)
+							dependencies.insert(entry.owned);
+						entry.shared.clear();
+						entry.owned = k;
+					}
+				}
+			}
+			k->dependencies = new std::shared_ptr<custom_pass>[dependencies.size()];
+			k->dependencyCount = static_cast<int>(dependencies.size());
+			int i = 0;
+			for (auto dp : dependencies)
+				k->dependencies[i++] = dp;
+		}
+
+		template<class P, class ...params>
 		template<class T>
-		inline constexpr auto operation<params...>::param_id()
+		inline constexpr auto operation<P, params...>::param_id()
 		{
 			constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
 			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
 		}
 
-		template<class ...params>
+		template<class P, class ...params>
 		template<class T>
-		inline bool operation<params...>::is_owned()
-		{
-			def paramId = param_id<T>();
-			return is_owned(paramId.value);
-		}
-
-		template<class ...params>
-		template<class T>
-		detail::array_ret_t<T> operation<params...>::get_parameter()
+		detail::array_ret_t<T> operation<P, params...>::get_parameter()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
@@ -117,12 +234,12 @@ namespace core
 				else
 					ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
 			}
-			return (ptr && operation_base::is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
+			return (ptr && is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
-		template<class ...params>
+		template<class P, class ...params>
 		template<class T>
-		detail::array_ret_t<T> operation<params...>::get_parameter_owned()
+		detail::array_ret_t<T> operation<P, params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			//using value_type = component_value_type_t<std::decay_t<T>>;
@@ -141,12 +258,12 @@ namespace core
 			}
 			else
 				ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
-			return (ptr && operation_base::is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
+			return (ptr && is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
-		template<class ...params>
+		template<class P, class ...params>
 		template<class T>
-		detail::value_ret_t<T> operation<params...>::get_parameter(entity e)
+		detail::value_ret_t<T> operation<P, params...>::get_parameter(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
@@ -163,9 +280,9 @@ namespace core
 				return (return_type)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
 		}
 
-		template<class ...params>
+		template<class P, class ...params>
 		template<class T>
-		detail::value_ret_t<T> operation<params...>::get_parameter_owned(entity e)
+		detail::value_ret_t<T> operation<P, params...>::get_parameter_owned(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
@@ -180,13 +297,6 @@ namespace core
 			}
 			else
 				return (return_type)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
-		}
-
-		template<class ...params>
-		template<class T>
-		inline bool operation<params...>::has_component(entity e)
-		{
-			return ctx.ctx.has_component(e, complist<T>);
 		}
 	}
 }
