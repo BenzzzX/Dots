@@ -219,29 +219,20 @@ def get_##Name##_v = get_##Name<T>::value;
 		};
 		struct pass;
 
-		struct operation_base
-		{
-			CODE_API const entity* get_entities();
-		protected:
-			operation_base(const pass& k, const task& t)
-				:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel) {}
-			const pass& ctx;
-			int matched;
-			chunk_slice slice;
-			int indexInKernel;
-			CODE_API mask get_mask();
-			CODE_API bool is_owned(int paramId);
-		};
-		template<class... params>
-		struct operation : operation_base //用于简化api
+		template<class P, class... params>
+		struct operation //用于简化api
 		{
 			static constexpr hana::tuple<params...> paramList;
-			operation(hana::tuple<params...> ps, const pass& k, const task& t)
-				:operation_base(k, t) {}
+			operation(hana::tuple<params...> ps, const P& k, const task& t)
+			:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel){}
 			template<class T>
 			constexpr auto param_id();
 			template<class T>
-			bool is_owned();
+			bool is_owned()
+			{
+				def paramId = param_id<T>();
+				return is_owned(paramId.value);
+			}
 			template<class T>
 			detail::array_ret_t<T> get_parameter();
 			template<class T>
@@ -250,23 +241,36 @@ def get_##Name##_v = get_##Name<T>::value;
 			detail::value_ret_t<T> get_parameter(entity e);
 			template<class T>
 			detail::value_ret_t<T> get_parameter_owned(entity e);
+			mask get_mask() { return ctx.matched[matched]; }
+			bool is_owned(int paramId)
+			{
+				constexpr uint16_t InvalidIndex = (uint16_t)-1;
+				return ctx.localType[paramId] != InvalidIndex;
+			}
 			template<class T>
-			bool has_component(entity e);
+			bool has_component(entity e) { return ctx.ctx.has_component(e, complist<T>); }
+			const entity* get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }
+			const P& ctx;
+			int matched;
+			chunk_slice slice;
+			int indexInKernel;
 			uint32_t get_count() { return slice.count; }
 			uint32_t get_index() { return indexInKernel; }
 		};
-		template<class... params>
-		operation(hana::tuple<params...> ps, const pass& k, task& t)->operation<params...>;
+		template<class P, class... params>
+		operation(hana::tuple<params...> ps, const P& k, task& t)->operation<P, params...>;
 
 		struct custom_pass
 		{
 			world& ctx;
 			int passIndex;
-			custom_pass** dependencies;
+			std::shared_ptr<custom_pass>* dependencies;
 			int dependencyCount;
+			CODE_API ~custom_pass();
 		};
 
-		struct pass : custom_pass
+		template<class base = custom_pass>
+		struct pass_t : base
 		{
 			archetype** archetypes;
 			mask* matched;
@@ -282,6 +286,8 @@ def get_##Name##_v = get_##Name<T>::value;
 			bool hasRandomWrite;
 		};
 
+		struct pass : pass_t<> {};
+
 		template<class T>
 		T* allocate_inplace(char*& buffer, size_t size)
 		{
@@ -292,8 +298,8 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct dependency_entry
 		{
-			custom_pass* owned = nullptr;
-			std::vector<custom_pass*> shared;
+			std::shared_ptr<custom_pass> owned = nullptr;
+			std::vector<std::shared_ptr<custom_pass>> shared;
 		};
 
 		template<class T>
@@ -352,10 +358,11 @@ def get_##Name##_v = get_##Name<T>::value;
 		protected:
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
-			stack_allocator passStack; //TODO: 改成 ring buffer
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
-			CODE_API void setup_pass_dependency(pass& k, gsl::span<shared_entry> sharedEntries = {});
-			CODE_API void setup_pass_dependency(custom_pass& k, gsl::span<shared_entry> sharedEntries = {});
+			template<class P>
+			void setup_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
+			template<class P>
+			void setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			world& ctx;
 			int passIndex;
@@ -364,10 +371,12 @@ def get_##Name##_v = get_##Name<T>::value;
 		public:
 			CODE_API pipeline(world& ctx);
 			CODE_API ~pipeline();
-			template<class T>
-			pass* create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
-			CODE_API custom_pass* create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
-			CODE_API chunk_vector<task> create_tasks(pass& k, int maxSlice = -1);
+			template<class P, class T>
+			std::shared_ptr<P> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
+			template<class P>
+			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
+			template<class P>
+			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
 			CODE_API int get_timestamp() { return ctx.timestamp; }
 			CODE_API void inc_timestamp() { ++ctx.timestamp; }
 			std::function<void(gsl::span<custom_pass*> dependencies)> on_sync;
