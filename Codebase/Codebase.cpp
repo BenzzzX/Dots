@@ -53,16 +53,16 @@ void pipeline::sync_archetype(archetype* at)
 	{
 		if (entries[i].shared.empty())
 		{
-			if (entries[i].owned)
-				deps.push_back(entries[i].owned.get());
+			if (!entries[i].owned.expired())
+				deps.push_back(entries[i].owned.lock().get());
 		}
 		else
 		{
 			for (auto p : entries[i].shared)
-				deps.push_back(p.get());
+				deps.push_back(p.lock().get());
 		}
 		entries[i].shared.clear();
-		entries[i].owned = nullptr;
+		entries[i].owned.reset();
 	}
 	on_sync(deps);
 }
@@ -76,16 +76,16 @@ void pipeline::sync_entry(archetype* at, index_t type)
 	//assert(i <= at->firstTag);
 	if (entries[i].shared.empty())
 	{
-		if (entries[i].owned)
-			deps.push_back(entries[i].owned.get());
+		if (!entries[i].owned.expired())
+			deps.push_back(entries[i].owned.lock().get());
 	}
 	else
 	{
 		for (auto p : entries[i].shared)
-			deps.push_back(p.get());
+			deps.push_back(p.lock().get());
 	}
 	entries[i].shared.clear();
-	entries[i].owned = nullptr;
+	entries[i].owned.reset();
 	on_sync(deps);
 }
 

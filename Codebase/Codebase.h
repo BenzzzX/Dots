@@ -264,7 +264,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		{
 			world& ctx;
 			int passIndex;
-			std::shared_ptr<custom_pass>* dependencies;
+			std::weak_ptr<custom_pass>* dependencies;
 			int dependencyCount;
 			CODE_API void release_dependencies();
 			CODE_API ~custom_pass();
@@ -299,8 +299,8 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct dependency_entry
 		{
-			std::shared_ptr<custom_pass> owned = nullptr;
-			std::vector<std::shared_ptr<custom_pass>> shared;
+			std::weak_ptr<custom_pass> owned;
+			std::vector<std::weak_ptr<custom_pass>> shared;
 		};
 
 		template<class T>

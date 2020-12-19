@@ -115,16 +115,27 @@ namespace core
 			}
 			return result;
 		}
-
+		namespace detail
+		{
+			struct weak_ptr_compare
+			{
+				template<class T>
+				bool operator() (const std::weak_ptr<T>& lhs, const std::weak_ptr<T>& rhs)const
+				{
+					return lhs.owner_before(rhs);
+				}
+			};
+			using weak_ptr_set = std::set<std::weak_ptr<custom_pass>, weak_ptr_compare>;
+		}
 		template<class P>
-		void setup_shared_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries, std::set<std::shared_ptr<custom_pass>>& dependencies)
+		void setup_shared_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries, detail::weak_ptr_set& dependencies)
 		{
 			for (auto& i : sharedEntries)
 			{
 				auto& entry = i.entry;
 				if (i.readonly)
 				{
-					if (entry.owned)
+					if (!entry.owned.expired())
 						dependencies.insert(entry.owned);
 					entry.shared.push_back(k);
 				}
@@ -132,7 +143,7 @@ namespace core
 				{
 					for (auto dp : entry.shared)
 						dependencies.insert(dp);
-					if (entry.shared.empty() && entry.owned)
+					if (entry.shared.empty() && !entry.owned.expired())
 						dependencies.insert(entry.owned);
 					entry.shared.clear();
 					entry.owned = k;
@@ -143,9 +154,9 @@ namespace core
 		template<class P>
 		void pipeline::setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
 		{
-			std::set<std::shared_ptr<custom_pass>> dependencies;
+			detail::weak_ptr_set dependencies;
 			setup_shared_dependency(k, sharedEntries, dependencies);
-			k->dependencies = new std::shared_ptr<custom_pass>[dependencies.size()];
+			k->dependencies = new std::weak_ptr<custom_pass>[dependencies.size()];
 			k->dependencyCount = static_cast<int>(dependencies.size());
 			int i = 0;
 			for (auto dp : dependencies)
@@ -156,7 +167,7 @@ namespace core
 		void pipeline::setup_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			std::set<std::shared_ptr<custom_pass>> dependencies;
+			detail::weak_ptr_set dependencies;
 			setup_shared_dependency(k, sharedEntries, dependencies);
 			forloop(i, 0, k->archetypeCount)
 			{
@@ -174,22 +185,27 @@ namespace core
 					auto& entry = entries[localType];
 					if (check_bit(k->readonly, j))
 					{
-						if (entry.owned)
+						if (!entry.owned.expired())
 							dependencies.insert(entry.owned);
+						entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
 						entry.shared.push_back(k);
 					}
 					else
 					{
-						for (auto dp : entry.shared)
-							dependencies.insert(dp);
-						if (entry.shared.empty() && entry.owned)
+						for (auto& dp : entry.shared)
+							if(!dp.expired())
+								dependencies.insert(dp);
+						if (entry.shared.empty() && !entry.owned.expired())
 							dependencies.insert(entry.owned);
 						entry.shared.clear();
 						entry.owned = k;
 					}
 				}
 			}
-			k->dependencies = new std::shared_ptr<custom_pass>[dependencies.size()];
+			if (dependencies.size() > 0)
+				k->dependencies = new std::weak_ptr<custom_pass>[dependencies.size()];
+			else
+				k->dependencies = nullptr;
 			k->dependencyCount = static_cast<int>(dependencies.size());
 			int i = 0;
 			for (auto dp : dependencies)
