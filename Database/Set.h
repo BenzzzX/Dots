@@ -105,6 +105,19 @@ namespace core
 				}
 			};
 
+			int get_size() const
+			{
+				return sizeof(T) * length;
+			}
+
+			set clone(char*& buffer) const
+			{
+				set s{ (T*)buffer, length };
+				std::memcpy(buffer, data, sizeof(T) * length);
+				buffer += sizeof(T) * length;
+				return s;
+			}
+
 			static set merge(const set& lhs, const set& rhs, T* dst)
 			{
 				tsize_t i = 0, j = 0, k = 0;

@@ -788,43 +788,6 @@ size_t archetype::alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t m
 	return acc.get_offset(6) + sizeof(archetype);
 }
 
-size_t get_filter_size(const archetype_filter& f)
-{
-	auto totalSize = f.all.types.length * sizeof(index_t) + f.all.metatypes.length * sizeof(entity) +
-		f.any.types.length * sizeof(index_t) + f.any.metatypes.length * sizeof(entity) +
-		f.none.types.length * sizeof(index_t) + f.none.metatypes.length * sizeof(entity) +
-		f.owned.length * sizeof(index_t) + f.shared.length * sizeof(index_t);
-	return totalSize;
-}
-
-archetype_filter clone_filter(const archetype_filter& f, char* data)
-{
-	archetype_filter f2;
-	auto write = [&](const typeset& t, typeset& r)
-	{
-		r.data = (index_t*)data; r.length = t.length;
-		memcpy(data, t.data, t.length * sizeof(index_t));
-		data += t.length * sizeof(index_t);
-	};
-	auto writemeta = [&](const metaset& t, metaset& r)
-	{
-		r.data = (entity*)data; r.length = t.length;
-		memcpy(data, t.data, t.length * sizeof(entity));
-		data += t.length * sizeof(entity);
-	};
-	auto writetype = [&](const entity_type& t, entity_type& r)
-	{
-		write(t.types, r.types);
-		writemeta(t.metatypes, r.metatypes);
-	};
-	writetype(f.all, f2.all);
-	writetype(f.any, f2.any);
-	writetype(f.none, f2.none);
-	write(f.owned, f2.owned);
-	write(f.shared, f2.shared);
-	return f2;
-}
-
 world::query_cache& world::get_query_cache(const archetype_filter& f)
 {
 	auto iter = queries.find(f);
@@ -887,10 +850,10 @@ world::query_cache& world::get_query_cache(const archetype_filter& f)
 		}
 		cache.includeClean = includeClean;
 		cache.includeDisabled = includeDisabled;
-		auto totalSize = get_filter_size(f);
+		auto totalSize = f.get_size();
 		cache.data.reset(new char[totalSize]);
 		char* data = cache.data.get();
-		cache.filter = clone_filter(f, data);
+		cache.filter = f.clone(data);
 		queries[cache.filter] = std::move(cache);
 		return queries[cache.filter];
 	}
@@ -2878,4 +2841,66 @@ void core::database::initialize()
 void entity_filter::apply(core::database::matched_archetype& ma) const
 {
 	ma.matched &= ~ma.type->get_mask(inverseMask);
+}
+
+bool chunk_filter::match(const entity_type& t, uint32_t* timestamps) const
+{
+	uint16_t i = 0, j = 0;
+	if (changed.length == 0)
+		return true;
+	while (i < changed.length && j < t.types.length)
+	{
+		if (changed[i] > t.types[j])
+			j++;
+		else if (changed[i] < t.types[j])
+			i++;
+		else if (timestamps[j] >= prevTimestamp)
+			return true;
+		else
+			(j++, i++);
+	}
+	return false;
+}
+
+int archetype_filter::get_size() const
+{
+	return all.get_size() +
+		any.get_size() +
+		none.get_size() +
+		shared.get_size() +
+		owned.get_size();
+}
+
+archetype_filter archetype_filter::clone(char*& buffer) const
+{
+	return {
+		all.clone(buffer),
+		any.clone(buffer),
+		none.clone(buffer),
+		shared.clone(buffer),
+		owned.clone(buffer)
+	};
+}
+
+int chunk_filter::get_size() const
+{
+	return changed.get_size();
+}
+
+chunk_filter chunk_filter::clone(char*& buffer) const
+{
+	return {
+		changed.clone(buffer),
+		prevTimestamp
+	};
+}
+
+int entity_filter::get_size() const
+{
+	return 0;
+}
+
+entity_filter entity_filter::clone(char*& buffer) const
+{
+	return { inverseMask };
 }

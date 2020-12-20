@@ -174,6 +174,8 @@ def get_##Name##_v = get_##Name<T>::value;
 			archetype_filter archetypeFilter;
 			chunk_filter chunkFilter;
 			entity_filter entityFilter;
+			ECS_API int get_size() const;
+			ECS_API filters clone(char*& buffer) const;
 		};
 
 		struct task
@@ -242,14 +244,12 @@ def get_##Name##_v = get_##Name<T>::value;
 			mask* matched;
 			index_t* localType;
 			int archetypeCount;
-			chunk** chunks;
-			int chunkCount;
 			index_t* types;
 			index_t* readonly;
 			index_t* randomAccess;
 			int paramCount;
-			int entityCount;
 			bool hasRandomWrite;
+			filters filter;
 		};
 
 		struct pass : pass_t<> {};
@@ -346,6 +346,8 @@ def get_##Name##_v = get_##Name<T>::value;
 			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			template<class P = pass>
 			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
+			template<class P = pass>
+			uint32_t pass_size(P& p);
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 			/*** per chunk slice ***/

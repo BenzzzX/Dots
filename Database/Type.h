@@ -1006,6 +1006,20 @@ namespace core
 				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, metaDst);
 				return { ts, ms };
 			}
+
+			int get_size() const
+			{
+				return types.get_size() + 
+					metatypes.get_size();
+			}
+
+			entity_type clone(char*& buffer) const
+			{
+				return { 
+					types.clone(buffer), 
+					metatypes.clone(buffer) 
+				};
+			}
 		};
 
 		ECS_API extern const entity_type EmptyType;
@@ -1043,6 +1057,9 @@ namespace core
 					shared == other.shared && owned == other.owned;
 			}
 
+			ECS_API int get_size() const;
+			ECS_API archetype_filter clone(char*& buffer) const;
+
 			bool match(const entity_type& t, const typeset& sharedT) const;
 		};
 
@@ -1066,24 +1083,10 @@ namespace core
 				return changed == other.changed && prevTimestamp == other.prevTimestamp;
 			}
 
-			bool match(const entity_type& t, uint32_t* timestamps) const
-			{
-				uint16_t i = 0, j = 0;
-				if (changed.length == 0)
-					return true;
-				while (i < changed.length && j < t.types.length)
-				{
-					if (changed[i] > t.types[j])
-						j++;
-					else if (changed[i] < t.types[j])
-						i++;
-					else if (timestamps[j] >= prevTimestamp)
-						return true;
-					else
-						(j++, i++);
-				}
-				return false;
-			}
+			ECS_API int get_size() const;
+			ECS_API chunk_filter clone(char*& buffer) const;
+
+			bool match(const entity_type& t, uint32_t* timestamps) const;
 		};
 
 
@@ -1107,6 +1110,9 @@ namespace core
 			{
 				return inverseMask == other.inverseMask;
 			}
+
+			ECS_API int get_size() const;
+			ECS_API entity_filter clone(char*& buffer) const;
 		};
 	}
 	

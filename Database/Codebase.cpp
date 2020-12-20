@@ -399,3 +399,19 @@ void pipeline::merge_chunks()
 	sync_all();
 	world::merge_chunks();
 }
+
+int filters::get_size() const
+{
+	return archetypeFilter.get_size() +
+		chunkFilter.get_size() +
+		entityFilter.get_size();
+}
+
+filters filters::clone(char*& buffer) const
+{
+	return {
+		archetypeFilter.clone(buffer),
+		chunkFilter.clone(buffer),
+		entityFilter.clone(buffer)
+	};
+}

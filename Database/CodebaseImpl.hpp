@@ -25,22 +25,11 @@ namespace core
 			auto archs = query(v.archetypeFilter);
 			constexpr size_t bits = std::numeric_limits<index_t>::digits;
 			const auto bal = paramCount / bits + 1;
-			chunk_vector<chunk*> chunks;
-			size_t entityCount = 0;
-			if (v.chunkFilter.changed.length > 0)
-				for (auto i : archs)
-					sync_archetype(i.type);
-			for (auto i : archs)
-			for (auto j : world::query(i.type, v.chunkFilter))
-			{
-				chunks.push(j);
-				entityCount += j->get_count();
-			}
 			
 			size_t bufferSize =
 				sizeof(P) //自己
+				+ v.get_size()
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
-				+ chunks.size * sizeof(chunk*) // chunks
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)::malloc(bufferSize);
@@ -49,11 +38,8 @@ namespace core
 			buffer += sizeof(P);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
-			k->chunkCount = (int)chunks.size;
-			k->entityCount = entityCount;
 			k->paramCount = (int)paramCount;
 			k->archetypes = allocate_inplace<archetype*>(buffer, archs.size);
-			k->chunks = allocate_inplace<chunk*>(buffer, chunks.size);
 			k->matched = allocate_inplace<mask>(buffer, archs.size);
 			k->types = allocate_inplace<index_t>(buffer, paramCount);
 			k->readonly = allocate_inplace<index_t>(buffer, bal);
@@ -61,6 +47,7 @@ namespace core
 			memset(k->readonly, 0, sizeof(index_t) * bal);
 			memset(k->randomAccess, 0, sizeof(index_t) * bal);
 			k->localType = allocate_inplace<index_t>(buffer, paramCount * archs.size);
+			k->filter = v.clone(buffer);
 			k->hasRandomWrite = false;
 			int t = 0;
 			hana::for_each(paramList, [&](auto p)
@@ -75,7 +62,6 @@ namespace core
 					t++;
 				});
 			int counter = 0;
-			chunks.flatten(k->chunks);
 			for (auto i : archs)
 			{
 				k->archetypes[counter] = i.type;
@@ -92,33 +78,44 @@ namespace core
 		template<class P>
 		chunk_vector<task> pipeline::create_tasks(P& k, int maxSlice)
 		{
-			uint32_t count = k.chunkCount;
-			int archIndex = 0;
 			int indexInKernel = 0;
 			chunk_vector<task> result;
-			forloop(i, 0, count)
-			{
-				chunk* c = k.chunks[i];
-				for (; k.archetypes[archIndex] != c->get_type(); ++archIndex);
-				uint32_t allocated = 0;
-				while (allocated != c->get_count())
+			forloop(i, 0, k.archetypeCount)
+				for (auto c : k.ctx.query(k.archetypes[i], k.filter.chunkFilter))
 				{
-					uint32_t sliceCount;
-					if (maxSlice == -1)
-						sliceCount = std::min(c->get_count() - allocated, c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
-					else
-						sliceCount = std::min(c->get_count() - allocated, (uint32_t)maxSlice);
-					task newTask{ };
-					newTask.matched = archIndex;
-					newTask.slice = chunk_slice{ c, allocated, sliceCount };
-					newTask.indexInKernel = indexInKernel;
-					allocated += sliceCount;
-					indexInKernel += sliceCount;
-					result.push(newTask);
+					uint32_t allocated = 0;
+					while (allocated != c->get_count())
+					{
+						uint32_t sliceCount;
+						if (maxSlice == -1)
+							sliceCount = std::min(c->get_count() - allocated, c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
+						else
+							sliceCount = std::min(c->get_count() - allocated, (uint32_t)maxSlice);
+						task newTask{ };
+						newTask.matched = i;
+						newTask.slice = chunk_slice{ c, allocated, sliceCount };
+						newTask.indexInKernel = indexInKernel;
+						allocated += sliceCount;
+						indexInKernel += sliceCount;
+						result.push(newTask);
+					}
 				}
-			}
 			return result;
 		}
+
+		template<class P>
+		uint32_t pipeline::pass_size(P& k)
+		{
+			uint32_t entityCount = 0;
+			if (k.filter.chunkFilter.changed.length > 0)
+				forloop(i, 0, k.archetypeCount)
+					sync_archetype(k.archetypes[i]);
+			forloop(i, 0, k.archetypeCount)
+			for (auto j : world::query(k.archetypes[i], k.filter.chunkFilter))
+				entityCount += j->get_count();
+			return entityCount;
+		}
+
 		namespace detail
 		{
 			struct weak_ptr_compare
@@ -181,13 +178,12 @@ namespace core
 					continue;
 
 				auto entries = (*iter).second.get();
-				forloop(j, 0, k->paramCount)
+				auto sync_entry = [&](index_t localType, bool readonly)
 				{
-					auto localType = k->localType[i * k->paramCount + j];
 					if (localType == InvalidIndex || localType > at->firstTag)
-						continue;
+						return;
 					auto& entry = entries[localType];
-					if (check_bit(k->readonly, j))
+					if (readonly)
 					{
 						if (!entry.owned.expired())
 							dependencies.insert(entry.owned);
@@ -197,13 +193,24 @@ namespace core
 					else
 					{
 						for (auto& dp : entry.shared)
-							if(!dp.expired())
+							if (!dp.expired())
 								dependencies.insert(dp);
 						if (entry.shared.empty() && !entry.owned.expired())
 							dependencies.insert(entry.owned);
 						entry.shared.clear();
 						entry.owned = k;
 					}
+				};
+				forloop(j, 0, k->paramCount)
+				{
+					auto localType = k->localType[i * k->paramCount + j];
+					sync_entry(localType, check_bit(k->readonly, j));
+				}
+				auto& changed = k->filter.chunkFilter.changed;
+				forloop(j, 0, changed.length)
+				{
+					auto localType = at->index(changed[j]);
+					sync_entry(localType, true);
 				}
 			}
 			if (dependencies.size() > 0)
