@@ -11,8 +11,6 @@ type* name = (type*)_ao_##name.self;
 using namespace core;
 using namespace database;
 
-constexpr uint16_t InvalidIndex = (uint16_t)-1;
-
 namespace core
 {
 	bool operator<(const GUID& lhs, const GUID& rhs)
@@ -1054,10 +1052,15 @@ archetype* world::get_archetype(const entity_type& key)
 	return g;
 }
 
+archetype* world::get_archetype(chunk_slice s) const noexcept
+{
+	return s.c->type;
+}
+
 void world::add_archetype(archetype* g)
 {
-	archetypes.insert({ g->get_type(), g });
 	update_queries(g, true);
+	archetypes.insert({ g->get_type(), g });
 }
 
 archetype* world::get_cleaning(archetype* g)
@@ -1435,6 +1438,17 @@ void world::prefab_to_group(entity* members, uint32_t size)
 	}
 }
 
+chunk_vector<chunk_slice> world::instantiate_group(buffer* group, uint32_t count)
+{
+	uint32_t size = group->size / sizeof(entity);
+	AO(entity, members, group->size);
+	memcpy(members, group->data(), group->size);
+	group_to_prefab(members, size);
+	auto result = instantiate_prefab(members, size, count);
+	prefab_to_group(members, size);
+	return result;
+}
+
 chunk_vector<chunk_slice> world::instantiate_prefab(entity* src, uint32_t size, uint32_t count)
 {
 	chunk_vector<chunk_slice> allSlices;
@@ -1511,6 +1525,19 @@ void world::serialize_single(serializer_i* s, entity src)
 	const auto& data = ents.datas[src.id];
 	serialize_archetype(data.c->type, s);
 	serialize_slice({ data.c, data.i, 1 }, s);
+}
+
+void world::serialize_group(serializer_i* s, buffer* group)
+{
+	uint32_t size = group->size / sizeof(entity);
+	stack_array(entity, members, size);
+	memcpy(members, group->data(), group->size);
+	group_to_prefab(members, size, false);
+	forloop(i, 0, size)
+	{
+		serialize_single(s, members[i]);
+	}
+	prefab_to_group(members, size);
 }
 
 void world::structural_change(archetype* g, chunk* c)
@@ -1806,10 +1833,33 @@ world::world(const world& other)
 	}
 }
 
+world::world(world&& other)
+	:archetypes(std::move(other.archetypes)),
+	queries(std::move(other.queries)),
+	ents(std::move(other.ents)),
+	typeTimestamps(other.typeTimestamps),
+	typeCapacity(other.typeCapacity),
+	timestamp(other.timestamp)
+{
+	other.typeTimestamps = nullptr;
+}
+
 world::~world()
 {
 	clear();
-	free(typeTimestamps);
+	if(typeTimestamps != nullptr)
+		free(typeTimestamps);
+}
+
+void world::operator=(world&& other)
+{
+	archetypes = std::move(other.archetypes);
+	queries = std::move(other.queries);
+	ents = std::move(other.ents);
+	typeTimestamps = other.typeTimestamps;
+	other.typeTimestamps = nullptr;
+	typeCapacity = other.typeCapacity;
+	timestamp = other.timestamp;
 }
 
 chunk_vector<chunk_slice> world::allocate(const entity_type& type, uint32_t count)
@@ -1843,13 +1893,7 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 	else
 	{
-		uint32_t size = group_data->size / sizeof(entity);
-		AO(entity, members, group_data->size);
-		memcpy(members, group_data->data(), group_data->size);
-		group_to_prefab(members, size);
-		auto result = instantiate_prefab(members, size, count);
-		prefab_to_group(members, size);
-		return result;
+		return instantiate_group(group_data, count);
 	}
 }
 
@@ -2159,16 +2203,7 @@ void world::serialize(serializer_i* s, entity src)
 		serialize_single(s, src);
 	else
 	{
-		uint32_t size = group_data->size / sizeof(entity);
-		stack_array(entity, members, size);
-		memcpy(members, group_data->data(), group_data->size);
-		group_to_prefab(members, size, false);
-		forloop(i, 0, size)
-		{
-			src = members[i];
-			serialize_single(s, src);
-		}
-		prefab_to_group(members, size);
+		serialize_group(s, group_data);
 	}
 }
 
@@ -2330,7 +2365,8 @@ void world::deserialize(serializer_i* s)
 
 void world::clear()
 {
-	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+	if(typeTimestamps)
+		memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
 	for (auto& g : archetypes)
 	{
 		chunk* c = g.second->firstChunk;
@@ -2465,7 +2501,6 @@ bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 		return true;
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
-	g->timestamps(c)[id] = timestamp;
 	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
 	return (m & mm) == mm;
 }
@@ -2612,17 +2647,21 @@ chunk_vector<chunk*> world::query(archetype* type, const chunk_filter& filter)
 {
 	chunk_vector<chunk*> result;
 	auto iter = type->firstChunk;
+	if (filter.changed.length == 0)
+	{
+		while(iter != nullptr)
+		{
+			result.push(iter);
+			iter = iter->next;
+		}
+		return result;
+	}
 
 	while (iter != nullptr)
 	{
 		if (filter.match(type->get_type(), type->timestamps(iter)))
-		{
-			chunk* c = iter;
-			iter = c->next;
-			result.push(c);
-		}
-		else
-			iter = iter->next;
+			result.push(iter);
+		iter = iter->next;
 	}
 	return result;
 }

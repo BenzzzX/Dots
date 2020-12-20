@@ -354,7 +354,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			return { true, target.ptr->entry };
 		}
 
-		class pipeline //计算管线，Database 的多线程交互封装
+		class pipeline : protected world //计算管线，Database 的多线程交互封装
 		{
 		protected:
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
@@ -365,22 +365,94 @@ def get_##Name##_v = get_##Name<T>::value;
 			template<class P>
 			void setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
-			world& ctx;
 			int passIndex;
-			void sync_archetype(archetype* at);
-			void sync_entry(archetype* at, index_t type);
+			void sync_archetype(archetype* at) const;
+			void sync_entry(archetype* at, index_t type) const;
+			virtual void sync_dependencies(gsl::span<custom_pass*> dependencies) const {}
+			virtual void sync_all() const {}
+			friend class world;
 		public:
-			CODE_API pipeline(world& ctx);
+			CODE_API pipeline(world&& ctx);
 			CODE_API ~pipeline();
+			CODE_API world release();
 			template<class P = pass, class T>
 			std::shared_ptr<P> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
 			template<class P = custom_pass>
 			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			template<class P = pass>
 			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
-			CODE_API int get_timestamp() { return ctx.timestamp; }
-			CODE_API void inc_timestamp() { ++ctx.timestamp; }
-			std::function<void(gsl::span<custom_pass*> dependencies)> on_sync;
+
+#define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
+			/*** per chunk slice ***/
+			//create
+			CODE_API chunk_vector<chunk_slice> allocate(const entity_type& type, uint32_t count = 1);
+			CODE_API chunk_vector<chunk_slice> allocate(archetype* g, uint32_t count = 1);
+			CODE_API chunk_vector<chunk_slice> instantiate(entity src, uint32_t count = 1);
+
+			//stuctural change
+			CODE_API void destroy(chunk_slice s);
+			/* note: return null if trigger chunk move or chunk clean up */
+			CODE_API chunk_vector<chunk_slice> cast(chunk_slice s, type_diff diff);
+			CODE_API chunk_vector<chunk_slice> cast(chunk_slice s, const entity_type& type);
+
+			//archetype behavior, lifetime
+			using world::get_archetype;
+			using world::get_cleaning;
+			using world::is_cleaned;
+			using world::get_casted;
+			CODE_API chunk_vector<chunk_slice> cast(chunk_slice s, archetype* g);
+
+			//query iterators
+			using world::batch;
+			using world::query;
+			CODE_API chunk_vector<chunk*> query(archetype* g, const chunk_filter& filter = {});
+			using world::get_archetypes;
+
+
+			/*** per entity ***/
+			//query
+			CODE_API const void* get_component_ro(entity e, index_t type) const noexcept;
+			CODE_API const void* get_owned_ro(entity e, index_t type) const noexcept;
+			CODE_API const void* get_shared_ro(entity e, index_t type) const noexcept;
+			using world::is_a;
+			using world::share_component;
+			using world::has_component;
+			using world::own_component;
+			CODE_API bool is_component_enabled(entity e, const typeset& type) const noexcept;
+			using world::exist;
+			//update
+			CODE_API void* get_owned_rw(entity e, index_t type) const noexcept;
+			CODE_API void enable_component(entity e, const typeset& type) const noexcept;
+			CODE_API void disable_component(entity e, const typeset& type) const noexcept;
+			using world::get_type; /* note: only owned */
+			//entity/group serialize
+			CODE_API chunk_vector<entity> gather_reference(entity e);
+			CODE_API void serialize(serializer_i* s, entity e);
+			CODE_API chunk_slice deserialize_single(serializer_i* s, patcher_i* patcher);
+			CODE_API entity deserialize(serializer_i* s, patcher_i* patcher);
+
+			/*** per chunk or archetype ***/
+			//query
+			CODE_API const void* get_component_ro(chunk* c, index_t t) const noexcept;
+			CODE_API const void* get_owned_ro(chunk* c, index_t t) const noexcept;
+			CODE_API const void* get_shared_ro(chunk* c, index_t t) const noexcept;
+			CODE_API void* get_owned_rw(chunk* c, index_t t) noexcept;
+			using world::get_entities;
+			using world::get_size;
+			CODE_API const void* get_shared_ro(archetype* g, index_t type) const;
+
+			/*** per world ***/
+			CODE_API void move_context(world& src);
+			CODE_API void patch_chunk(chunk* c, patcher_i* patcher);
+			//serialize
+			CODE_API void serialize(serializer_i* s);
+			CODE_API void deserialize(serializer_i* s);
+			//clear
+			using world::gc_meta;
+			CODE_API void merge_chunks();
+			//query
+			using world::get_timestamp;
+			using world::inc_timestamp;
 		};
 }
 	/*

@@ -10,7 +10,7 @@ namespace core
 		std::shared_ptr<P> pipeline::create_custom_pass(gsl::span<shared_entry> sharedEntries)
 		{
 			char* buffer = (char*)::malloc(sizeof(P));
-			P* k = new(buffer) P{ ctx };
+			P* k = new(buffer) P{ *this };
 			std::shared_ptr<P> ret{ k };
 			k->passIndex = passIndex++;
 			setup_custom_pass_dependency(ret, sharedEntries);
@@ -22,13 +22,13 @@ namespace core
 			static_assert(hana::is_a<hana::tuple_tag>(paramList), "parameter list should be a hana::list");
 
 			auto paramCount = hana::length(paramList).value;
-			auto archs = ctx.query(v.archetypeFilter);
+			auto archs = query(v.archetypeFilter);
 			constexpr size_t bits = std::numeric_limits<index_t>::digits;
 			const auto bal = paramCount / bits + 1;
 			chunk_vector<chunk*> chunks;
 			size_t entityCount = 0;
 			for (auto i : archs)
-				for (auto j : ctx.query(i.type, v.chunkFilter))
+				for (auto j : query(i.type, v.chunkFilter))
 				{
 					chunks.push(j);
 					entityCount += j->get_count();
@@ -40,7 +40,7 @@ namespace core
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)::malloc(bufferSize);
-			P* k = new(buffer) P{ ctx };
+			P* k = new(buffer) P{ *this };
 			std::shared_ptr<P> ret{ k };
 			buffer += sizeof(P);
 			k->passIndex = passIndex++;

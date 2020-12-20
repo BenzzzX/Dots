@@ -401,6 +401,8 @@ namespace core
 			constexpr operator index_t() const { return value; }
 		};
 
+		constexpr uint16_t InvalidIndex = (uint16_t)-1;
+
 		static constexpr size_t kFastBinSize = 64 * 1024;
 		static constexpr size_t kSmallBinThreshold = 8;
 		static constexpr size_t kSmallBinSize = 1024;

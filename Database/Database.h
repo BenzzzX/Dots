@@ -89,7 +89,7 @@ namespace core
 
 		class world
 		{
-		private:
+		protected:
 			//entity allocator
 			struct entities
 			{
@@ -172,9 +172,11 @@ namespace core
 			//group behavior
 			void group_to_prefab(entity* src, uint32_t size, bool keepExternal = true);
 			void prefab_to_group(entity* src, uint32_t count);
+			chunk_vector<chunk_slice> instantiate_group(buffer* group, uint32_t count);
 			chunk_vector<chunk_slice> instantiate_prefab(entity* src, uint32_t size, uint32_t count);
 			chunk_vector<chunk_slice> instantiate_single(entity src, uint32_t count);
 			void serialize_single(serializer_i* s, entity);
+			void serialize_group(serializer_i* s, buffer* g);
 			chunk_slice deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
 
@@ -187,8 +189,9 @@ namespace core
 		public:
 			ECS_API world(index_t typeCapacity = 4096u);
 			ECS_API world(const world& other/*todo: ,archetype_filter*/);
+			ECS_API world(world&& other);
 			ECS_API ~world();
-			
+			ECS_API void operator=(world&& other);
 
 			/*** per chunk slice ***/
 			//create
@@ -205,6 +208,7 @@ namespace core
 
 			//archetype behavior, lifetime
 			ECS_API archetype* get_archetype(const entity_type&);
+			ECS_API archetype* get_archetype(chunk_slice) const noexcept;
 			ECS_API archetype* get_cleaning(archetype*);
 			ECS_API bool is_cleaned(const entity_type&);
 			ECS_API archetype* get_casted(archetype*, type_diff diff, bool inst = false);
@@ -267,13 +271,15 @@ namespace core
 			ECS_API void merge_chunks();
 			//query
 			uint32_t timestamp;
+			ECS_API int get_timestamp() { return timestamp; }
+			ECS_API void inc_timestamp() { ++timestamp; }
 
 			std::function<void(archetype*, bool)> on_archetype_update;
 		};
 
 		struct chunk
 		{
-		private:
+		public:
 			chunk *next, *prev;
 			archetype* type;
 			uint32_t count;
@@ -302,9 +308,6 @@ namespace core
 			void clone(chunk*) noexcept;
 			char* data() { return (char*)(this + 1); }
 			const char* data() const { return (char*)(this + 1); }
-			friend world; 
-			friend archetype;
-			friend world::entities;
 		public:
 			ECS_API uint32_t get_count() { return count; }
 			ECS_API mask get_mask(const typeset& ts) { return type->get_mask(ts); }
