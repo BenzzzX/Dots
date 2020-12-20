@@ -28,16 +28,13 @@ namespace core
 			chunk_vector<chunk*> chunks;
 			size_t entityCount = 0;
 			if (v.chunkFilter.changed.length > 0)
-			{
 				for (auto i : archs)
-				{
 					sync_archetype(i.type);
-					for (auto j : world::query(i.type, v.chunkFilter))
-					{
-						chunks.push(j);
-						entityCount += j->get_count();
-					}
-				}
+			for (auto i : archs)
+			for (auto j : world::query(i.type, v.chunkFilter))
+			{
+				chunks.push(j);
+				entityCount += j->get_count();
 			}
 			
 			size_t bufferSize =

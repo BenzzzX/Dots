@@ -8,4 +8,4 @@ Debug
 .VSCodeCounter
 packages
 build
-!CodebaseTest/lib/**
+!DatabaseTest/lib/**
