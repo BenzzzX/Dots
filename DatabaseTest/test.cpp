@@ -1,5 +1,4 @@
 #include "pch.h"
-#include "Database.h"
 #define forloop(i, z, n) for(auto i = decltype(n)(z); i<n; ++i)
 
 
@@ -900,12 +899,4 @@ void install_test_components()
 	tid<test_tag> = register_type({ false, false, false,
 		"6AB0D784-CD4A-4EB1-8CF9-EE8C6BADEB81"_guid,
 		0 });
-}
-
-int main(int argc, char** argv)
-{
-	::testing::InitGoogleTest(&argc, argv);
-	core::database::initialize();
-	install_test_components();
-	return RUN_ALL_TESTS();
 }

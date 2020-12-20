@@ -102,6 +102,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,6 +137,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -145,11 +147,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Codebase.cpp" />
     <ClCompile Include="Database.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Codebase.h" />
+    <ClInclude Include="CodebaseImpl.hpp" />
     <ClInclude Include="Database.h" />
-    <ClInclude Include="ECS.h" />
     <ClInclude Include="Set.h" />
     <ClInclude Include="Type.h" />
   </ItemGroup>

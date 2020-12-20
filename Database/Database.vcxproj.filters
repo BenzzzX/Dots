@@ -18,6 +18,9 @@
     <ClCompile Include="Database.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Codebase.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Set.h">
@@ -29,7 +32,10 @@
     <ClInclude Include="Database.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ECS.h">
+    <ClInclude Include="Codebase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CodebaseImpl.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
