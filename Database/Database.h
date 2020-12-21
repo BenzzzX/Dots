@@ -69,7 +69,7 @@ namespace core
 			tsize_t index(index_t type) noexcept;
 			mask get_mask(const typeset& subtype) noexcept;
 
-			inline entity_type get_type();
+			inline entity_type get_type() const;
 
 			size_t get_size();
 		};
@@ -130,13 +130,13 @@ namespace core
 			using archetypes_t = std::unordered_map<entity_type, archetype*, entity_type::hash>;
 
 			archetypes_t archetypes;
-			queries_t queries;
+			mutable queries_t queries;
 			entities ents;
 			uint32_t* typeTimestamps;
 			index_t typeCapacity;
 
 			//query behavior
-			query_cache& get_query_cache(const archetype_filter& f);
+			query_cache& get_query_cache(const archetype_filter& f) const;
 			void update_queries(archetype* g, bool add);
 			archetype_filter cache_query(const archetype_filter& type);
 
@@ -214,9 +214,9 @@ namespace core
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//query iterators
-			ECS_API chunk_vector<chunk_slice> batch(entity* ents, uint32_t count);
-			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter);
-			ECS_API chunk_vector<chunk*> query(archetype*, const chunk_filter& filter = {});
+			ECS_API chunk_vector<chunk_slice> batch(const entity* ents, uint32_t count) const;
+			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter) const;
+			ECS_API chunk_vector<chunk*> query(const archetype*, const chunk_filter& filter = {}) const;
 			ECS_API chunk_vector<archetype*> get_archetypes();
 
 

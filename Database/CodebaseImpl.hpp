@@ -104,7 +104,7 @@ namespace core
 		}
 
 		template<class P>
-		uint32_t pipeline::pass_size(P& k) const
+		uint32_t pipeline::pass_size(const P& k) const
 		{
 			uint32_t entityCount = 0;
 			if (k.filter.chunkFilter.changed.length > 0)
