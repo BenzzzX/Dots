@@ -731,9 +731,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	}
 }
 
-inline uint32_t* archetype::timestamps(chunk* c) noexcept { return (uint32_t*)((char*)c + c->get_size()) - firstTag; }
+inline uint32_t* archetype::timestamps(chunk* c) const noexcept { return (uint32_t*)((char*)c + c->get_size()) - firstTag; }
 
-tsize_t archetype::index(index_t type) noexcept
+tsize_t archetype::index(index_t type) const noexcept
 {
 	index_t* ts = types();
 	index_t* result = std::lower_bound(ts, ts + componentCount, type);
@@ -770,7 +770,7 @@ mask archetype::get_mask(const typeset& subtype) noexcept
 	return ret;
 }
 
-entity_type archetype::get_type()
+entity_type archetype::get_type() const
 {
 	index_t* ts = types();
 	entity* ms = metatypes();
@@ -788,7 +788,7 @@ size_t archetype::alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t m
 	return acc.get_offset(6) + sizeof(archetype);
 }
 
-world::query_cache& world::get_query_cache(const archetype_filter& f)
+world::query_cache& world::get_query_cache(const archetype_filter& f) const
 {
 	auto iter = queries.find(f);
 	if (iter != queries.end())
@@ -1860,7 +1860,7 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 }
 
-chunk_vector<chunk_slice> world::batch(entity* es, uint32_t count)
+chunk_vector<chunk_slice> world::batch(const entity* es, uint32_t count) const
 {
 	chunk_vector<chunk_slice> result;
 	uint32_t i = 0;
@@ -2597,7 +2597,7 @@ void world::entities::clone(entities* dst)
 	dst->free = free;
 }
 
-chunk_vector<matched_archetype> world::query(const archetype_filter& filter)
+chunk_vector<matched_archetype> world::query(const archetype_filter& filter) const
 {
 	chunk_vector<matched_archetype> result;
 	auto& cache = get_query_cache(filter);
@@ -2606,7 +2606,7 @@ chunk_vector<matched_archetype> world::query(const archetype_filter& filter)
 	return result;
 }
 
-chunk_vector<chunk*> world::query(archetype* type, const chunk_filter& filter)
+chunk_vector<chunk*> world::query(const archetype* type, const chunk_filter& filter) const
 {
 	chunk_vector<chunk*> result;
 	auto iter = type->firstChunk;
