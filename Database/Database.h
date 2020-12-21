@@ -65,8 +65,8 @@ namespace core
 			entity metatypes[metaCount];
 			*/
 			inline char* data() noexcept { return (char*)(this + 1); };
-			uint32_t* timestamps(chunk* c) noexcept;
-			tsize_t index(index_t type) noexcept;
+			uint32_t* timestamps(chunk* c) const  noexcept;
+			tsize_t index(index_t type) const  noexcept;
 			mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type() const;
