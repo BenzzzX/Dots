@@ -581,8 +581,6 @@ namespace core
 			const T& operator[](size_t i) const noexcept { return *get(data, i); }
 		};
 
-		ECS_API extern uint32_t metaTimestamp;
-
 		struct serializer_i
 		{
 			virtual void stream(const void* data, uint32_t bytes) = 0;
@@ -636,10 +634,16 @@ namespace core
 
 		ECS_API index_t register_type(component_desc desc);
 
-		ECS_API extern index_t disable_id;
-		ECS_API extern index_t cleanup_id;
-		ECS_API extern index_t group_id;
-		ECS_API extern index_t mask_id;
+		struct builtin_id
+		{
+			index_t disable_id;
+			index_t cleanup_id;
+			index_t group_id;
+			index_t mask_id;
+		};
+
+		ECS_API builtin_id get_builtin();
+		
 		constexpr uint32_t GroupBufferSize = sizeof(entity) * 5;
 
 		inline void* buffer_malloc(size_t size)
@@ -1008,7 +1012,7 @@ namespace core
 			}
 		};
 
-		ECS_API extern const entity_type EmptyType;
+		constexpr entity_type EmptyType;
 
 		struct archetype_filter
 		{

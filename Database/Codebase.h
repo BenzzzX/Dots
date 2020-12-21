@@ -81,7 +81,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		}
 
 		template<class ...Ts>
-		void register_components()
+		void declare_components()
 		{
 			std::initializer_list<int> _{ (register_component<Ts>(), 0)... };
 		}

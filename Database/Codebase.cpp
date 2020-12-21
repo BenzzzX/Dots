@@ -96,10 +96,11 @@ void pipeline::sync_entry(archetype* at, index_t type) const
 
 void core::codebase::initialize()
 {
-	cid<group> = group_id;
-	cid<disable> = disable_id;
-	cid<cleanup> = cleanup_id;
-	cid<mask> = mask_id;
+	auto bi = get_builtin();
+	cid<group> = bi.group_id;
+	cid<disable> = bi.disable_id;
+	cid<cleanup> = bi.cleanup_id;
+	cid<mask> = bi.mask_id;
 }
 
 void custom_pass::release_dependencies()
@@ -123,7 +124,7 @@ chunk_vector<chunk_slice> pipeline::allocate(const entity_type& type, uint32_t c
 
 chunk_vector<chunk_slice> pipeline::instantiate(entity src, uint32_t count)
 {
-	auto group_data = (buffer*)get_component_ro(src, group_id);
+	auto group_data = (buffer*)get_component_ro(src, get_builtin().group_id);
 	if (group_data == nullptr)
 	{
 		sync_archetype(get_archetype(src));
@@ -224,8 +225,8 @@ bool pipeline::is_component_enabled(entity e, const typeset& type) const noexcep
 	if (!g->withMask)
 		return true;
 	mask mm = g->get_mask(type);
-	auto id = g->index(mask_id);
-	sync_entry(g, mask_id);
+	auto id = g->index(get_builtin().mask_id);
+	sync_entry(g, get_builtin().mask_id);
 	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	return (m & mm) == mm;
 }
@@ -252,8 +253,8 @@ void pipeline::enable_component(entity e, const typeset& type) const noexcept
 	if (!g->withMask)
 		return;
 	mask mm = g->get_mask(type);
-	auto id = g->index(mask_id);
-	sync_entry(g, mask_id);
+	auto id = g->index(get_builtin().mask_id);
+	sync_entry(g, get_builtin().mask_id);
 	g->timestamps(c)[id] = timestamp;
 	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m |= mm;
@@ -267,8 +268,8 @@ void pipeline::disable_component(entity e, const typeset& type) const noexcept
 	if (!g->withMask)
 		return;
 	mask mm = g->get_mask(type);
-	auto id = g->index(mask_id);
-	sync_entry(g, mask_id);
+	auto id = g->index(get_builtin().mask_id);
+	sync_entry(g, get_builtin().mask_id);
 	g->timestamps(c)[id] = timestamp;
 	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m &= ~mm;
@@ -281,7 +282,7 @@ chunk_vector<entity> pipeline::gather_reference(entity e)
 }
 void pipeline::serialize(serializer_i* s, entity e)
 {
-	auto group_data = (buffer*)get_component_ro(e, group_id);
+	auto group_data = (buffer*)get_component_ro(e, get_builtin().group_id);
 	if (group_data == nullptr)
 	{
 		sync_archetype(world::get_archetype(e));
@@ -314,7 +315,7 @@ entity pipeline::deserialize(serializer_i* s, patcher_i* patcher)
 	};
 	auto slice = deserialize_single(s, patcher);
 	entity src = first_entity(slice);
-	auto group_data = (buffer*)get_component_ro(src, group_id);
+	auto group_data = (buffer*)get_component_ro(src, get_builtin().group_id);
 	if (group_data != nullptr)
 	{
 		uint32_t size = group_data->size / sizeof(entity);

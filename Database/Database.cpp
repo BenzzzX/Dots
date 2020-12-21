@@ -32,12 +32,20 @@ struct type_data
 	component_vtable vtable;
 };
 
-ECS_API const entity_type core::database::EmptyType;
-ECS_API uint32_t core::database::metaTimestamp = 0;
-ECS_API index_t core::database::disable_id = 0;
-ECS_API index_t core::database::cleanup_id = 1;
-ECS_API index_t core::database::group_id = 2;
-ECS_API index_t core::database::mask_id = 3;
+index_t disable_id = 0;
+index_t cleanup_id = 1;
+index_t group_id = 2;
+index_t mask_id = 3;
+
+builtin_id core::database::get_builtin()
+{
+	return {
+		disable_id,
+		cleanup_id,
+		group_id,
+		mask_id
+	};
+}
 
 void* stack_allocator::alloc(size_t size, size_t align)
 {
@@ -246,6 +254,11 @@ component_vtable& set_vtable(index_t m)
 
 index_t database::register_type(component_desc desc)
 {
+	{
+		auto i = gd.hash2type.find(desc.GUID);
+		if (i != gd.hash2type.end())
+			return i->second;
+	}
 	uint32_t rid = -1;
 	if (desc.entityRefs != nullptr)
 	{
