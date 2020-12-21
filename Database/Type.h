@@ -581,20 +581,6 @@ namespace core
 			const T& operator[](size_t i) const noexcept { return *get(data, i); }
 		};
 
-		template<class... Ts>
-		struct soa
-		{
-			static constexpr int sizes[sizeof...(Ts)] = { sizeof(Ts)... };
-			uint16_t dims[sizeof...(Ts)];
-			uint32_t get_offset(int dim)
-			{
-				uint32_t size = 0;
-				for (int i = 0; i < dim; ++i)
-					size += dims[i] * sizes[i];
-				return size;
-			}
-		};
-
 		ECS_API extern uint32_t metaTimestamp;
 
 		struct serializer_i

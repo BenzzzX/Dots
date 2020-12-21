@@ -46,6 +46,11 @@ namespace core
 			uint32_t timestamp;
 			uint32_t size;
 			uint32_t entitySize;
+			index_t* types;
+			uint32_t* offsets[3];
+			uint16_t* sizes;
+			entity* metatypes;
+
 			bool disabled;
 			bool cleaning;
 			bool copying;
@@ -59,20 +64,14 @@ namespace core
 			uint16_t sizes[firstTag];
 			entity metatypes[metaCount];
 			*/
-			using data_t = soa<index_t, uint32_t, uint32_t, uint32_t, uint16_t, entity>;
-			inline data_t accessor() noexcept { return { componentCount, firstTag, firstTag, firstTag, firstTag, metaCount }; }
 			inline char* data() noexcept { return (char*)(this + 1); };
-			inline index_t* types() noexcept { return (index_t*)data(); }
-			inline uint32_t* offsets(alloc_type type) noexcept { return  (uint32_t*)(data() + accessor().get_offset(1 + (int)type)); }
-			inline uint16_t* sizes() noexcept { return (uint16_t*)(data() + accessor().get_offset(4)); }
-			inline entity* metatypes() noexcept { return (entity*)(data() + accessor().get_offset(5)); }
 			uint32_t* timestamps(chunk* c) noexcept;
 			tsize_t index(index_t type) noexcept;
 			mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type();
 
-			static size_t alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t firstMeta);
+			size_t get_size();
 		};
 
 		struct matched_archetype

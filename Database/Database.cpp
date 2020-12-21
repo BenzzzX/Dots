@@ -306,8 +306,8 @@ void chunk::unlink() noexcept
 void chunk::clone(chunk* dst) noexcept
 {
 	memcpy(dst, this, get_size());
-	uint32_t* offsets = type->offsets(ct);
-	uint16_t* sizes = type->sizes();
+	uint32_t* offsets = type->offsets[(int)ct];
+	uint16_t* sizes = type->sizes;
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
 		char* src = data() + offsets[i] + sizes[i];
@@ -334,8 +334,8 @@ uint32_t chunk::get_timestamp(index_t t) noexcept
 void chunk::move(chunk_slice dst, tsize_t srcIndex) noexcept
 {
 	chunk* src = dst.c;
-	uint32_t* offsets = src->type->offsets(src->ct);
-	uint16_t* sizes = src->type->sizes();
+	uint32_t* offsets = src->type->offsets[(int)src->ct];
+	uint16_t* sizes = src->type->sizes;
 	forloop(i, 0, src->type->firstTag)
 		memcpy(
 			src->data() + offsets[i] + (size_t)sizes[i] * dst.start,
@@ -347,8 +347,8 @@ void chunk::move(chunk_slice dst, tsize_t srcIndex) noexcept
 void chunk::move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept
 {
 	//assert(dst.c->type == src->type)
-	uint32_t* offsets = dst.c->type->offsets(dst.c->ct);
-	uint16_t* sizes = dst.c->type->sizes();
+	uint32_t* offsets = dst.c->type->offsets[(int)dst.c->ct];
+	uint16_t* sizes = dst.c->type->sizes;
 	forloop(i, 0, dst.c->type->firstTag)
 		memcpy(
 			dst.c->data() + offsets[i] + (size_t)sizes[i] * dst.start,
@@ -361,8 +361,8 @@ void chunk::move(chunk_slice dst, const chunk* src, uint32_t srcIndex) noexcept
 void chunk::construct(chunk_slice s) noexcept
 {
 	archetype* type = s.c->type;
-	uint32_t* offsets = type->offsets(s.c->ct);
-	uint16_t* sizes = type->sizes();
+	uint32_t* offsets = type->offsets[(int)s.c->ct];
+	uint16_t* sizes = type->sizes;
 #ifndef NOINITIALIZE
 	forloop(i, 0, type->firstBuffer)
 		memset(srcData, 0, (size_t)sizes[i] * s.count);
@@ -387,9 +387,9 @@ void chunk::construct(chunk_slice s) noexcept
 void chunk::destruct(chunk_slice s) noexcept
 {
 	archetype* type = s.c->type;
-	uint32_t* offsets = type->offsets(s.c->ct);
-	uint16_t* sizes = type->sizes();
-	index_t* types = type->types();
+	uint32_t* offsets = type->offsets[(int)s.c->ct];
+	uint16_t* sizes = type->sizes;
+	index_t* types = type->types;
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
 		char* src = srcData;
@@ -426,14 +426,14 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	archetype* type = src->type;
 	archetype* dstType = dst.c->type;
 	tsize_t dstI = 0;
-	uint32_t* offsets = type->offsets(src->ct);
-	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
-	uint16_t* sizes = type->sizes();
-	index_t* types = type->types();
+	uint32_t* offsets = type->offsets[(int)src->ct];
+	uint32_t* dstOffsets = dstType->offsets[(int)dst.c->ct];
+	uint16_t* sizes = type->sizes;
+	index_t* types = type->types;
 	forloop(i, 0, type->firstBuffer)
 	{
-		tagged_index st = to_valid_type(type->types()[i]);
-		tagged_index dt = to_valid_type(dstType->types()[dstI]);
+		tagged_index st = to_valid_type(type->types[i]);
+		tagged_index dt = to_valid_type(dstType->types[dstI]);
 
 		if (st != dt)
 			continue;
@@ -442,8 +442,8 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	}
 	forloop(i, type->firstBuffer, type->firstTag)
 	{
-		tagged_index st = to_valid_type(type->types()[i]);
-		tagged_index dt = to_valid_type(dstType->types()[dstI]);
+		tagged_index st = to_valid_type(type->types[i]);
+		tagged_index dt = to_valid_type(dstType->types[dstI]);
 
 		if (st != dt)
 			continue;
@@ -468,9 +468,9 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 {
 	archetype* g = s.c->type;
-	uint32_t* offsets = g->offsets(s.c->ct);
-	uint16_t* sizes = g->sizes();
-	tagged_index* types = (tagged_index*)g->types();
+	uint32_t* offsets = g->offsets[(int)s.c->ct];
+	uint16_t* sizes = g->sizes;
+	tagged_index* types = (tagged_index*)g->types;
 	forloop(i, 0, g->firstBuffer)
 	{
 		const auto& t = gd.infos[types[i].index()];
@@ -550,9 +550,9 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
 	archetype* type = s.c->type;
-	uint32_t* offsets = type->offsets(s.c->ct);
-	uint16_t* sizes = type->sizes();
-	tagged_index* types = (tagged_index*)type->types();
+	uint32_t* offsets = type->offsets[(int)s.c->ct];
+	uint16_t* sizes = type->sizes;
+	tagged_index* types = (tagged_index*)type->types;
 	stream->stream(s.c->get_entities() + s.start, sizeof(entity) * s.count);
 
 	forloop(i, 0, type->firstTag)
@@ -610,11 +610,11 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	tsize_t dstI = 0;
 	tsize_t srcI = 0;
 	uint32_t count = dst.count;
-	uint32_t* srcOffsets = srcType->offsets(src->ct);
-	uint32_t* dstOffsets = dstType->offsets(dst.c->ct);
-	uint16_t* srcSizes = srcType->sizes();
-	uint16_t* dstSizes = dstType->sizes();
-	index_t* srcTypes = srcType->types(); index_t* dstTypes = dstType->types();
+	uint32_t* srcOffsets = srcType->offsets[(int)src->ct];
+	uint32_t* dstOffsets = dstType->offsets[(int)dst.c->ct];
+	uint16_t* srcSizes = srcType->sizes;
+	uint16_t* dstSizes = dstType->sizes;
+	index_t* srcTypes = srcType->types; index_t* dstTypes = dstType->types;
 
 	//phase0: cast all components
 	while (srcI < srcType->firstBuffer && dstI < dstType->firstBuffer)
@@ -735,7 +735,7 @@ inline uint32_t* archetype::timestamps(chunk* c) noexcept { return (uint32_t*)((
 
 tsize_t archetype::index(index_t type) noexcept
 {
-	index_t* ts = types();
+	index_t* ts = types;
 	index_t* result = std::lower_bound(ts, ts + componentCount, type);
 	if (result != ts + componentCount && *result == type)
 		return tsize_t(result - ts);
@@ -772,8 +772,8 @@ mask archetype::get_mask(const typeset& subtype) noexcept
 
 entity_type archetype::get_type()
 {
-	index_t* ts = types();
-	entity* ms = metatypes();
+	index_t* ts = types;
+	entity* ms = metatypes;
 	return entity_type
 	{
 		typeset { ts, componentCount },
@@ -782,10 +782,12 @@ entity_type archetype::get_type()
 
 }
 
-size_t archetype::alloc_size(tsize_t componentCount, tsize_t firstTag, tsize_t metaCount)
+size_t archetype::get_size()
 {
-	data_t acc{ componentCount, firstTag, firstTag, firstTag, firstTag, metaCount };
-	return acc.get_offset(6) + sizeof(archetype);
+	return sizeof(index_t) * componentCount + // types
+		sizeof(uint32_t) * firstTag * 3 + // offsets
+		sizeof(uint32_t) * firstTag + // sizes
+		sizeof(entity) * metaCount; // metatypes
 }
 
 world::query_cache& world::get_query_cache(const archetype_filter& f)
@@ -910,6 +912,12 @@ void world::remove(chunk*& h, chunk*& t, chunk* c)
 	c->unlink();
 }
 
+template<class T>
+void allocate_inline(T*& target, char*& buf, int count)
+{
+	target = (T*)buf;
+	buf += count * sizeof(T);
+}
 
 archetype* world::get_archetype(const entity_type& key)
 {
@@ -917,6 +925,7 @@ archetype* world::get_archetype(const entity_type& key)
 	if (iter != archetypes.end())
 		return iter->second;
 
+	//字典序分割
 	const tsize_t count = key.types.length;
 	tsize_t firstTag = 0;
 	tsize_t firstBuffer = 0;
@@ -934,50 +943,64 @@ archetype* world::get_archetype(const entity_type& key)
 		if (type.is_buffer()) break;
 	}
 	firstBuffer = c;
-	void* data = malloc(archetype::alloc_size(count, firstTag, metaCount));
-	archetype* g = (archetype*)data;
-	g->componentCount = count;
-	g->metaCount = metaCount;
-	g->firstBuffer = firstBuffer;
-	g->firstTag = firstTag;
-	g->cleaning = false;
-	g->copying = false;
-	g->disabled = false;
-	g->withMask = false;
-	g->withTracked = false;
-	g->zerosize = false;
-	g->chunkCount = 0;
-	g->size = 0;
-	g->timestamp = timestamp;
-	g->lastChunk = g->firstChunk = g->firstFree = nullptr;
-	index_t* types = g->types();
-	entity* metatypes = g->metatypes();
-	memcpy(types, key.types.data, count * sizeof(index_t));
-	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
+
+	//计算基本数据和 flag
+	archetype proto;
+	proto.componentCount = count;
+	proto.firstTag = firstTag;
+	proto.metaCount = metaCount;
+	proto.componentCount = count;
+	proto.metaCount = metaCount;
+	proto.firstBuffer = firstBuffer;
+	proto.firstTag = firstTag;
+	proto.cleaning = false;
+	proto.copying = false;
+	proto.disabled = false;
+	proto.withMask = false;
+	proto.withTracked = false;
+	proto.zerosize = false;
+	proto.chunkCount = 0;
+	proto.size = 0;
+	proto.timestamp = timestamp;
+	proto.lastChunk = proto.firstChunk = proto.firstFree = nullptr;
 
 	const index_t disableType = disable_id;
 	const index_t cleanupType = cleanup_id;
 	const index_t maskType = mask_id;
-
-	uint16_t* sizes = g->sizes();
-	stack_array(core::GUID, hash, firstTag);
-	stack_array(tsize_t, stableOrder, firstTag);
 	uint16_t entitySize = sizeof(entity);
 	forloop(i, 0, count)
 	{
 		auto type = (tagged_index)key.types[i];
 		if (type == disableType)
-			g->disabled = true;
+			proto.disabled = true;
 		else if (type == cleanupType)
-			g->cleaning = true;
+			proto.cleaning = true;
 		else if (type == maskType)
-			g->withMask = true;
+			proto.withMask = true;
 		if ((gd.tracks[type.index()] & NeedCC) != 0)
-			g->withTracked = true;
+			proto.withTracked = true;
 		if ((gd.tracks[type.index()] & Copying) != 0)
-			g->copying = true;
+			proto.copying = true;
 	}
+
+	//生成内敛数组
+	archetype* g = new(malloc(proto.get_size() + sizeof(archetype))) archetype(proto);
+	char* buffer = (char*)(g+1);
+	allocate_inline(g->types, buffer, count);
+	allocate_inline(g->offsets[0], buffer, firstTag);
+	allocate_inline(g->offsets[1], buffer, firstTag);
+	allocate_inline(g->offsets[2], buffer, firstTag);
+	allocate_inline(g->sizes, buffer, firstTag);
+	allocate_inline(g->metatypes, buffer, metaCount);
+	index_t* types = g->types;
+	entity* metatypes = g->metatypes;
+	memcpy(types, key.types.data, count * sizeof(index_t));
+	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
+	uint16_t* sizes = g->sizes;
+
 	stack_array(size_t, align, firstTag);
+	stack_array(core::GUID, hash, firstTag);
+	stack_array(tsize_t, stableOrder, firstTag);
 	forloop(i, 0, firstTag)
 	{
 		auto type = (tagged_index)key.types[i];
@@ -998,7 +1021,7 @@ archetype* world::get_archetype(const entity_type& key)
 		});
 	forloop(i, 0, 3)
 	{
-		uint32_t* offsets = g->offsets((alloc_type)i);
+		uint32_t* offsets = g->offsets[(int)(alloc_type)i];
 		g->chunkCapacity[i] = (uint32_t)(Caps[i] - sizeof(chunk) - sizeof(uint32_t) * firstTag) / entitySize;
 		if (g->chunkCapacity[i] == 0)
 			continue;
@@ -1033,8 +1056,8 @@ archetype* world::get_cleaning(archetype* g)
 
 	tsize_t k = 0, count = g->componentCount;
 	const index_t cleanupType = cleanup_id;
-	index_t* types = g->types();
-	entity* metatypes = g->metatypes();
+	index_t* types = g->types;
+	entity* metatypes = g->metatypes;
 
 	stack_array(index_t, dstTypes, count + 1);
 	dstTypes[k++] = cleanupType;
@@ -1772,16 +1795,16 @@ world::world(const world& other)
 		auto g = iter.second;
 		if (g->cleaning) // skip dead entities
 			continue;
-		auto size = archetype::alloc_size(g->componentCount, g->firstTag, g->metaCount);
+		auto size = g->get_size() + sizeof(archetype);
 		archetype* newG = (archetype*)::malloc(size);
 		memcpy(newG, g, size);
 
 		// mark copying stage
 		forloop(i, 0, newG->componentCount)
 		{
-			auto type = (tagged_index)newG->types()[i];
+			auto type = (tagged_index)newG->types[i];
 			if ((gd.tracks[type.index()] & ManualCopying) != 0)
-				newG->types()[i] = index_t(type) + 1;
+				newG->types[i] = index_t(type) + 1;
 		}
 
 		//clone chunks
@@ -1889,7 +1912,7 @@ archetype_filter world::cache_query(const archetype_filter& type)
 
 void world::estimate_shared_size(tsize_t& size, archetype* t) const
 {
-	entity* metas = t->metatypes();
+	entity* metas = t->metatypes;
 	forloop(i, 0, t->metaCount)
 	{
 		auto g = get_archetype(metas[i]);
@@ -1900,7 +1923,7 @@ void world::estimate_shared_size(tsize_t& size, archetype* t) const
 
 void world::get_shared_type(typeset& type, archetype* t, typeset& buffer) const
 {
-	entity* metas = t->metatypes();
+	entity* metas = t->metatypes;
 	forloop(i, 0, t->metaCount)
 	{
 		auto g = get_archetype(metas[i]);
@@ -1916,8 +1939,8 @@ void world::destroy(chunk_slice s)
 	tsize_t id = g->index(group_id);
 	if (id != InvalidIndex)
 	{
-		uint16_t* sizes = g->sizes();
-		char* src = (s.c->data() + g->offsets(s.c->ct)[id]);
+		uint16_t* sizes = g->sizes;
+		char* src = (s.c->data() + g->offsets[(int)s.c->ct][id]);
 		forloop(i, 0, s.count)
 		{
 			auto* group_data = (buffer*)(src + (size_t)i * sizes[i]);
@@ -1956,7 +1979,7 @@ const void* world::get_component_ro(entity e, index_t type) const noexcept
 		return nullptr;
 	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
-	return c->data() + (size_t)g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + (size_t)g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
 const void* world::get_owned_ro(entity e, index_t type) const noexcept
@@ -1968,7 +1991,7 @@ const void* world::get_owned_ro(entity e, index_t type) const noexcept
 	tsize_t id = g->index(type);
 	if (id == InvalidIndex || id >= g->firstTag)
 		return nullptr;
-	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
 const void* world::get_shared_ro(entity e, index_t type) const noexcept
@@ -1990,7 +2013,7 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 	if (id == InvalidIndex || id >= g->firstTag)
 		return nullptr;
 	g->timestamps(c)[id] = timestamp;
-	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
 
@@ -2002,7 +2025,7 @@ const void* world::get_component_ro(chunk* c, index_t t) const noexcept
 		return nullptr;
 	if (id == InvalidIndex)
 		return get_shared_ro(g, t);
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 
 const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
@@ -2010,7 +2033,7 @@ const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id >= c->type->firstTag)
 		return nullptr;
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 
 const void* world::get_shared_ro(chunk* c, index_t type) const noexcept
@@ -2025,23 +2048,23 @@ void* world::get_owned_rw(chunk* c, index_t t) noexcept
 	if (id == InvalidIndex || id >= c->type->firstTag) 
 		return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 
 const void* world::get_owned_ro_local(chunk* c, index_t type) const noexcept
 {
-	return c->data() + c->type->offsets(c->ct)[type];
+	return c->data() + c->type->offsets[(int)c->ct][type];
 }
 
 void* world::get_owned_rw_local(chunk* c, index_t type) noexcept
 {
 	c->type->timestamps(c)[type] = timestamp;
-	return c->data() + c->type->offsets(c->ct)[type];
+	return c->data() + c->type->offsets[(int)c->ct][type];
 }
 
 const void* world::get_shared_ro(archetype* g, index_t type) const
 {
-	entity* metas = g->metatypes();
+	entity* metas = g->metatypes;
 	forloop(i, 0, g->metaCount)
 		if (const void* shared = get_component_ro(metas[i], type))
 			return shared;
@@ -2050,7 +2073,7 @@ const void* world::get_shared_ro(archetype* g, index_t type) const
 
 bool world::share_component(archetype* g, const typeset& type) const
 {
-	entity* metas = g->metatypes();
+	entity* metas = g->metatypes;
 	forloop(i, 0, g->metaCount)
 		if (has_component(metas[i], type))
 			return true;
@@ -2088,7 +2111,7 @@ uint16_t world::get_size(chunk* c, index_t t) const noexcept
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id > c->type->firstTag) 
 		return 0;
-	return c->type->sizes()[id];
+	return c->type->sizes[id];
 }
 
 entity_type world::get_type(entity e) const noexcept
@@ -2118,7 +2141,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 		p.ents = &result;
 		auto& data = ents.datas[e.id];
 		auto g = data.c->type;
-		auto mt = g->metatypes();
+		auto mt = g->metatypes;
 		forloop(i, 0, g->metaCount)
 			p.patch(mt[i]);
 		chunk::patch({ data.c, data.i, 1 }, &p);
@@ -2150,7 +2173,7 @@ chunk_vector<entity> world::gather_reference(entity e)
 			e = members[i];
 			auto& data = ents.datas[e.id];
 			auto g = data.c->type;
-			auto mt = g->metatypes();
+			auto mt = g->metatypes;
 			forloop(j, 0, g->metaCount)
 				p.patch(mt[j]);
 			chunk::patch({ data.c, data.i, 1 }, &p);
@@ -2353,7 +2376,7 @@ void world::gc_meta()
 	for (auto& gi : archetypes)
 	{
 		auto g = gi.second;
-		auto mt = g->metatypes();
+		auto mt = g->metatypes;
 		bool invalid = false;
 		forloop(i, 0, g->metaCount)
 		{
@@ -2435,7 +2458,7 @@ void world::enable_component(entity e, const typeset& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m |= mm;
 }
 
@@ -2450,7 +2473,7 @@ void world::disable_component(entity e, const typeset& type) const noexcept
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m &= ~mm;
 }
 
@@ -2464,7 +2487,7 @@ bool world::is_component_enabled(entity e, const typeset& type) const noexcept
 		return true;
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	return (m & mm) == mm;
 }
 

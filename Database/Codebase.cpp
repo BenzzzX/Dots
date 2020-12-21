@@ -194,7 +194,7 @@ const void* pipeline::get_component_ro(entity e, index_t type) const noexcept
 	if (id == InvalidIndex)
 		return get_shared_ro(g, type);
 	sync_entry(g, type);
-	return c->data() + (size_t)g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + (size_t)g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
 const void* pipeline::get_owned_ro(entity e, index_t type) const noexcept
@@ -207,7 +207,7 @@ const void* pipeline::get_owned_ro(entity e, index_t type) const noexcept
 	if (id == InvalidIndex || id >= g->firstTag)
 		return nullptr;
 	sync_entry(g, type);
-	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
 const void* pipeline::get_shared_ro(entity e, index_t type) const noexcept
@@ -226,7 +226,7 @@ bool pipeline::is_component_enabled(entity e, const typeset& type) const noexcep
 	mask mm = g->get_mask(type);
 	auto id = g->index(mask_id);
 	sync_entry(g, mask_id);
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	return (m & mm) == mm;
 }
 
@@ -241,7 +241,7 @@ void* pipeline::get_owned_rw(entity e, index_t type) const noexcept
 		return nullptr;
 	sync_entry(g, type);
 	g->timestamps(c)[id] = timestamp;
-	return c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id];
+	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 void pipeline::enable_component(entity e, const typeset& type) const noexcept
 {
@@ -255,7 +255,7 @@ void pipeline::enable_component(entity e, const typeset& type) const noexcept
 	auto id = g->index(mask_id);
 	sync_entry(g, mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m |= mm;
 }
 void pipeline::disable_component(entity e, const typeset& type) const noexcept
@@ -270,7 +270,7 @@ void pipeline::disable_component(entity e, const typeset& type) const noexcept
 	auto id = g->index(mask_id);
 	sync_entry(g, mask_id);
 	g->timestamps(c)[id] = timestamp;
-	auto& m = *(mask*)(c->data() + g->offsets(c->ct)[id] + (size_t)data.i * g->sizes()[id]);
+	auto& m = *(mask*)(c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id]);
 	m &= ~mm;
 }
 
@@ -338,7 +338,7 @@ const void* pipeline::get_component_ro(chunk* c, index_t t) const noexcept
 	if (id == InvalidIndex)
 		return get_shared_ro(g, t);
 	sync_entry(g, t);
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 const void* pipeline::get_owned_ro(chunk* c, index_t t) const noexcept
 {
@@ -346,7 +346,7 @@ const void* pipeline::get_owned_ro(chunk* c, index_t t) const noexcept
 	if (id == InvalidIndex || id >= c->type->firstTag)
 		return nullptr;
 	sync_entry(c->type, t);
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 const void* pipeline::get_shared_ro(chunk* c, index_t t) const noexcept
 {
@@ -360,12 +360,12 @@ void* pipeline::get_owned_rw(chunk* c, index_t t) noexcept
 		return nullptr;
 	sync_entry(c->type, t);
 	c->type->timestamps(c)[id] = timestamp;
-	return c->data() + c->type->offsets(c->ct)[id];
+	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 
 const void* pipeline::get_shared_ro(archetype* g, index_t type) const
 {
-	entity* metas = g->metatypes();
+	entity* metas = g->metatypes;
 	forloop(i, 0, g->metaCount)
 		if (const void* shared = get_component_ro(metas[i], type))
 			return shared;

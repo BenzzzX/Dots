@@ -347,7 +347,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			template<class P = pass>
 			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
 			template<class P = pass>
-			uint32_t pass_size(P& p);
+			uint32_t pass_size(P& p) const;
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 			/*** per chunk slice ***/
