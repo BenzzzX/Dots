@@ -56,7 +56,10 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Database\Database.vcxproj">
+    <ProjectReference Include="..\DotsRuntime\DotsRuntime.vcxproj">
+      <Project>{8cee774d-83f3-41bd-a904-7465efb10a3a}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Dots\Dots.vcxproj">
       <Project>{aba8e320-6ed8-4008-974b-da562f25af08}</Project>
     </ProjectReference>
   </ItemGroup>
@@ -89,7 +92,7 @@
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>../Database/include;include;../Database/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../Dots/include;include;../Dots/;../DotsRuntime;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
@@ -123,7 +126,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>../Database/include;include;../Database/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../Dots/include;include;../Dots/;../DotsRuntime;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>

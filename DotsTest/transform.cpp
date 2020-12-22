@@ -90,7 +90,7 @@ void TransformSystem::AddChild(world& ctx, entity e, entity child)
 
 void TransformSystem::UpdateHierachy(world& ctx)
 {
-	index_t _cleanT[] = { cleanup_id };
+	index_t _cleanT[] = { get_builtin().cleanup_id };
 	index_t _toCleanT[] = { parent_id, child_id };
 	index_t _ltpT[] = { local_to_parent_id };
 	index_t _parentT[] = { parent_id };

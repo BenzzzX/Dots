@@ -5,9 +5,9 @@
 #include <array>
 #include <optional>
 #include <functional>
-#include "Set.h"
+#include "DotsRuntime.h"
+#define ECS_API
 #include "Type.h"
-
 namespace core
 {
 	namespace database
@@ -15,10 +15,19 @@ namespace core
 		struct chunk;
 		class world;
 
-		enum class alloc_type : uint8_t
+		ECS_API index_t register_type(component_desc desc);
+		struct builtin_id
 		{
-			smallbin, fastbin, largebin
+			index_t disable_id;
+			index_t cleanup_id;
+			index_t group_id;
+			index_t mask_id;
 		};
+
+		ECS_API builtin_id get_builtin();
+#include "ChunkVector.h"
+#include "Buffer.h"
+
 
 		struct ECS_API chunk_slice
 		{

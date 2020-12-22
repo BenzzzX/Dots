@@ -486,7 +486,7 @@ TEST_F(DatabaseTest, DisableMask)
 {
 	using namespace core::database;
 	core::entity es[100];
-	index_t t[] = { mask_id, tid<test> };
+	index_t t[] = { get_builtin().mask_id, tid<test> };
 	std::sort(t, t + 2);
 	index_t dt[] = { tid<test> };
 	entity_type type{ t };
@@ -496,7 +496,7 @@ TEST_F(DatabaseTest, DisableMask)
 		{
 			mask disableMask = c.c->get_mask({ dt, 1 });
 			auto tests = (test*)ctx.get_owned_rw(c.c, tid<test>);
-			auto masks = (mask*)ctx.get_owned_ro(c.c, mask_id);
+			auto masks = (mask*)ctx.get_owned_ro(c.c, get_builtin().mask_id);
 			std::memcpy(es + counter - 1, ctx.get_entities(c.c), c.count * sizeof(core::entity));
 			forloop(i, 0, c.count) //初始化 Component
 			{
@@ -516,7 +516,7 @@ TEST_F(DatabaseTest, DisableMask)
 		for (auto i : ctx.query({ type }))
 			for (auto j : ctx.query(i.type))
 			{
-				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto masks = (mask*)ctx.get_owned_ro(j, get_builtin().mask_id);
 				auto length = j->get_count();
 				forloop(k, 0, length)
 				{
@@ -530,13 +530,13 @@ TEST_F(DatabaseTest, DisableMask)
 	}
 
 	{
-		index_t qt[] = { mask_id };
+		index_t qt[] = { get_builtin().mask_id };
 		entity_type queryType{ typeset{qt,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ queryType })) // 空 Query
 			for (auto j : ctx.query(i.type)) 
 			{
-				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto masks = (mask*)ctx.get_owned_ro(j, get_builtin().mask_id);
 				auto length = j->get_count();
 				forloop(k, 0, length)
 				{
@@ -555,7 +555,7 @@ TEST_F(DatabaseTest, DisableMask)
 			auto mymask = i.matched & ~i.type->get_mask({ dt, 1 }); //关闭检查
 			for (auto j : ctx.query(i.type))
 			{
-				auto masks = (mask*)ctx.get_owned_ro(j, mask_id);
+				auto masks = (mask*)ctx.get_owned_ro(j, get_builtin().mask_id);
 				auto length = j->get_count();
 				forloop(k, 0, length)
 				{
@@ -638,12 +638,12 @@ TEST_F(DatabaseTest, Group)
 		}
 	}
 	{
-		index_t t[] = { group_id };
+		index_t t[] = { get_builtin().group_id };
 		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
 			ctx.cast(s, addGroup);
-		auto group = buffer_t<core::entity>(ctx.get_owned_rw(es[0], group_id));
+		auto group = buffer_t<core::entity>(ctx.get_owned_rw(es[0], get_builtin().group_id));
 		group.resize(10);
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
@@ -663,7 +663,7 @@ TEST_F(DatabaseTest, Group)
 			newE = ctx.get_entities(c.c)[c.start];
 		}
 		{
-			index_t t[] = { group_id };
+			index_t t[] = { get_builtin().group_id };
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
@@ -680,7 +680,7 @@ TEST_F(DatabaseTest, Group)
 			}
 		EXPECT_EQ(counter, 110);
 		{
-			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, group_id));
+			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, get_builtin().group_id));
 			EXPECT_EQ(group[0], newE);
 			auto ref = (test_ref*) ctx.get_component_ro(group[1], tid<test_ref>);
 			EXPECT_EQ(ref->ref, newE);
@@ -797,12 +797,12 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		}
 	}
 	{
-		index_t t[] = { group_id };
+		index_t t[] = { get_builtin().group_id };
 		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
 			ctx.cast(s, addGroup);
-		auto group = buffer_t<core::entity>(ctx.get_owned_rw(es[0], group_id));
+		auto group = buffer_t<core::entity>(ctx.get_owned_rw(es[0], get_builtin().group_id));
 		group.resize(10);
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
@@ -826,7 +826,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 			newE = ctx.deserialize(&ds, nullptr);
 		}
 		{
-			index_t t[] = { group_id };
+			index_t t[] = { get_builtin().group_id };
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
@@ -843,7 +843,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 			}
 		EXPECT_EQ(counter, 110);
 		{
-			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, group_id));
+			auto group = buffer_t<core::entity>(ctx.get_component_ro(newE, get_builtin().group_id));
 			EXPECT_EQ(group[0], newE);
 			auto ref = (test_ref*)ctx.get_component_ro(group[1], tid<test_ref>);
 			EXPECT_EQ(ref->ref, newE);

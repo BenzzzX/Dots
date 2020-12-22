@@ -56,7 +56,7 @@ TEST_F(CodebaseTest, CreatePass) {
 	filter.archetypeFilter = { type };
 	auto params = hana::make_tuple(param<test>);
 	auto k = ppl.create_pass(filter, params);
-	EXPECT_EQ(k->chunkCount, 1);
+	EXPECT_EQ(k->archetypeCount, 1);
 	
 }
 
@@ -446,7 +446,7 @@ struct point3df : std::array<float, 3>
 
 void install_test2_components()
 {
-	core::codebase::register_components<test, test2, test3>();
+	core::codebase::declare_components<test, test2, test3>();
 }
 
 TEST(DSTest, KDTree)

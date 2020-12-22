@@ -11,27 +11,6 @@ type* name = (type*)_ao_##name.self;
 using namespace core;
 using namespace database;
 
-namespace core
-{
-	bool operator<(const GUID& lhs, const GUID& rhs)
-	{
-		using value_type = std::array<std::byte, 16>;
-		return reinterpret_cast<const value_type&>(lhs) < reinterpret_cast<const value_type&>(rhs);
-	}
-}
-
-struct type_data
-{
-	core::GUID GUID = core::GUID();
-	uint16_t size;
-	uint16_t elementSize;
-	uint16_t alignment;
-	uint32_t entityRefs;
-	uint16_t entityRefCount;
-	const char* name;
-	component_vtable vtable;
-};
-
 index_t disable_id = 0;
 index_t cleanup_id = 1;
 index_t group_id = 2;
@@ -47,139 +26,7 @@ builtin_id core::database::get_builtin()
 	};
 }
 
-void* stack_allocator::alloc(size_t size, size_t align)
-{
-	auto offset = uint32_t((char*)stacktop - stackbuffer);
-	stacktop = (uint32_t*)stacktop + 1;
-	if (std::align(align, size, stacktop, stackSize))
-	{
-		*((uint32_t*)stacktop - 1) = offset;
-		auto result = stacktop;
-		stacktop = (char*)stacktop + size;
-		stackSize -= size + sizeof(uint32_t);
-		return result;
-	}
-	return nullptr;
-}
-
-
-void stack_allocator::free(void* ptr, size_t size)
-{
-	auto offset = uint32_t((char*)stacktop - stackbuffer);
-	auto oldOffset = *((uint32_t*)ptr - 1);
-	stackSize += offset - oldOffset;
-	stacktop = stackbuffer + oldOffset;
-}
-
-struct global_data
-{
-	std::vector<type_data> infos;
-	std::vector<track_state> tracks;
-	std::vector<intptr_t> entityRefs;
-	std::map<core::GUID, size_t> hash2type;
-
-	std::array<void*, kFastBinCapacity + 10> fastbin{};
-	std::array<void*, kSmallBinCapacity + 10> smallbin{};
-	std::array<void*, kLargeBinCapacity + 10> largebin{};
-	size_t fastbinSize = 0;
-	size_t smallbinSize = 0;
-	size_t largebinSize = 0;
-
-	stack_allocator stack;
-	void initialize()
-	{
-		using namespace guid_parse::literals;
-		component_desc desc{};
-		desc.size = 0;
-		desc.GUID = "00000000-0000-0000-0000-000000000001"_guid;
-		desc.name = "cleanup";
-		cleanup_id = register_type(desc);
-		desc.size = 0;
-		desc.GUID = "00000000-0000-0000-0000-000000000002"_guid;
-		desc.name = "disabled";
-		disable_id = register_type(desc);
-		desc.size = sizeof(entity) * 5;
-		desc.GUID = "00000000-0000-0000-0000-000000000003"_guid;
-		desc.isElement = true;
-		desc.elementSize = sizeof(entity);
-		static intptr_t ers[] = { (intptr_t)offsetof(group, e) };
-		desc.entityRefs = ers;
-		desc.entityRefCount = 1;
-		desc.name = "group";
-		group_id = register_type(desc);
-		desc.size = sizeof(mask);
-		desc.GUID = "00000000-0000-0000-0000-000000000004"_guid;
-		desc.isElement = false;
-		desc.name = "mask";
-		desc.entityRefCount = 0;
-		mask_id = register_type(desc);
-
-		stack.init(10000);
-	}
-
-	void* stack_alloc(size_t size, size_t align = alignof(int))
-	{
-		return stack.alloc(size, align);
-	}
-
-	void stack_free(void* ptr, size_t size)
-	{
-		return stack.free(ptr, size);
-	}
-
-	void free(alloc_type type, void* data)
-	{
-		switch (type)
-		{
-		case alloc_type::fastbin:
-			if (fastbinSize < kLargeBinCapacity)
-				fastbin[fastbinSize++] = data;
-			else
-				::free(data);
-			break;
-		case alloc_type::smallbin:
-			if (smallbinSize < kSmallBinCapacity)
-				smallbin[smallbinSize++] = data;
-			else
-				::free(data);
-			break;
-		case alloc_type::largebin:
-			if (largebinSize < kLargeBinCapacity)
-				largebin[largebinSize++] = data;
-			else
-				::free(data);
-			break;
-		}
-	}
-
-	void* malloc(alloc_type type)
-	{
-		switch (type)
-		{
-		case alloc_type::fastbin:
-			if (fastbinSize == 0)
-				return ::malloc(kFastBinSize);
-			else
-				return fastbin[--fastbinSize];
-			break;
-		case alloc_type::smallbin:
-			if (smallbinSize == 0)
-				return ::malloc(kSmallBinSize);
-			else
-				return smallbin[--smallbinSize];
-			break;
-		case alloc_type::largebin:
-			if (largebinSize == 0)
-				return ::malloc(kLargeBinSize);
-			else
-				return largebin[--largebinSize];
-			break;
-		}
-		return nullptr;
-	}
-};
-
-static global_data gd;
+static context* ctx;
 
 #define stack_array(type, name, size) \
 stack_object __so_##name((size_t)(size)*sizeof(type)); \
@@ -192,11 +39,11 @@ struct stack_object
 	stack_object(size_t size)
 		: size(size), self(nullptr)
 	{
-		self = gd.stack_alloc(size);
+		self = ctx->stack_alloc(size);
 	}
 	~stack_object()
 	{
-		gd.stack_free(self, size);
+		ctx->stack_free(self, size);
 	}
 };
 
@@ -214,14 +61,14 @@ struct adaptive_object
 	adaptive_object(size_t size)
 		:size(size), self(nullptr)
 	{
-		if (gd.stack.stackSize - size > 1024)
+		if (ctx->stack.stackSize - size > 1024)
 		{
-			self = gd.stack_alloc(size);
+			self = ctx->stack_alloc(size);
 			type = Stack;
 		}
 		else if (size < kFastBinCapacity)
 		{
-			self = gd.malloc(alloc_type::fastbin);
+			self = ctx->malloc(alloc_type::fastbin);
 			type = Pool;
 		}
 		else
@@ -235,13 +82,13 @@ struct adaptive_object
 		switch (type)
 		{
 		case Pool:
-			gd.free(alloc_type::fastbin, self);
+			ctx->free(alloc_type::fastbin, self);
 			break;
 		case Heap:
 			::free(self);
 			break;
 		case Stack:
-			gd.stack_free(self, size);
+			ctx->stack_free(self, size);
 			break;
 		}
 	}
@@ -249,46 +96,12 @@ struct adaptive_object
 
 component_vtable& set_vtable(index_t m)
 {
-	return gd.infos[m].vtable;
+	return ctx->infos[m].vtable;
 }
 
 index_t database::register_type(component_desc desc)
 {
-	{
-		auto i = gd.hash2type.find(desc.GUID);
-		if (i != gd.hash2type.end())
-			return i->second;
-	}
-	uint32_t rid = -1;
-	if (desc.entityRefs != nullptr)
-	{
-		rid = (uint32_t)gd.entityRefs.size();
-		forloop(i, 0, desc.entityRefCount)
-			gd.entityRefs.push_back(desc.entityRefs[i]);
-	}
-
-	index_t id = (index_t)gd.infos.size();
-	id = tagged_index{ id, desc.isElement, desc.size == 0 };
-	type_data i{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
-	gd.infos.push_back(i);
-	uint8_t s = 0;
-	if (desc.manualClean)
-		s = s | ManualCleaning;
-	if (desc.manualCopy)
-		s = s | ManualCopying;
-	gd.tracks.push_back((track_state)s);
-	gd.hash2type.insert({ desc.GUID, id });
-
-	if (desc.manualCopy)
-	{
-		index_t id2 = (index_t)gd.infos.size();
-		id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
-		type_data i2{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
-		gd.tracks.push_back(Copying);
-		gd.infos.push_back(i2);
-	}
-
-	return id;
+	return ctx->register_type(desc);
 }
 
 inline bool chunk_slice::full() { return c != nullptr && start == 0 && count == c->get_count(); }
@@ -425,7 +238,7 @@ void memdup(void* dst, const void* src, size_t size, size_t count) noexcept
 
 tagged_index to_valid_type(tagged_index t)
 {
-	if (gd.tracks[t.index()] == Copying)
+	if (ctx->tracks[t.index()] == Copying)
 		return t - 1;
 	else
 		return t;
@@ -486,7 +299,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 	tagged_index* types = (tagged_index*)g->types;
 	forloop(i, 0, g->firstBuffer)
 	{
-		const auto& t = gd.infos[types[i].index()];
+		const auto& t = ctx->infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		auto f = t.vtable.patch;
 		if (f != nullptr)
@@ -496,7 +309,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 				char* data = arr + (size_t)sizes[i] * j;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
+					entity& e = *(entity*)(data + ctx->entityRefs[(size_t)t.entityRefs + k]);
 					e = patcher->patch(e);
 				}
 				f(data, patcher);
@@ -510,7 +323,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 				char* data = arr + (size_t)sizes[i] * j;
 				forloop(k, 0, t.entityRefCount)
 				{
-					entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
+					entity& e = *(entity*)(data + ctx->entityRefs[(size_t)t.entityRefs + k]);
 					e = patcher->patch(e);
 				}
 				patcher->move();
@@ -521,7 +334,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 
 	forloop(i, g->firstBuffer, g->firstTag)
 	{
-		const auto& t = gd.infos[types[i].index()];
+		const auto& t = ctx->infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 		forloop(j, 0, s.count)
 		{
@@ -535,7 +348,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 					char* data = b->data() + (size_t)t.elementSize * l;
 					forloop(k, 0, t.entityRefCount)
 					{
-						entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
+						entity& e = *(entity*)(data + ctx->entityRefs[(size_t)t.entityRefs + k]);
 						e = patcher->patch(e);
 					}
 					f(data, patcher);
@@ -548,7 +361,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 					char* data = b->data() + (size_t)t.elementSize * l;
 					forloop(k, 0, t.entityRefCount)
 					{
-						entity& e = *(entity*)(data + gd.entityRefs[(size_t)t.entityRefs + k]);
+						entity& e = *(entity*)(data + ctx->entityRefs[(size_t)t.entityRefs + k]);
 						e = patcher->patch(e);
 					}
 				}
@@ -825,7 +638,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f) const
 					includeClean = true;
 				if (type == disable_id)
 					includeDisabled = true;
-				if ((gd.tracks[type.index()] & Copying) != 0)
+				if ((ctx->tracks[type.index()] & Copying) != 0)
 					return true;
 			}
 			return false;
@@ -990,9 +803,9 @@ archetype* world::get_archetype(const entity_type& key)
 			proto.cleaning = true;
 		else if (type == maskType)
 			proto.withMask = true;
-		if ((gd.tracks[type.index()] & NeedCC) != 0)
+		if ((ctx->tracks[type.index()] & NeedCC) != 0)
 			proto.withTracked = true;
-		if ((gd.tracks[type.index()] & Copying) != 0)
+		if ((ctx->tracks[type.index()] & Copying) != 0)
 			proto.copying = true;
 	}
 
@@ -1017,7 +830,7 @@ archetype* world::get_archetype(const entity_type& key)
 	forloop(i, 0, firstTag)
 	{
 		auto type = (tagged_index)key.types[i];
-		auto& info = gd.infos[type.index()];
+		auto& info = ctx->infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.GUID;
 		align[i] = info.alignment;
@@ -1077,7 +890,7 @@ archetype* world::get_cleaning(archetype* g)
 	forloop(i, 0, count)
 	{
 		auto type = (tagged_index)types[i];
-		auto stage = gd.tracks[type.index()];
+		auto stage = ctx->tracks[type.index()];
 		if ((stage & ManualCleaning) != 0)
 			dstTypes[k++] = type;
 	}
@@ -1132,7 +945,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		forloop(i, 0, srcSize)
 		{
 			auto type = (tagged_index)srcTypes[i];
-			auto stage = gd.tracks[type.index()];
+			auto stage = ctx->tracks[type.index()];
 			if ((stage & ManualCopying) != 0)
 				dstTypes[i] = type + 1;
 			else
@@ -1167,7 +980,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		auto can_zip = [&](int i)
 		{
 			auto type = (tagged_index)srcTypes[i];
-			auto stage = gd.tracks[type.index()];
+			auto stage = ctx->tracks[type.index()];
 			if (((stage & ManualCopying) != 0) && (srcTypes[i + 1] == type + 1))
 				return true;
 			return false;
@@ -1193,7 +1006,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		{
 			auto type = (tagged_index)shrTypes[i];
 			newShrTypes[k++] = type;
-			auto stage = gd.tracks[type.index()];
+			auto stage = ctx->tracks[type.index()];
 			if ((stage & ManualCopying) != 0)
 				newShrTypes[k++] = type + 1;
 		}
@@ -1228,7 +1041,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 
 chunk* world::malloc_chunk(alloc_type type)
 {
-	chunk* c = (chunk*)gd.malloc(type);
+	chunk* c = (chunk*)ctx->malloc(type);
 	c->ct = type;
 	c->count = 0;
 	c->prev = c->next = nullptr;
@@ -1328,7 +1141,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
 	forloop(i, 0, tlength)
-		s->stream(&gd.infos[tagged_index(type.types[i]).index()].GUID, sizeof(core::GUID));
+		s->stream(&ctx->infos[tagged_index(type.types[i]).index()].GUID, sizeof(core::GUID));
 	s->stream(&mlength, sizeof(tsize_t));
 	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
@@ -1345,7 +1158,7 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 		core::GUID uu;
 		s->stream(&uu, sizeof(core::GUID));
 		//todo: check validation
-		types[i] = (index_t)gd.hash2type[uu];
+		types[i] = (index_t)ctx->hash2type[uu];
 	}
 	tsize_t mlength;
 	s->stream(&mlength, sizeof(tsize_t));
@@ -1596,7 +1409,7 @@ void world::destroy_chunk(archetype* g, chunk* c)
 
 void world::recycle_chunk(chunk* c)
 {
-	gd.free(c->ct, c);
+	ctx->free(c->ct, c);
 }
 
 void world::resize_chunk(chunk* c, uint32_t count)
@@ -1816,7 +1629,7 @@ world::world(const world& other)
 		forloop(i, 0, newG->componentCount)
 		{
 			auto type = (tagged_index)newG->types[i];
-			if ((gd.tracks[type.index()] & ManualCopying) != 0)
+			if ((ctx->tracks[type.index()] & ManualCopying) != 0)
 				newG->types[i] = index_t(type) + 1;
 		}
 
@@ -1867,7 +1680,7 @@ chunk_vector<chunk_slice> world::allocate(const entity_type& type, uint32_t coun
 	return allocate(g, count);
 }
 
-ECS_API chunk_vector<chunk_slice> world::allocate(archetype* g, uint32_t count)
+chunk_vector<chunk_slice> world::allocate(archetype* g, uint32_t count)
 {
 	chunk_vector<chunk_slice> result;
 	uint32_t k = 0;
@@ -2711,19 +2524,19 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 namespace chunk_vector_pool
 {
 	constexpr size_t kThreadBinCapacity = 40;
-	constexpr size_t kMainThreadBinCapacity = 100;
 	const std::thread::id kMainThreadId = std::this_thread::get_id();
-	inline size_t GetThreadBinCapacity()
-	{
-		return std::this_thread::get_id() == kMainThreadId ? kMainThreadBinCapacity : kThreadBinCapacity;
-	}
-	thread_local std::array<void*, kMainThreadBinCapacity> threadbin{};
+	thread_local std::array<void*, kThreadBinCapacity> threadbin{};
 	thread_local size_t threadbinSize = 0;
 	constexpr size_t kChunkSize = chunk_vector_base::kChunkSize;
 
 	void free(void* data)
 	{
-		if (threadbinSize < GetThreadBinCapacity())
+		if (std::this_thread::get_id() == kMainThreadId)
+		{
+			ctx->free(alloc_type::fastbin, data);
+			return;
+		}
+		if (threadbinSize < kThreadBinCapacity)
 			threadbin[threadbinSize++] = data;
 		else
 			::free(data);
@@ -2731,6 +2544,8 @@ namespace chunk_vector_pool
 
 	void* malloc()
 	{
+		if (std::this_thread::get_id() == kMainThreadId)
+			return ctx->malloc(alloc_type::fastbin);
 		if (threadbinSize == 0)
 			return ::malloc(kChunkSize);
 		else
@@ -2869,9 +2684,14 @@ std::byte hexPairToChar(char a, char b)
 {
 	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
 }
+
 void core::database::initialize()
 {
-	gd.initialize();
+	ctx = &context::get();
+	disable_id = ctx->disable_id;
+	cleanup_id = ctx->cleanup_id;
+	group_id = ctx->group_id;
+	mask_id = ctx->mask_id;
 }
 
 void entity_filter::apply(core::database::matched_archetype& ma) const
