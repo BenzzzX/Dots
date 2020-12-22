@@ -96,6 +96,7 @@ void pipeline::sync_entry(archetype* at, index_t type) const
 
 void core::codebase::initialize()
 {
+	core::database::initialize();
 	auto bi = get_builtin();
 	cid<group> = bi.group_id;
 	cid<disable> = bi.disable_id;

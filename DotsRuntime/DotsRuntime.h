@@ -297,6 +297,7 @@ namespace core
 			component_vtable vtable;
 		};
 
+		ECS_RT_API extern struct context* DotsContext;
 		struct context
 		{
 			std::vector<type_registry> infos;
@@ -317,7 +318,7 @@ namespace core
 
 			stack_allocator stack;
 
-			ECS_RT_API static context& get();
+			ECS_RT_API static void initialize();
 
 			void* stack_alloc(size_t size, size_t align = alignof(int))
 			{

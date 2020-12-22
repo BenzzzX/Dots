@@ -1,10 +1,14 @@
 #include "DotsRuntime.h"
 
 using namespace core::database;
-context& context::get()
+namespace core::database
 {
-	static context ctx;
-	return ctx;
+	context* DotsContext;
+}
+void context::initialize()
+{
+	static context instance;
+	DotsContext = &instance;
 }
 
 context::context()
