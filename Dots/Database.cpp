@@ -104,9 +104,9 @@ index_t database::register_type(component_desc desc)
 	return ctx->register_type(desc);
 }
 
-inline bool chunk_slice::full() { return c != nullptr && start == 0 && count == c->get_count(); }
+bool chunk_slice::full() { return c != nullptr && start == 0 && count == c->get_count(); }
 
-inline chunk_slice::chunk_slice(chunk* c) : c(c), start(0), count(c->get_count()) {}
+chunk_slice::chunk_slice(chunk* c) : c(c), start(0), count(c->get_count()) {}
 
 void chunk::link(chunk* c) noexcept
 {

@@ -46,7 +46,7 @@
 #include <assert.h>
 #include <array>
 #include <map>
-#include "Type.h"
+#include <bitset>
 #include "Set.h"
 
 namespace core
