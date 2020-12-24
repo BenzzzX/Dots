@@ -1108,10 +1108,13 @@ void world::remove_chunk(archetype* g, chunk* c)
 void world::mark_free(archetype* g, chunk* c)
 {
 	remove(g->firstChunk, g->lastChunk, c);
-	g->lastChunk->link(c);
+	if(g->lastChunk)
+		g->lastChunk->link(c);
 	g->lastChunk = c;
 	if (g->firstFree == nullptr)
 		g->firstFree = c;
+	if (g->firstChunk == nullptr)
+		g->firstChunk = c;
 }
 
 void world::unmark_free(archetype* g, chunk* c)
