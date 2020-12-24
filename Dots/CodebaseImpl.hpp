@@ -170,47 +170,74 @@ namespace core
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			detail::weak_ptr_set dependencies;
 			setup_shared_dependency(k, sharedEntries, dependencies);
-			forloop(i, 0, k->archetypeCount)
+
+			struct HELPER
 			{
-				auto at = k->archetypes[i];
+				static archetype* get_owning_archetype(world* ctx, archetype* sharing, index_t type)
+				{
+					if (sharing->index(type) != InvalidIndex)
+						return sharing;
+					entity* metas = sharing->metatypes;
+					forloop(i, 0, sharing->metaCount)
+						if (archetype* owning = get_owning_archetype(ctx, ctx->get_archetype(metas[i]), type))
+							return owning;
+					return nullptr;
+				}
+			};
+
+			auto sync_entry = [&](archetype* at, index_t localType, bool readonly)
+			{
 				auto iter = dependencyEntries.find(at);
 				if (iter == dependencyEntries.end())
-					continue;
+					return;
 
 				auto entries = (*iter).second.get();
-				auto sync_entry = [&](index_t localType, bool readonly)
+				if (localType > at->firstTag || localType == InvalidIndex)
+					return;
+				auto& entry = entries[localType];
+				if (readonly)
 				{
-					if (localType == InvalidIndex || localType > at->firstTag)
-						return;
-					auto& entry = entries[localType];
-					if (readonly)
-					{
-						if (!entry.owned.expired())
-							dependencies.insert(entry.owned);
-						entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
-						entry.shared.push_back(k);
-					}
-					else
-					{
-						for (auto& dp : entry.shared)
-							if (!dp.expired())
-								dependencies.insert(dp);
-						if (entry.shared.empty() && !entry.owned.expired())
-							dependencies.insert(entry.owned);
-						entry.shared.clear();
-						entry.owned = k;
-					}
-				};
+					if (!entry.owned.expired())
+						dependencies.insert(entry.owned);
+					entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
+					entry.shared.push_back(k);
+				}
+				else
+				{
+					for (auto& dp : entry.shared)
+						if (!dp.expired())
+							dependencies.insert(dp);
+					if (entry.shared.empty() && !entry.owned.expired())
+						dependencies.insert(entry.owned);
+					entry.shared.clear();
+					entry.owned = k;
+				}
+			};
+
+			forloop(i, 0, k->archetypeCount)
+			{
 				forloop(j, 0, k->paramCount)
 				{
+					archetype* at = k->archetypes[i];
 					auto localType = k->localType[i * k->paramCount + j];
-					sync_entry(localType, check_bit(k->readonly, j));
+					if (localType == InvalidIndex)
+					{
+						//assert(check_bit(k->readonly, j))
+						auto type = k->types[j];
+						at = HELPER::get_owning_archetype((world*)this, at, type);
+						if (!at) // 存在 any 时可能出现
+							continue;
+						sync_entry(at, at->index(type), true);
+					}
+					else
+						sync_entry(at, localType, check_bit(k->readonly, j));
 				}
 				auto& changed = k->filter.chunkFilter.changed;
 				forloop(j, 0, changed.length)
 				{
+					archetype* at = k->archetypes[i];
 					auto localType = at->index(changed[j]);
-					sync_entry(localType, true);
+					sync_entry(at, localType, true);
 				}
 			}
 			if (dependencies.size() > 0)

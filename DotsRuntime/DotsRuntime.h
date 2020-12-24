@@ -81,6 +81,7 @@ namespace core
 					return 10 + c - 'A';
 				else
 					assert(0 && "invalid character in GUID");
+				return -1;
 			}
 
 			template<class T>
@@ -421,7 +422,6 @@ namespace core
 			}
 		private:
 			context();
-			void init();
 		};
 	}
 }
