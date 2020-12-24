@@ -21,6 +21,11 @@
 #define DLLEXPORT __declspec(dllexport)
 #ifdef DOTSRUNTIME_EXPORTS
 #define ECS_RT_API __declspec(dllexport)
+#elif defined(FULL_STATIC)
+	#ifdef ECS_RT_API
+	#undef ECS_RT_API
+	#endif
+	#define ECS_RT_API 
 #else
 #define ECS_RT_API __declspec(dllimport)
 #endif

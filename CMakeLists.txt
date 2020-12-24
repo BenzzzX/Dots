@@ -20,10 +20,14 @@ file(GLOB_RECURSE
     ${CMAKE_CURRENT_SOURCE_DIR}/DotsRuntime/*.natvis
 )
 
-add_library(DotsRuntime SHARED ${DotsRuntimeSource})
-target_compile_definitions(DotsRuntime
-    PRIVATE DOTSRUNTIME_EXPORTS 
-)
+if(FULL_STATIC)
+    add_library(DotsRuntime STATIC ${DotsRuntimeSource})
+else()
+    add_library(DotsRuntime SHARED ${DotsRuntimeSource})
+    target_compile_definitions(DotsRuntime
+        PRIVATE DOTSRUNTIME_EXPORTS 
+    )
+endif(FULL_STATIC)
 
 target_include_directories(DotsRuntime
     PUBLIC 
@@ -55,3 +59,12 @@ target_include_directories(Dots
 
 target_link_libraries(Dots
     PUBLIC DotsRuntime)
+
+if(FULL_STATIC)
+target_compile_definitions(DotsRuntime
+    PRIVATE FULL_STATIC 
+)
+target_compile_definitions(Dots
+    PRIVATE FULL_STATIC 
+)
+endif(FULL_STATIC)
