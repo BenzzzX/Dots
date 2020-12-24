@@ -169,6 +169,7 @@ namespace core
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			detail::weak_ptr_set dependencies;
+			std::set<std::pair<archetype*, index_t>> syncedEntry;
 			setup_shared_dependency(k, sharedEntries, dependencies);
 
 			struct HELPER
@@ -187,6 +188,10 @@ namespace core
 
 			auto sync_entry = [&](archetype* at, index_t localType, bool readonly)
 			{
+				auto pair = std::make_pair(at, localType);
+				if (syncedEntry.find(pair) != syncedEntry.end())
+					return;
+				syncedEntry.insert(pair);
 				auto iter = dependencyEntries.find(at);
 				if (iter == dependencyEntries.end())
 					return;
