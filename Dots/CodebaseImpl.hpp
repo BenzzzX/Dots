@@ -138,6 +138,7 @@ namespace core
 				{
 					if (!entry.owned.expired())
 						dependencies.insert(entry.owned);
+					entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
 					entry.shared.push_back(k);
 				}
 				else
