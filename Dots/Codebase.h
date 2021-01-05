@@ -331,7 +331,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			void setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			int passIndex;
-			virtual void sync_dependencies(gsl::span<custom_pass*> dependencies) const {}
+			virtual void sync_dependencies(gsl::span<std::weak_ptr<custom_pass>> dependencies) const {}
 			virtual void sync_all() const {}
 			friend class world;
 		public:

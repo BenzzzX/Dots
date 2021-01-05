@@ -53,18 +53,18 @@ void pipeline::sync_archetype(archetype* at) const
 {
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
-	std::vector<custom_pass*> deps;
+	std::vector<std::weak_ptr<custom_pass>> deps;
 	forloop(i, 0, at->firstTag)
 	{
 		if (entries[i].shared.empty())
 		{
 			if (!entries[i].owned.expired())
-				deps.push_back(entries[i].owned.lock().get());
+				deps.push_back(entries[i].owned);
 		}
 		else
 		{
 			for (auto p : entries[i].shared)
-				deps.push_back(p.lock().get());
+				deps.push_back(p);
 		}
 		entries[i].shared.clear();
 		entries[i].owned.reset();
@@ -76,18 +76,18 @@ void pipeline::sync_entry(archetype* at, index_t type) const
 {
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
-	std::vector<custom_pass*> deps;
+	std::vector<std::weak_ptr<custom_pass>> deps;
 	auto i = at->index(type);
 	//assert(i <= at->firstTag);
 	if (entries[i].shared.empty())
 	{
 		if (!entries[i].owned.expired())
-			deps.push_back(entries[i].owned.lock().get());
+			deps.push_back(entries[i].owned);
 	}
 	else
 	{
 		for (auto p : entries[i].shared)
-			deps.push_back(p.lock().get());
+			deps.push_back(p);
 	}
 	entries[i].shared.clear();
 	entries[i].owned.reset();
