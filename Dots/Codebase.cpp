@@ -299,7 +299,7 @@ void pipeline::serialize(serializer_i* s, entity e)
 }
 chunk_slice pipeline::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
-	auto* g = deserialize_archetype(s, patcher);
+	auto* g = deserialize_archetype(s, patcher, false);
 	sync_archetype(g);
 	chunk_slice slice;
 	deserialize_slice(g, s, slice);

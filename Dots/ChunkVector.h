@@ -13,6 +13,7 @@ struct chunk_vector_base
 	void shrink(size_t n);
 	void reset();
 	void flatten(void* dst, size_t eleSize);
+	void zero(size_t eleSize);
 
 	chunk_vector_base() = default;
 	chunk_vector_base(chunk_vector_base&& r) noexcept;
@@ -162,6 +163,7 @@ struct chunk_vector : chunk_vector_base
 		while (n > chunkSize * kChunkCapacity)
 			grow();
 	}
+	void zero() { chunk_vector_base::zero(sizeof(T)); }
 	T& operator[](size_t i) noexcept
 	{
 		assert(i < size);

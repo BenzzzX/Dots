@@ -1124,9 +1124,20 @@ void world::mark_free(archetype* g, chunk* c)
 
 void world::unmark_free(archetype* g, chunk* c)
 {
-	remove(g->firstFree, g->lastChunk, c);
+	if (g->firstFree == c)
+		g->firstFree = c->next;
+	remove(g->firstChunk, g->lastChunk, c);
+	if (g->firstChunk)
+	{
+		c->next = g->firstChunk->next;
+		c->link(g->firstChunk);
+	}
+	g->firstChunk = c;
 	if (g->lastChunk == nullptr)
 		g->lastChunk = c;
+
+
+
 	if (g->firstChunk != c)
 		if (g->firstFree == nullptr || c->next != g->firstFree)
 		{
@@ -1143,6 +1154,7 @@ void world::release_reference(archetype* g)
 
 void world::serialize_archetype(archetype* g, serializer_i* s)
 {
+	s->stream(&g->size, sizeof(uint32_t));
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	s->stream(&tlength, sizeof(tsize_t));
@@ -1154,11 +1166,13 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 
 archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, bool createNew)
 {
+	uint32_t size = 0;
+	s->stream(&size, sizeof(uint32_t));
+	if (size == 0)
+		return nullptr;
 	tsize_t tlength;
 	s->stream(&tlength, sizeof(tsize_t));
 	stack_array(index_t, types, tlength);
-	if (tlength == 0)
-		return nullptr;
 	forloop(i, 0, tlength)
 	{
 		core::GUID uu;
@@ -1173,30 +1187,43 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, boo
 	if (patcher)
 		forloop(i, 0, mlength)
 			metatypes[i] = patcher->patch(metatypes[i]);
-	for (tsize_t i = 0; i < mlength;) //remove invalid metas
-		if (!exist(metatypes[i]))
-			std::swap(metatypes[i], metatypes[--mlength]);
-		else
-			++i;
+	if (!createNew)
+	{
+		for (tsize_t i = 0; i < mlength;) //remove invalid metas
+			if (!exist(metatypes[i]))
+				std::swap(metatypes[i], metatypes[--mlength]);
+			else
+				++i;
+	}
 	std::sort(types, types + tlength);
 	std::sort(metatypes, metatypes + mlength);
 	entity_type type = { {types, tlength}, {metatypes, mlength} };
-	return createNew ? construct_archetype(type) : get_archetype(type);
+	auto g = createNew ? construct_archetype(type) : get_archetype(type);
+	g->size += size;
+	return g;
 }
 
 bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
 {
 	uint32_t count;
 	s->stream(&count, sizeof(uint32_t));
-	g->size += count;
 	if (count == 0)
 		return false;
 	chunk* c;
 	c = g->firstFree;
-	while (c && c->count + count > g->chunkCapacity[(int)c->ct])
+	while (c && (c->count + count) > g->chunkCapacity[(int)c->ct])
 		c = c->next;
 	if (c == nullptr)
-		c = new_chunk(g, count);
+	{
+		auto size = count * g->entitySize;
+		if (g->chunkCount < kSmallBinThreshold && size < kSmallBinSize)
+			c = malloc_chunk(alloc_type::smallbin);
+		else if (size > kFastBinSize)
+			c = malloc_chunk(alloc_type::largebin);
+		else
+			c = malloc_chunk(alloc_type::fastbin);
+		add_chunk(g, c);
+	}
 	uint32_t start = c->count;
 	resize_chunk(c, start + count);
 	slice = { c, start, count };
@@ -2143,7 +2170,7 @@ void world::serialize(serializer_i* s)
 		serialize_archetype(g, s);
 		ats.push_back(g);
 	}
-	s->stream(&ZeroValue, sizeof(tsize_t));
+	s->stream(&ZeroValue, sizeof(uint32_t));
 	for (archetype* g : ats)
 	{
 		for (chunk* c = g->firstChunk; c; c = c->next)
@@ -2161,6 +2188,7 @@ void world::deserialize(serializer_i* s)
 
 	//reallocate entity data buffer
 	ents.datas.reserve(ents.datas.size);
+	ents.datas.zero();
 	chunk_slice slice;
 	std::vector<archetype*> ats;
 	while (archetype* g = deserialize_archetype(s, nullptr, true))
@@ -2168,6 +2196,7 @@ void world::deserialize(serializer_i* s)
 
 	//todo: multithread?
 	for (archetype* g : ats)
+	{
 		while (deserialize_slice(g, s, slice))
 		{
 			//reinitialize entity data
@@ -2182,6 +2211,7 @@ void world::deserialize(serializer_i* s)
 				data.v = e.version;
 			}
 		}
+	}
 
 	//reinitialize entity free list
 	forloop(i, 0, ents.datas.size)
@@ -2190,7 +2220,7 @@ void world::deserialize(serializer_i* s)
 		if (data.c == nullptr)
 		{
 			data.nextFree = ents.free;
-			ents.free = data.i;
+			ents.free = i;
 		}
 	}
 
@@ -2618,6 +2648,17 @@ void chunk_vector_base::flatten(void* dst, size_t eleSize)
 		auto sizeToCopy = std::min(kChunkSize, remainSize);
 		memcpy(dst, data[i], sizeToCopy);
 		dst = (char*)dst + sizeToCopy;
+		remainSize -= sizeToCopy;
+	}
+}
+
+void chunk_vector_base::zero(size_t eleSize)
+{
+	auto remainSize = size * eleSize;
+	forloop(i, 0, chunkSize)
+	{
+		auto sizeToCopy = std::min(kChunkSize, remainSize);
+		memset(data[i], 0, sizeToCopy);
 		remainSize -= sizeToCopy;
 	}
 }
