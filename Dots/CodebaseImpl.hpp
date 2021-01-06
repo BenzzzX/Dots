@@ -76,10 +76,14 @@ namespace core
 		}
 
 		template<class P>
-		chunk_vector<task> pipeline::create_tasks(P& k, int maxSlice)
+		std::pair<chunk_vector<task>, chunk_vector<task_group>> pipeline::create_tasks(P& k, int batchCount)
 		{
 			int indexInKernel = 0;
 			chunk_vector<task> result;
+			chunk_vector<task_group> groups;
+			task_group group;
+			group.begin = group.end = 0;
+			int batch = batchCount;
 			forloop(i, 0, k.archetypeCount)
 				for (auto c : k.ctx.query(k.archetypes[i], k.filter.chunkFilter))
 				{
@@ -87,20 +91,31 @@ namespace core
 					while (allocated != c->get_count())
 					{
 						uint32_t sliceCount;
-						if (maxSlice == -1)
-							sliceCount = std::min(c->get_count() - allocated, c->get_type()->chunkCapacity[(int)alloc_type::fastbin]);
-						else
-							sliceCount = std::min(c->get_count() - allocated, (uint32_t)maxSlice);
+						sliceCount = std::min(c->get_count() - allocated, (uint32_t)batch);
 						task newTask{ };
 						newTask.matched = i;
 						newTask.slice = chunk_slice{ c, allocated, sliceCount };
 						newTask.indexInKernel = indexInKernel;
 						allocated += sliceCount;
 						indexInKernel += sliceCount;
+						batch -= sliceCount;
 						result.push(newTask);
+
+						if (batch == 0)
+						{
+							group.end = result.size;
+							groups.push(group);
+							group.begin = group.end;
+							batch = batchCount;
+						}
 					}
 				}
-			return result;
+			if (group.end != result.size)
+			{
+				group.end = result.size;
+				groups.push(group);
+			}
+			return { std::move(result), std::move(groups) };
 		}
 
 		template<class P>

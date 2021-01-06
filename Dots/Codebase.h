@@ -184,6 +184,12 @@ def get_##Name##_v = get_##Name<T>::value;
 			int indexInKernel;
 			chunk_slice slice;
 		};
+
+		struct task_group
+		{
+			int begin;
+			int end;
+		};
 		struct pass;
 
 		template<class P, class... params>
@@ -345,7 +351,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			template<class P = custom_pass>
 			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			template<class P = pass>
-			chunk_vector<task> create_tasks(P& k, int maxSlice = -1);
+			std::pair<chunk_vector<task>, chunk_vector<task_group>> create_tasks(P& k, int batchCount);
 			template<class P = pass>
 			uint32_t pass_size(const P& p) const;
 
