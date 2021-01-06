@@ -163,6 +163,7 @@ namespace core
 			void merge_chunks(archetype*);
 
 			//archetype behavior
+			archetype* construct_archetype(const entity_type& key);
 			void add_archetype(archetype*);
 			void structural_change(archetype* g, chunk* c);
 
@@ -173,7 +174,7 @@ namespace core
 
 			//serialize behavior
 			static void serialize_archetype(archetype* g, serializer_i* s);
-			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher);
+			archetype* deserialize_archetype(serializer_i* s, patcher_i* patcher, bool createNew);
 			void serialize_slice(const chunk_slice& slice, serializer_i* s);
 			bool deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice);
 

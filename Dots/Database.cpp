@@ -748,7 +748,18 @@ archetype* world::get_archetype(const entity_type& key)
 	auto iter = archetypes.find(key);
 	if (iter != archetypes.end())
 		return iter->second;
+	auto g = construct_archetype(key);
+	add_archetype(g);
+	return g;
+}
 
+archetype* world::get_archetype(chunk_slice s) const noexcept
+{
+	return s.c->type;
+}
+
+archetype* world::construct_archetype(const entity_type& key)
+{
 	//字典序分割
 	const tsize_t count = key.types.length;
 	tsize_t firstTag = 0;
@@ -809,7 +820,7 @@ archetype* world::get_archetype(const entity_type& key)
 
 	//生成内敛数组
 	archetype* g = new(malloc(proto.get_size() + sizeof(archetype))) archetype(proto);
-	char* buffer = (char*)(g+1);
+	char* buffer = (char*)(g + 1);
 	allocate_inline(g->types, buffer, count);
 	allocate_inline(g->offsets[0], buffer, firstTag);
 	allocate_inline(g->offsets[1], buffer, firstTag);
@@ -858,13 +869,7 @@ archetype* world::get_archetype(const entity_type& key)
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
 	}
-	add_archetype(g);
 	return g;
-}
-
-archetype* world::get_archetype(chunk_slice s) const noexcept
-{
-	return s.c->type;
 }
 
 void world::add_archetype(archetype* g)
@@ -1147,7 +1152,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	s->stream(type.metatypes.data, mlength * sizeof(entity));
 }
 
-archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
+archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, bool createNew)
 {
 	tsize_t tlength;
 	s->stream(&tlength, sizeof(tsize_t));
@@ -1167,11 +1172,16 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher)
 	s->stream(metatypes, mlength * sizeof(entity));
 	if (patcher)
 		forloop(i, 0, mlength)
-		metatypes[i] = patcher->patch(metatypes[i]);
+			metatypes[i] = patcher->patch(metatypes[i]);
+	for (tsize_t i = 0; i < mlength;) //remove invalid metas
+		if (!exist(metatypes[i]))
+			std::swap(metatypes[i], metatypes[--mlength]);
+		else
+			++i;
 	std::sort(types, types + tlength);
 	std::sort(metatypes, metatypes + mlength);
 	entity_type type = { {types, tlength}, {metatypes, mlength} };
-	return get_archetype(type);
+	return createNew ? construct_archetype(type) : get_archetype(type);
 }
 
 bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
@@ -1373,7 +1383,7 @@ void world::structural_change(archetype* g, chunk* c)
 
 chunk_slice world::deserialize_single(serializer_i* s, patcher_i* patcher)
 {
-	auto* g = deserialize_archetype(s, patcher);
+	auto* g = deserialize_archetype(s, patcher, false);
 	chunk_slice slice;
 	deserialize_slice(g, s, slice);
 	ents.new_entities(slice);
@@ -2124,18 +2134,23 @@ void world::serialize(serializer_i* s)
 {
 	s->stream(&ents.datas.size, sizeof(uint32_t));
 
+	std::vector<archetype*> ats;
 	for (auto& pair : archetypes)
 	{
 		archetype* g = pair.second;
 		if (g->cleaning)
 			continue;
 		serialize_archetype(g, s);
+		ats.push_back(g);
+	}
+	s->stream(&ZeroValue, sizeof(tsize_t));
+	for (archetype* g : ats)
+	{
 		for (chunk* c = g->firstChunk; c; c = c->next)
 			serialize_slice({ c, 0, c->count }, s);
 
 		s->stream(&ZeroValue, sizeof(uint32_t));
 	}
-	s->stream(&ZeroValue, sizeof(tsize_t));
 }
 
 void world::deserialize(serializer_i* s)
@@ -2147,8 +2162,12 @@ void world::deserialize(serializer_i* s)
 	//reallocate entity data buffer
 	ents.datas.reserve(ents.datas.size);
 	chunk_slice slice;
+	std::vector<archetype*> ats;
+	while (archetype* g = deserialize_archetype(s, nullptr, true))
+		ats.push_back(g);
+
 	//todo: multithread?
-	for (archetype* g = deserialize_archetype(s, nullptr); g != nullptr; g = deserialize_archetype(s, nullptr))
+	for (archetype* g : ats)
 		while (deserialize_slice(g, s, slice))
 		{
 			//reinitialize entity data
@@ -2174,6 +2193,10 @@ void world::deserialize(serializer_i* s)
 			ents.free = data.i;
 		}
 	}
+
+	//update query till all meta entity is complete
+	for (archetype* g : ats)
+		add_archetype(g);
 }
 
 void world::clear()
