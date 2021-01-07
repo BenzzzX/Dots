@@ -2137,6 +2137,11 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
+ECS_API world_delta core::database::world::diff_context(world& src)
+{
+	return world_delta();
+}
+
 void world::patch_chunk(chunk* c, patcher_i* patcher)
 {
 	entity* es = (entity*)c->data();
@@ -2145,17 +2150,6 @@ void world::patch_chunk(chunk* c, patcher_i* patcher)
 	chunk::patch(c, patcher);
 }
 
-/*
-struct Data
-{
-	struct Section
-	{
-		struct entity_type type[1];
-		struct chunk_slice datas[n];
-	};
-	Section sections[m];
-};
-*/
 const int ZeroValue = 0;
 void world::serialize(serializer_i* s)
 {

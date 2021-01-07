@@ -27,7 +27,15 @@ namespace core
 		ECS_API builtin_id get_builtin();
 #include "ChunkVector.h"
 #include "Buffer.h"
-
+		struct world_delta
+		{
+			struct
+			{
+				entity_type type;
+				char* data;
+				uint32_t count;
+			} *created, *destroyed, *changed;
+		};
 
 		struct ECS_API chunk_slice
 		{
@@ -270,6 +278,7 @@ namespace core
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
+			ECS_API world_delta diff_context(world& src);
 			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);
