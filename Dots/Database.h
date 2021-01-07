@@ -29,12 +29,18 @@ namespace core
 #include "Buffer.h"
 		struct world_delta
 		{
+			entity* destroyed;
+			uint32_t destroyedCount;
+
 			struct
 			{
 				entity_type type;
 				char* data;
+				entity* ents;
 				uint32_t count;
-			} *created, *destroyed, *changed;
+			} *changed, *created;
+			uint32_t changedCount;
+			uint32_t createdCount;
 		};
 
 		struct ECS_API chunk_slice
@@ -278,7 +284,7 @@ namespace core
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
-			ECS_API world_delta diff_context(world& src);
+			ECS_API world_delta diff_context(world& base);
 			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);

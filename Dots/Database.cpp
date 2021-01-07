@@ -1135,16 +1135,6 @@ void world::unmark_free(archetype* g, chunk* c)
 	g->firstChunk = c;
 	if (g->lastChunk == nullptr)
 		g->lastChunk = c;
-
-
-
-	if (g->firstChunk != c)
-		if (g->firstFree == nullptr || c->next != g->firstFree)
-		{
-			if (g->firstChunk == g->lastChunk)
-				g->lastChunk = c;
-			g->firstChunk->link(c);
-		}
 }
 
 void world::release_reference(archetype* g)
@@ -2137,9 +2127,66 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
-ECS_API world_delta core::database::world::diff_context(world& src)
+world_delta world::diff_context(world& base)
 {
-	return world_delta();
+	world_delta result;
+	std::vector<char> buffer;
+	for (auto& pair : archetypes)
+	{
+		auto g = pair.second;
+		chunk* c = g->firstChunk;
+		auto type = g->get_type();
+		while (c != nullptr)
+		{
+			//entity always move towards index 0
+			//so first entity should remain in same chunk in most case
+			chunk_slice slice{ c, 0, 0 };
+			while (slice.start != c->count)
+			{
+				entity e = c->get_entities()[slice.start];
+
+				if (base.exist(e))
+				{
+					auto& baseE = base.ents.datas[e];
+					chunk* baseC = baseE.c;
+					chunk_slice baseSlice{ baseC, baseE.i, 0 };
+					int i = baseSlice.start + 1, j = slice.start + 1;
+					while (i < baseC->count && j < c->count && baseC->get_entities()[i] == c->get_entities()[j])
+						(i++, j++);
+					baseSlice.count = i - baseSlice.start;
+					slice.count = j - baseSlice.start;
+					auto baseType = baseC->type->get_type();
+					if (baseC->type->get_type() == type)
+					{
+						//diff slice
+					}
+					else //this slice can be a casted slice 
+					{
+						//diff casted slice
+					}
+				}
+				else
+				{
+					int i = slice.start + 1;
+					while (!base.exist(c->get_entities()[i]))
+						;//collect created
+				}
+
+				slice.start += slice.count;
+				slice.count = 0;
+			}
+		}
+	}
+	{
+		uint32_t size = std::min(ents.datas.size, base.ents.datas.size);
+		forloop(i, 0, size)
+		{
+			auto& baseE = base.ents.datas[i];
+			if (baseE.v != ents.datas[i].v)
+				;//collect deleted
+		}
+	}
+	return result;
 }
 
 void world::patch_chunk(chunk* c, patcher_i* patcher)
