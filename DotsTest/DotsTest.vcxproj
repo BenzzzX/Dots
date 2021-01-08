@@ -98,7 +98,7 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>lib\x64\Debug\marl.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>lib\x64\Debug\marl_d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

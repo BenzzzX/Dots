@@ -102,7 +102,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>include;/DotsRuntime/</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;../DotsRuntime/</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
