@@ -32,9 +32,10 @@ namespace core
 			entity* destroyed;
 			uint32_t destroyedCount;
 
-			struct
+			struct slice_delta
 			{
 				entity_type type;
+				uint32_t* rangeCounts;
 				char* data;
 				entity* ents;
 				uint32_t count;

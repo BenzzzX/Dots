@@ -2155,14 +2155,58 @@ world_delta world::diff_context(world& base)
 						(i++, j++);
 					baseSlice.count = i - baseSlice.start;
 					slice.count = j - baseSlice.start;
-					auto baseType = baseC->type->get_type();
-					if (baseC->type->get_type() == type)
+					auto baseG = baseC->type;
+					auto baseType = baseG->get_type();
+					world_delta::slice_delta delta;
+					struct { uint32_t start, count; } range;
+					//todo: delta.type = clone(type);
+					//todo: delta.rangeCounts = alloc<uint32_t>(g->firstTag);
+					forloop(i, 0, g->firstTag)
 					{
-						//diff slice
-					}
-					else //this slice can be a casted slice 
-					{
-						//diff casted slice
+						auto blid = baseG->index(type.types[i]);
+						if (blid == InvalidIndex)
+						{
+							char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
+							//todo: write(range)
+							//todo: write(data, g->sizes[i]*slice.count)
+						}
+						else
+						{
+							int rangeCount = 0;
+							range = { 0, 0 };
+							//check timestamp?
+							auto size = g->sizes[i];
+							char* baseData = baseC->data() + size * baseSlice.start + baseG->offsets[(int)baseC->ct][blid];
+							char* data = c->data() + size * slice.start + g->offsets[(int)c->ct][i];
+							uint32_t remainToDiff = slice.count;
+							while (remainToDiff != 0)
+							{
+								auto start = size * (slice.count - remainToDiff);
+								auto result = std::mismatch(data + start, data + size * slice.count, baseData + start);
+								auto offset = result.first - data;
+								if (offset == 0)
+									break;
+								auto index = (offset-1) / size;
+								if (index == range.start + range.count)
+									range.count++;
+								else
+								{
+									//todo: write(range)
+									//todo: write(data + size*range.start, data + size*range.start + size*range.count)
+									range.start = index;
+									range.count = 1;
+									rangeCount++;
+								}
+								remainToDiff = remainToDiff - index - 1;
+							}
+							if (range.count != 0)
+							{
+								//todo: write(range)
+								//todo: write(data + size*range.start, data + size*range.start + size*range.count)
+								rangeCount++;
+							}
+							delta.rangeCounts[i] = rangeCount;
+						}
 					}
 				}
 				else
