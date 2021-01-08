@@ -83,7 +83,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 		filter.archetypeFilter = { type }; //筛选所有的 test
 		def params = hana::make_tuple(param<test>); //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
-		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
+		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
@@ -121,7 +121,7 @@ TEST_F(CodebaseTest, BufferAPI)
 		filter.archetypeFilter = { type }; //筛选所有的 test
 		def params = hana::make_tuple(param<const test3>); //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
-		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
+		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
@@ -164,7 +164,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 		filter.archetypeFilter = { type }; //筛选所有的 test
 		def params = hana::make_tuple(param<test>); //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
-		auto tasks = ppl.create_tasks(*k); //从 pass 提取 task
+		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(std::execution::parallel_unsequenced_policy{}, //使用 std 的多线程调度
 			tasks.begin(), tasks.end(), [k, &counter](task& tk)
 			{
@@ -241,57 +241,85 @@ namespace ecs
 		{
 			allpasses.erase(remove_if(allpasses.begin(), allpasses.end(), [](auto& n) {return n.expired(); }), allpasses.end());
 		}
-		void sync_dependencies(gsl::span<custom_pass*> dependencies) const
+		void sync_dependencies(gsl::span<std::weak_ptr<core::codebase::custom_pass>> dependencies) const override
 		{
-			for (auto dp : dependencies)
-				((custom_pass*)dp)->event.wait();
+			for (auto dpr : dependencies)
+				if (auto dp = dpr.lock())
+					((custom_pass*)dp.get())->event.wait();
 		}
 		void sync_all() const
 		{
 			wait();
 		}
 		mutable std::vector<std::weak_ptr<custom_pass>> allpasses;
-		bool force_no_parallel = false;
+		bool force_no_group_parallel = false;
+		bool force_no_fibers = false;
 	};
 
-	template<typename F, bool ForceParallel = false, bool ForceNoParallel = false>
-	FORCEINLINE void schedule(ecs::pipeline& pipeline, std::shared_ptr<pass> p, F&& f)
+	template<bool ForceParallel = false, bool ForceNoGroupParallel = false, bool ForceNotFiber = false, class F, class F2>
+	FORCEINLINE void schedule_init(
+		pipeline& pipeline, std::shared_ptr<pass> p, F&& f, F2&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
 	{
-		static_assert(std::is_invocable_v<std::decay_t<F>, ecs::pipeline&, pass&, ecs::task&>,
-			"F must be an invokable of void(ecs::pipeline&, ecs::pass&, ecs::task&)>");
-		static_assert(!(ForceParallel & ForceNoParallel),
+		static_assert(std::is_invocable_v<std::decay_t<F>, const ecs::pipeline&, const pass&>,
+			"F must be an invokable of void(const ecs::pipeline&, const ecs::pass&)>");
+		static_assert(std::is_invocable_v<std::decay_t<F2>, const ecs::pipeline&, const pass&, const ecs::task&>,
+			"F2 must be an invokable of void(const ecs::pipeline&, const ecs::pass&, const ecs::task&)>");
+		static_assert(!(ForceParallel & ForceNoGroupParallel),
 			"A schedule can not force both parallel and not parallel!");
-		marl::schedule([&, p, f]
+		auto toSchedule = [&, p, batchCount, f, t, externalDependencies = std::move(externalDependencies)]() mutable
+		{
+			defer(p->event.signal());
+			auto [tasks, groups] = pipeline.create_tasks(*p, batchCount);
+			//defer(tasks.reset());
+			f(pipeline, *p);
+			p->wait_for_dependencies();
+			p->release_dependencies();
+			for (auto& ed : externalDependencies)
+				ed.wait();
+			constexpr auto MinParallelTask = 8u;
+			const bool recommandParallel = !p->hasRandomWrite && groups.size > MinParallelTask;
+			if (pipeline.force_no_group_parallel)
+				goto FORCE_NO_GROUP_PARALLEL;
+			if ((recommandParallel && !ForceNoGroupParallel) || ForceParallel)
 			{
-				auto tasks = pipeline.create_tasks(*p); //从 pass 提取 task
-				defer(p->event.signal());
-				p->wait_for_dependencies();
-
-				constexpr auto MinParallelTask = 10u;
-				const bool recommandParallel = !p->hasRandomWrite && tasks.size > MinParallelTask;
-				if ((recommandParallel & !ForceNoParallel) || ForceParallel) // task交付task_system
+				marl::WaitGroup tasksGroup((uint32_t)groups.size);
+				forloop(grp, 0, groups.size)
 				{
-					marl::WaitGroup tasksGroup(static_cast<unsigned>(tasks.size));
-					forloop(tsk, 0, tasks.size)
-					{
-						auto& tk = tasks[tsk];
-						marl::schedule([&, tasksGroup] {
-							// Decrement the WaitGroup counter when the task has finished.
-							defer(tasksGroup.done());
-							f(pipeline, *p, tk);
-							});
-					}
-					tasksGroup.wait();
-				}
-				else // 串行
-				{
-					std::for_each(
-						tasks.begin(), tasks.end(), [&, f](auto& tk)
+					auto& gp = groups[grp];
+					marl::schedule([&, gp, tasksGroup] {
+						// Decrement the WaitGroup counter when the task has finished.
+						defer(tasksGroup.done());
+						forloop(tsk, gp.begin, gp.end)
 						{
-							f(pipeline, *p, tk);
+							auto& tk = tasks[tsk];
+							t(pipeline, *p, tk);
+						}
 						});
 				}
-			});
+				tasksGroup.wait();
+			}
+			else
+			{
+			FORCE_NO_GROUP_PARALLEL:
+				std::for_each(
+					tasks.begin(), tasks.end(), [&, t](auto& tk) mutable
+					{
+						t(pipeline, *p, tk);
+					});
+			}
+		};
+
+		if (ForceNotFiber || pipeline.force_no_fibers)
+			toSchedule();
+		else
+			marl::schedule(toSchedule);
+	}
+
+	template<bool ForceParallel = false, bool ForceNoParallel = false, class F>
+	FORCEINLINE void schedule(
+		pipeline& pipeline, std::shared_ptr<pass> p, F&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
+	{
+		schedule_init(pipeline, p, [](const ecs::pipeline&, const pass&) {}, std::forward<F>(t), batchCount, externalDependencies);
 	}
 }
 
@@ -329,7 +357,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
 		auto pass = ppl.create_pass(filter, params);
 		ecs::schedule(ppl, pass,
-			[&](ecs::pipeline& pipeline, ecs::pass& pass, ecs::task& tk)
+			[&](const ecs::pipeline& pipeline, const ecs::pass& pass, const ecs::task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, pass, tk };
@@ -338,7 +366,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 				const core::entity* es = o.get_entities();
 				forloop(i, 0, o.get_count())
 					counter.fetch_add(tests[i]);
-			});
+			}, 100);
 		// 等待单一pass
 		pass->event.wait();
 		// 等待pipeline

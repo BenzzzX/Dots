@@ -1568,7 +1568,7 @@ chunk_vector<chunk_slice> world::cast_slice(chunk_slice src, archetype* g)
 	chunk_vector<chunk_slice> result;
 	archetype* srcG = src.c->type;
 	structural_change(srcG, src.c);
-	g->size -= src.count;
+	srcG->size -= src.count;
 	uint32_t k = 0;
 	while (k < src.count)
 	{
@@ -2129,7 +2129,7 @@ void world::move_context(world& src)
 
 world_delta world::diff_context(world& base)
 {
-	world_delta result;
+	world_delta result{};
 	std::vector<char> buffer;
 	for (auto& pair : archetypes)
 	{
