@@ -209,6 +209,24 @@ namespace core
 			void release_reference(archetype* g);
 
 			friend chunk;
+
+			struct batch_range
+			{
+				const world& ctx;
+				const entity* es;
+				uint32_t count;
+				struct iterator
+				{
+					batch_range& range;
+					uint32_t i;
+					chunk_slice s;
+					iterator& operator++();
+					chunk_slice operator*() {  return s; }
+					bool operator!=(const iterator& other) { return i != other.i; }
+				};
+				iterator begin() { return ++iterator{ *this, 0 }; }
+				iterator end() { return { *this, count }; }
+			};
 		public:
 			ECS_API world(index_t typeCapacity = 4096u);
 			ECS_API world(const world& other/*todo: ,archetype_filter*/);
@@ -238,7 +256,7 @@ namespace core
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
 			//query iterators
-			ECS_API chunk_vector<chunk_slice> batch(const entity* ents, uint32_t count) const;
+			ECS_API batch_range batch(const entity* ents, uint32_t count) const;
 			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter) const;
 			ECS_API chunk_vector<chunk*> query(const archetype*, const chunk_filter& filter = {}) const;
 			ECS_API chunk_vector<archetype*> get_archetypes();

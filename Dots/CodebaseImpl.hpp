@@ -93,7 +93,7 @@ namespace core
 						uint32_t sliceCount;
 						sliceCount = std::min(c->get_count() - allocated, (uint32_t)batch);
 						task newTask{ };
-						newTask.matched = i;
+						newTask.gid = i;
 						newTask.slice = chunk_slice{ c, allocated, sliceCount };
 						newTask.indexInKernel = indexInKernel;
 						allocated += sliceCount;
@@ -289,16 +289,16 @@ namespace core
 			auto paramId_c = param_id<DT>();
 			auto param = hana::at(paramList, paramId_c);
 			using return_type = detail::array_ret_t<T>;
-			//if (localType >= ctx.archetypes[matched]->firstTag)
+			//if (localType >= ctx.archetypes[gid]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
 			int paramId = paramId_c.value;
-			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
+			auto localType = ctx.localType[gid * ctx.paramCount + paramId];
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				if (localType == InvalidIndex)
-					ptr = const_cast<void*>(ctx.ctx.get_shared_ro(ctx.archetypes[matched], ctx.types[paramId]));
+					ptr = const_cast<void*>(ctx.ctx.get_shared_ro(ctx.archetypes[gid], ctx.types[paramId]));
 				else
 					ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
 			}
@@ -321,11 +321,11 @@ namespace core
 			auto paramId_c = param_id<std::decay_t<T>>();
 			auto param = hana::at(paramList, paramId_c);
 			using return_type = detail::array_ret_t<T>;
-			//if (localType >= ctx.archetypes[matched]->firstTag)
+			//if (localType >= ctx.archetypes[gid]->firstTag)
 			//	return (return_type)nullptr;
 			void* ptr = nullptr;
 			int paramId = paramId_c.value;
-			auto localType = ctx.localType[matched * ctx.paramCount + paramId];
+			auto localType = ctx.localType[gid * ctx.paramCount + paramId];
 			if constexpr (param.readonly)
 			{ 
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");

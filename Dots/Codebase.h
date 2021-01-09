@@ -180,7 +180,7 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct task
 		{
-			int matched;
+			int gid;
 			int indexInKernel;
 			chunk_slice slice;
 		};
@@ -197,7 +197,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		{
 			static constexpr hana::tuple<params...> paramList;
 			operation(hana::tuple<params...> ps, const P& k, const task& t)
-			:ctx(k), matched(t.matched), slice(t.slice), indexInKernel(t.indexInKernel){}
+			:ctx(k), gid(t.gid), slice(t.slice), indexInKernel(t.indexInKernel){}
 			template<class T>
 			constexpr auto param_id();
 			template<class T>
@@ -214,17 +214,17 @@ def get_##Name##_v = get_##Name<T>::value;
 			detail::value_ret_t<T> get_parameter(entity e);
 			template<class T>
 			detail::value_ret_t<T> get_parameter_owned(entity e);
-			mask get_mask() { return ctx.matched[matched]; }
+			mask get_mask() { return ctx.matched[gid]; }
 			bool is_owned(int paramId)
 			{
 				constexpr uint16_t InvalidIndex = (uint16_t)-1;
-				return ctx.localType[paramId] != InvalidIndex;
+				return ctx.localType[gid * ctx.paramCount + paramId] != InvalidIndex;
 			}
 			template<class T>
 			bool has_component(entity e) { return ctx.ctx.has_component(e, complist<T>); }
 			const entity* get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }
 			const P& ctx;
-			int matched;
+			int gid;
 			chunk_slice slice;
 			int indexInKernel;
 			uint32_t get_count() { return slice.count; }

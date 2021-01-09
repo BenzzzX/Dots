@@ -1125,7 +1125,10 @@ void world::mark_free(archetype* g, chunk* c)
 void world::unmark_free(archetype* g, chunk* c)
 {
 	if (g->firstFree == c)
+	{
 		g->firstFree = c->next;
+		return;
+	}
 	remove(g->firstChunk, g->lastChunk, c);
 	if (g->firstChunk)
 	{
@@ -1737,25 +1740,27 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 }
 
-chunk_vector<chunk_slice> world::batch(const entity* es, uint32_t count) const
+world::batch_range world::batch(const entity* es, uint32_t count) const
 {
-	chunk_vector<chunk_slice> result;
-	uint32_t i = 0;
-	while (i < count)
+	return { *this, es, count };
+}
+
+world::batch_range::iterator& world::batch_range::iterator::operator++()
+{
+	const auto& datas = range.ctx.ents.datas;
+	const auto& start = datas[range.es[i++].id];
+	chunk_slice ns{ start.c, start.i, 1 };
+	while (i < range.count)
 	{
-		const auto& datas = ents.datas;
-		const auto& start = datas[es[i++].id];
-		chunk_slice s{ start.c, start.i, 1 };
-		while (i < count)
+		const auto& curr = datas[range.es[i].id];
+		if (curr.i != start.i + ns.count || curr.c != start.c)
 		{
-			const auto& curr = datas[es[i].id];
-			if (curr.i != start.i + s.count || curr.c != start.c)
-				break;
-			i++; s.count++;
+			s = ns;
+			break;
 		}
-		result.push(s);
+		i++; ns.count++;
 	}
-	return result;
+	return *this;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)
@@ -1803,6 +1808,7 @@ void world::destroy(chunk_slice s)
 			{
 				entity e = ((entity*)group_data->data())[i];
 				auto& data = ents.datas[i];
+				//todo: we could batch instantiated prefab group
 				destroy_single({ data.c, data.i, 1 });
 			}
 		}
