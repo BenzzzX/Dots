@@ -309,7 +309,7 @@ namespace core
 				else
 					ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
 			}
-			return (ptr && is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
+			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
 		template<class P, class ...params>
@@ -333,7 +333,7 @@ namespace core
 			}
 			else
 				ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
-			return (ptr && is_owned(paramId)) ? (return_type)ptr + slice.start : (return_type)ptr;
+			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
 		template<class P, class ...params>
