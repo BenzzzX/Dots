@@ -213,7 +213,7 @@ namespace core
 					return;
 
 				auto entries = (*iter).second.get();
-				if (localType > at->firstTag || localType == InvalidIndex)
+				if (localType >= at->firstTag || localType == InvalidIndex)
 					return;
 				auto& entry = entries[localType];
 				if (readonly)
@@ -235,28 +235,39 @@ namespace core
 				}
 			};
 
+			auto sync_entities = [&](archetype* at)
+			{
+				auto iter = dependencyEntries.find(at);
+				if (iter == dependencyEntries.end())
+					return;
+				auto entries = (*iter).second.get();
+				auto& entry = entries[at->firstTag];
+				entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
+				entry.shared.push_back(k);
+			};
+
 			forloop(i, 0, k->archetypeCount)
 			{
+				archetype* at = k->archetypes[i];
 				forloop(j, 0, k->paramCount)
 				{
-					archetype* at = k->archetypes[i];
 					auto localType = k->localType[i * k->paramCount + j];
 					if (localType == InvalidIndex)
 					{
 						//assert(check_bit(k->readonly, j))
 						auto type = k->types[j];
-						at = HELPER::get_owning_archetype((world*)this, at, type);
-						if (!at) // 存在 any 时可能出现
+						auto oat = HELPER::get_owning_archetype((world*)this, at, type);
+						if (!oat) // 存在 any 时可能出现
 							continue;
-						sync_entry(at, at->index(type), true);
+						sync_entry(oat, oat->index(type), true);
 					}
 					else
 						sync_entry(at, localType, check_bit(k->readonly, j));
 				}
+				sync_entities(at);
 				auto& changed = k->filter.chunkFilter.changed;
 				forloop(j, 0, changed.length)
 				{
-					archetype* at = k->archetypes[i];
 					auto localType = at->index(changed[j]);
 					sync_entry(at, localType, true);
 				}

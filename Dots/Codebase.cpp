@@ -22,7 +22,7 @@ pipeline::pipeline(world&& ctx)
 	};
 	for (auto at : get_archetypes())
 	{
-		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag] };
+		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag + 1] };
 		dependencyEntries.try_emplace(at, std::move(entries));
 	}
 }
@@ -31,7 +31,7 @@ void pipeline::update_archetype(archetype* at, bool add)
 {
 	if (add)
 	{
-		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag] };
+		std::unique_ptr<dependency_entry[]> entries{ new dependency_entry[at->firstTag + 1] };
 		dependencyEntries.try_emplace(at, std::move(entries));
 	}
 	else
@@ -54,7 +54,8 @@ void pipeline::sync_archetype(archetype* at) const
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
 	std::vector<std::weak_ptr<custom_pass>> deps;
-	forloop(i, 0, at->firstTag)
+	auto count = at->firstTag + 1;
+	forloop(i, 0, count)
 	{
 		if (entries[i].shared.empty())
 		{
@@ -91,6 +92,22 @@ void pipeline::sync_entry(archetype* at, index_t type) const
 	}
 	entries[i].shared.clear();
 	entries[i].owned.reset();
+	sync_dependencies(deps);
+}
+
+void pipeline::sync_all_ro() const
+{
+	std::vector<std::weak_ptr<custom_pass>> deps;
+	for (auto& pair : dependencyEntries)
+	{
+		auto entries = pair.second.get();
+		forloop(i, 0, pair.first->firstTag)
+		{
+			if (!entries[i].owned.expired())
+				deps.push_back(entries[i].owned);
+			entries[i].owned.reset();
+		}
+	}
 	sync_dependencies(deps);
 }
 

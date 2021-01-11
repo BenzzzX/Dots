@@ -338,7 +338,6 @@ def get_##Name##_v = get_##Name<T>::value;
 			void update_archetype(archetype* at, bool add);
 			int passIndex;
 			virtual void sync_dependencies(gsl::span<std::weak_ptr<custom_pass>> dependencies) const {}
-			virtual void sync_all() const {}
 			friend class world;
 		public:
 			ECS_API pipeline(world&& ctx);
@@ -346,6 +345,10 @@ def get_##Name##_v = get_##Name<T>::value;
 			ECS_API world release();
 			ECS_API void sync_archetype(archetype* at) const;
 			ECS_API void sync_entry(archetype* at, index_t type) const;
+
+			virtual void sync_all() const {}
+			ECS_API void sync_all_ro() const;
+
 			template<class P = pass, class T>
 			std::shared_ptr<P> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
 			template<class P = custom_pass>
