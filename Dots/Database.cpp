@@ -370,6 +370,19 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 	}
 }
 
+template<class T>
+void archive(serializer_i* stream, const T& value)
+{
+	stream->stream(&value, sizeof(T));
+}
+
+template<class T>
+void archive(serializer_i* stream, const T* value, size_t count)
+{
+	stream->stream(value, sizeof(T)*count);
+}
+
+
 //todo: handle transient data?
 void chunk::serialize(chunk_slice s, serializer_i* stream)
 {
@@ -377,12 +390,12 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 	uint32_t* offsets = type->offsets[(int)s.c->ct];
 	uint16_t* sizes = type->sizes;
 	tagged_index* types = (tagged_index*)type->types;
-	stream->stream(s.c->get_entities() + s.start, sizeof(entity) * s.count);
+	archive(stream, s.c->get_entities() + s.start, s.count);
 
 	forloop(i, 0, type->firstTag)
 	{
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
-		stream->stream(arr, sizes[i] * s.count);
+		archive(stream, arr, sizes[i] * s.count);
 	}
 	
 	if (stream->is_serialize())
@@ -393,7 +406,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 			forloop(j, 0, s.count)
 			{
 				buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
-				stream->stream(b->data(), b->size);
+				archive(stream, b->data(), b->size);
 			}
 		}
 	}
@@ -407,7 +420,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream)
 				buffer* b = (buffer*)(arr + (size_t)j * sizes[i]);
 				if (b->d != nullptr)
 					b->d = (char*)malloc(b->capacity);
-				stream->stream(b->data(), b->size);
+				archive(stream, b->data(), b->size);
 			}
 		}
 	}
@@ -1147,36 +1160,36 @@ void world::release_reference(archetype* g)
 
 void world::serialize_archetype(archetype* g, serializer_i* s)
 {
-	s->stream(&g->size, sizeof(uint32_t));
+	archive(s, g->size);
 	entity_type type = g->get_type();
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
-	s->stream(&tlength, sizeof(tsize_t));
+	archive(s, tlength);
 	forloop(i, 0, tlength)
-		s->stream(&DotsContext->infos[tagged_index(type.types[i]).index()].GUID, sizeof(core::GUID));
-	s->stream(&mlength, sizeof(tsize_t));
-	s->stream(type.metatypes.data, mlength * sizeof(entity));
+		archive(s, DotsContext->infos[tagged_index(type.types[i]).index()].GUID);
+	archive(s, mlength);
+	archive(s, type.metatypes.data, mlength);
 }
 
 archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, bool createNew)
 {
 	uint32_t size = 0;
-	s->stream(&size, sizeof(uint32_t));
+	archive(s, size);
 	if (size == 0)
 		return nullptr;
 	tsize_t tlength;
-	s->stream(&tlength, sizeof(tsize_t));
+	archive(s, tlength);
 	stack_array(index_t, types, tlength);
 	forloop(i, 0, tlength)
 	{
 		core::GUID uu;
-		s->stream(&uu, sizeof(core::GUID));
+		archive(s, uu);
 		//todo: check validation
 		types[i] = (index_t)DotsContext->hash2type[uu];
 	}
 	tsize_t mlength;
-	s->stream(&mlength, sizeof(tsize_t));
+	archive(s, mlength);
 	stack_array(entity, metatypes, mlength);
-	s->stream(metatypes, mlength * sizeof(entity));
+	archive(s, metatypes, mlength);
 	if (patcher)
 		forloop(i, 0, mlength)
 			metatypes[i] = patcher->patch(metatypes[i]);
@@ -1199,7 +1212,7 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, boo
 bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
 {
 	uint32_t count;
-	s->stream(&count, sizeof(uint32_t));
+	archive(s, count);
 	if (count == 0)
 		return false;
 	chunk* c;
@@ -1226,7 +1239,7 @@ bool world::deserialize_slice(archetype* g, serializer_i* s, chunk_slice& slice)
 
 void world::serialize_slice(const chunk_slice& slice, serializer_i* s)
 {
-	s->stream(&slice.count, sizeof(uint32_t));
+	archive(s, slice.count);
 	chunk::serialize(slice, s);
 }
 
@@ -1645,7 +1658,7 @@ world::world(const world& other)
 	timestamp = src.timestamp;
 	typeCapacity = src.typeCapacity;
 	typeTimestamps = (uint32_t*)::malloc(typeCapacity * sizeof(uint32_t));
-	memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+	std::fill(typeTimestamps, typeTimestamps + typeCapacity, 0);
 	src.ents.clone(&ents);
 	for (auto& iter : src.archetypes)
 	{
@@ -2250,7 +2263,7 @@ void world::patch_chunk(chunk* c, patcher_i* patcher)
 const int ZeroValue = 0;
 void world::serialize(serializer_i* s)
 {
-	s->stream(&ents.datas.size, sizeof(uint32_t));
+	archive(s, ents.datas.size);
 
 	std::vector<archetype*> ats;
 	for (auto& pair : archetypes)
@@ -2261,13 +2274,13 @@ void world::serialize(serializer_i* s)
 		serialize_archetype(g, s);
 		ats.push_back(g);
 	}
-	s->stream(&ZeroValue, sizeof(uint32_t));
+	archive(s, ZeroValue);
 	for (archetype* g : ats)
 	{
 		for (chunk* c = g->firstChunk; c; c = c->next)
 			serialize_slice({ c, 0, c->count }, s);
 
-		s->stream(&ZeroValue, sizeof(uint32_t));
+		archive(s, ZeroValue);
 	}
 }
 
@@ -2275,7 +2288,7 @@ void world::deserialize(serializer_i* s)
 {
 	clear();
 
-	s->stream(&ents.datas.size, sizeof(uint32_t));
+	archive(s, ents.datas.size);
 
 	//reallocate entity data buffer
 	ents.datas.reserve(ents.datas.size);
@@ -2323,7 +2336,7 @@ void world::deserialize(serializer_i* s)
 void world::clear()
 {
 	if(typeTimestamps)
-		memset(typeTimestamps, 0, typeCapacity * sizeof(uint32_t));
+		std::fill(typeTimestamps, typeTimestamps + typeCapacity, 0);
 	for (auto& g : archetypes)
 	{
 		chunk* c = g.second->firstChunk;
