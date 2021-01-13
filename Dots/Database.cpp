@@ -2146,10 +2146,56 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
-world_delta world::diff_context(world& base)
+struct stack_buffer
 {
-	world_delta result{};
-	std::vector<char> buffer;
+	std::vector<char> buf;
+
+	template<class T>
+	void write(const T& value)
+	{
+		size_t size = sizeof(T);
+		auto dst = buf.data() + buf.size();
+		buf.resize(buf.size() + size);
+		memcpy(dst, &value, size);
+	}
+
+	template<class T>
+	T* write(const T* value, size_t size)
+	{
+		auto dst = buf.data() + buf.size() * sizeof(T);
+		buf.resize(buf.size() + size);
+		memcpy(dst, value, size);
+		return dst;
+	};
+
+	template<class T>
+	T* allocate(size_t s = 1)
+	{
+		size_t size = sizeof(T) * s;
+		auto dst = buf.data() + buf.size();
+		buf.resize(buf.size() + size);
+		return (T*)dst;
+	}
+
+	char* allocate(size_t size)
+	{
+		auto dst = buf.data() + buf.size();
+		buf.resize(buf.size() + size);
+		return dst;
+	};
+
+	char* top()
+	{
+		return buf.data() + buf.size();
+	};
+};
+
+world_delta* world::diff_context(world& base)
+{
+	world_delta wd{};
+	stack_buffer buffer;
+	std::vector<world_delta::slice_delta> changed;
+	std::vector<world_delta::slice_delta> created;
 	for (auto& pair : archetypes)
 	{
 		auto g = pair.second;
@@ -2163,7 +2209,7 @@ world_delta world::diff_context(world& base)
 			while (slice.start != c->count)
 			{
 				entity e = c->get_entities()[slice.start];
-
+				struct { uint32_t start, count; } range;
 				if (base.exist(e))
 				{
 					auto& baseE = base.ents.datas[e];
@@ -2177,17 +2223,21 @@ world_delta world::diff_context(world& base)
 					auto baseG = baseC->type;
 					auto baseType = baseG->get_type();
 					world_delta::slice_delta delta;
-					struct { uint32_t start, count; } range;
-					//todo: delta.type = clone(type);
-					//todo: delta.rangeCounts = alloc<uint32_t>(g->firstTag);
+					auto data = buffer.allocate(type.get_size());
+					type.clone(data);
+					delta.rangeCounts = buffer.allocate<uint32_t>(g->firstTag);
+					delta.count = slice.count;
+					delta.ents = buffer.write(c->get_entities() + slice.start, delta.count);
+					delta.data = buffer.top();
 					forloop(i, 0, g->firstTag)
 					{
 						auto blid = baseG->index(type.types[i]);
 						if (blid == InvalidIndex)
 						{
 							char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
-							//todo: write(range)
-							//todo: write(data, g->sizes[i]*slice.count)
+							range = { 0, slice.count };
+							buffer.write(range);
+							buffer.write(data, g->sizes[i] * slice.count);
 						}
 						else
 						{
@@ -2210,8 +2260,8 @@ world_delta world::diff_context(world& base)
 									range.count++;
 								else
 								{
-									//todo: write(range)
-									//todo: write(data + size*range.start, data + size*range.start + size*range.count)
+									buffer.write(range);
+									buffer.write(data + size * range.start, size * range.count);
 									range.start = index;
 									range.count = 1;
 									rangeCount++;
@@ -2220,19 +2270,35 @@ world_delta world::diff_context(world& base)
 							}
 							if (range.count != 0)
 							{
-								//todo: write(range)
-								//todo: write(data + size*range.start, data + size*range.start + size*range.count)
+								buffer.write(range);
+								buffer.write(data + size * range.start, size * range.count);
 								rangeCount++;
 							}
 							delta.rangeCounts[i] = rangeCount;
 						}
 					}
+					changed.push_back(delta);
 				}
 				else
 				{
-					int i = slice.start + 1;
-					while (!base.exist(c->get_entities()[i]))
-						;//collect created
+					int i = slice.start;
+					while (!base.exist(c->get_entities()[++i]));
+					slice.count = i - slice.start;
+					auto data = buffer.allocate(type.get_size());
+					type.clone(data);
+					world_delta::slice_delta delta;
+					delta.rangeCounts = buffer.allocate<uint32_t>(g->firstTag);
+					delta.count = slice.count;
+					delta.ents = buffer.write(c->get_entities() + slice.start, delta.count);
+					delta.data = buffer.top();
+					range = { 0, slice.count };
+					forloop(i, 0, g->firstTag)
+					{
+						char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
+						buffer.write(range);
+						buffer.write(data, g->sizes[i] * slice.count);
+					}
+					created.push_back(delta);
 				}
 
 				slice.start += slice.count;
@@ -2240,15 +2306,26 @@ world_delta world::diff_context(world& base)
 			}
 		}
 	}
+	wd.changed = buffer.write(changed.data(), changed.size());
+	wd.changedCount = changed.size();
+	wd.created = buffer.write(created.data(), created.size());
+	wd.createdCount = created.size();
 	{
 		uint32_t size = std::min(ents.datas.size, base.ents.datas.size);
+		std::vector<entity> deleted;
 		forloop(i, 0, size)
 		{
 			auto& baseE = base.ents.datas[i];
 			if (baseE.v != ents.datas[i].v)
-				;//collect deleted
+				deleted.push_back(entity(i, baseE.v));//collect deleted
+
 		}
+		wd.destroyed = buffer.write(deleted.data(), deleted.size());
+		wd.destroyedCount = deleted.size();
 	}
+	auto data = (char*)::malloc(sizeof(world_delta) + buffer.buf.size());
+	world_delta* result = new(data) world_delta;
+	memcpy(data + sizeof(world_delta), buffer.buf.data(), buffer.buf.size());
 	return result;
 }
 

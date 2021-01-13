@@ -40,6 +40,7 @@ namespace core
 				entity* ents;
 				uint32_t count;
 			} *changed, *created;
+
 			uint32_t changedCount;
 			uint32_t createdCount;
 		};
@@ -303,7 +304,7 @@ namespace core
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
-			ECS_API world_delta diff_context(world& base);
+			ECS_API world_delta* diff_context(world& base);
 			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);
