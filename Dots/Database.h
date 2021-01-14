@@ -8,6 +8,7 @@
 #include "DotsRuntime.h"
 #define ECS_API
 #include "Type.h"
+
 namespace core
 {
 	namespace database
@@ -22,7 +23,13 @@ namespace core
 			index_t cleanup_id;
 			index_t group_id;
 			index_t mask_id;
+#ifdef ENABLE_GUID_COMPONENT
+			index_t guid_id;
+#endif
 		};
+#ifdef ENABLE_GUID_COMPONENT
+		extern GUID new_guid();
+#endif
 
 		ECS_API builtin_id get_builtin();
 #include "ChunkVector.h"
@@ -324,7 +331,9 @@ namespace core
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
+#ifdef ENABLE_GUID_COMPONENT
 			ECS_API world_delta diff_context(world& base);
+#endif
 			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);

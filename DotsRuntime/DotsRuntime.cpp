@@ -38,6 +38,12 @@ context::context()
 	desc.name = "mask";
 	desc.entityRefCount = 0;
 	mask_id = register_type(desc);
+#ifdef ENABLE_GUID_COMPONENT
+	desc.size = sizeof(GUID);
+	desc.GUID = "00000000-0000-0000-0000-000000000005"_guid;
+	desc.name = "guid";
+	guid_id = register_type(desc);
+#endif
 
 	stack.init(10000);
 }

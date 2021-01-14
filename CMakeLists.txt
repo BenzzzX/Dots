@@ -60,6 +60,13 @@ target_include_directories(Dots
 target_link_libraries(Dots
     PUBLIC DotsRuntime)
 
+target_compile_definitions(DotsRuntime
+    PRIVATE ENABLE_GUID_COMPONENT 
+)
+target_compile_definitions(Dots
+    PRIVATE ENABLE_GUID_COMPONENT 
+)
+
 if(FULL_STATIC)
 target_compile_definitions(DotsRuntime
     PRIVATE FULL_STATIC 

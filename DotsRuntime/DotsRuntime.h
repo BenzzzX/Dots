@@ -57,10 +57,14 @@
 namespace core
 {
 	struct GUID {
-		uint32_t Data1;
-		uint16_t Data2;
-		uint16_t Data3;
-		uint8_t Data4[8];
+		struct
+		{
+			uint32_t Data1;
+			uint16_t Data2;
+			uint16_t Data3;
+			uint8_t Data4[8];
+		};
+
 		bool operator<(const GUID& rhs) const
 		{
 			using value_type = std::array<std::byte, 16>;
@@ -321,6 +325,10 @@ namespace core
 			index_t cleanup_id;
 			index_t group_id;
 			index_t mask_id;
+
+#ifdef ENABLE_GUID_COMPONENT
+			index_t guid_id;
+#endif
 
 			stack_allocator stack;
 

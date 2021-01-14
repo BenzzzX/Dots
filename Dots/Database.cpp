@@ -15,6 +15,7 @@ index_t disable_id = 0;
 index_t cleanup_id = 1;
 index_t group_id = 2;
 index_t mask_id = 3;
+index_t guid_id = 4;
 
 builtin_id core::database::get_builtin()
 {
@@ -22,7 +23,10 @@ builtin_id core::database::get_builtin()
 		disable_id,
 		cleanup_id,
 		group_id,
-		mask_id
+		mask_id,
+#ifdef ENABLE_GUID_COMPONENT
+		guid_id
+#endif
 	};
 }
 
@@ -261,7 +265,16 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 
 		if (st != dt)
 			continue;
-		memdup(dstData, srcData, sizes[i], dst.count);
+#ifdef ENABLE_GUID_COMPONENT
+		if (type->types[i] == guid_id)
+		{
+			auto dd = dstData;
+			forloop(j, 0, dst.count)
+				*((GUID*)dd + j) = new_guid();
+		}
+		else
+#endif
+			memdup(dstData, srcData, sizes[i], dst.count);
 		dstI++;
 	}
 	forloop(i, type->firstBuffer, type->firstTag)
@@ -2224,7 +2237,7 @@ world_delta::array_delta diff_array(const char* baseData, const char* data, size
 	}
 	return result;
 }
-
+#ifdef ENABLE_GUID_COMPONENT
 world_delta world::diff_context(world& base)
 {
 	world_delta wd{};
@@ -2234,6 +2247,10 @@ world_delta world::diff_context(world& base)
 		auto g = pair.second;
 		chunk* c = g->firstChunk;
 		auto type = g->get_type();
+		auto guid_l = g->index(guid_id);
+		if (guid_l == InvalidIndex)
+			continue;
+		
 		while (c != nullptr)
 		{
 			//entity operations are batched, thus diff could be batched too
@@ -2309,10 +2326,11 @@ world_delta world::diff_context(world& base)
 								uint16_t n = b->size / t.elementSize;
 								dt.length = n;
 								uint32_t diffed = std::min(baseB->size, b->size);
-								auto adt = diff_array(baseB->data(), b->data(), diffed, t.elementSize, buf);
+								dt.content = diff_array(baseB->data(), b->data(), diffed, t.elementSize, buf);
 								if (diffed < b->size)
-									adt.push_back(buf.write(b->data() + diffed, b->size - diffed));
-								delta.bufferDiffs[i].emplace_back(std::move(adt));
+									dt.content.push_back(buf.write(b->data() + diffed, b->size - diffed));
+
+								delta.bufferDiffs[i].emplace_back(std::move(dt));
 							}
 						}
 					}
@@ -2323,8 +2341,6 @@ world_delta world::diff_context(world& base)
 					int i = slice.start;
 					while (!base.exist(c->get_entities()[++i]));
 					slice.count = i - slice.start;
-					auto data = buf.allocate(type.get_size());
-					type.clone(data);
 					world_delta::slice_data delta;
 					auto data = buf.allocate(type.get_size());
 					delta.type = type.clone(data);
@@ -2351,6 +2367,7 @@ world_delta world::diff_context(world& base)
 	wd.store = std::move(buf.buf);
 	return wd;
 }
+#endif
 
 void world::patch_chunk(chunk* c, patcher_i* patcher)
 {
@@ -2961,6 +2978,7 @@ void core::database::initialize()
 	cleanup_id = DotsContext->cleanup_id;
 	group_id = DotsContext->group_id;
 	mask_id = DotsContext->mask_id;
+	guid_id = DotsContext->guid_id;
 }
 
 void entity_filter::apply(core::database::matched_archetype& ma) const
