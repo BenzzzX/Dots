@@ -27,22 +27,42 @@ namespace core
 		ECS_API builtin_id get_builtin();
 #include "ChunkVector.h"
 #include "Buffer.h"
+		template<class T>
+		struct local_span
+		{
+			intptr_t offset;
+			size_t count;
+			T* resolve(void* store) { return (T*)((char*)store + offset); }
+		};
 		struct world_delta
 		{
-			entity* destroyed;
-			uint32_t destroyedCount;
-
+			using array_delta = std::vector<local_span<char>>;
+			struct vector_delta
+			{
+				size_t length;
+				array_delta content;
+			};
+			using component_delta = std::unique_ptr<array_delta[]>;
+			using buffer_delta = std::unique_ptr<std::vector<vector_delta>[]>;
 			struct slice_delta
 			{
 				entity_type type;
-				uint32_t* rangeCounts;
-				char* data;
-				entity* ents;
-				uint32_t count;
-			} *changed, *created;
+				local_span<entity> ents;
+				component_delta diffs;
+				buffer_delta bufferDiffs;
+			};
 
-			uint32_t changedCount;
-			uint32_t createdCount;
+			struct slice_data
+			{
+				entity_type type;
+				local_span<entity> ents;
+				intptr_t offset;
+			};
+
+			std::vector<slice_delta> changed;
+			std::vector<slice_data> created;
+			std::vector<entity> destroyed;
+			std::vector<char> store;
 		};
 
 		struct ECS_API chunk_slice
@@ -304,7 +324,7 @@ namespace core
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
-			ECS_API world_delta* diff_context(world& base);
+			ECS_API world_delta diff_context(world& base);
 			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);

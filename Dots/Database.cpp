@@ -2146,9 +2146,12 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
-struct stack_buffer
+struct stack_buffer : serializer_i
 {
 	std::vector<char> buf;
+
+	void stream(const void* data, uint32_t bytes) { write((char*)data, bytes); };
+	bool is_serialize() override { return true; }
 
 	template<class T>
 	void write(const T& value)
@@ -2160,12 +2163,12 @@ struct stack_buffer
 	}
 
 	template<class T>
-	T* write(const T* value, size_t size)
+	local_span<T> write(const T* value, size_t size)
 	{
 		auto dst = buf.data() + buf.size() * sizeof(T);
 		buf.resize(buf.size() + size);
 		memcpy(dst, value, size);
-		return dst;
+		return { dst - buf.data(), size };
 	};
 
 	template<class T>
@@ -2184,18 +2187,48 @@ struct stack_buffer
 		return dst;
 	};
 
-	char* top()
+	intptr_t top()
 	{
-		return buf.data() + buf.size();
+		return  buf.size();
 	};
 };
 
-world_delta* world::diff_context(world& base)
+world_delta::array_delta diff_array(const char* baseData, const char* data, size_t count, size_t stride, stack_buffer& buf)
+{
+	struct { uint32_t start, count; } range{ 0, 0 };
+
+	world_delta::array_delta result;
+
+	uint32_t remainToDiff = count;
+	while (remainToDiff != 0)
+	{
+		auto start = stride * (count - remainToDiff);
+		auto mresult = std::mismatch(data + start, data + stride * count, baseData + start);
+		auto offset = mresult.first - data;
+		if (offset == 0)
+			break;
+		auto index = (offset - 1) / stride;
+		if (index == range.start + range.count)
+			range.count++;
+		else
+		{
+			result.push_back(buf.write(data + stride * range.start, stride* range.count));
+			range.start = index;
+			range.count = 1;
+		}
+		remainToDiff = remainToDiff - index - 1;
+	}
+	if (range.count != 0)
+	{
+		result.push_back(buf.write(data + stride * range.start, stride* range.count));
+	}
+	return result;
+}
+
+world_delta world::diff_context(world& base)
 {
 	world_delta wd{};
-	stack_buffer buffer;
-	std::vector<world_delta::slice_delta> changed;
-	std::vector<world_delta::slice_delta> created;
+	stack_buffer buf;
 	for (auto& pair : archetypes)
 	{
 		auto g = pair.second;
@@ -2203,13 +2236,11 @@ world_delta* world::diff_context(world& base)
 		auto type = g->get_type();
 		while (c != nullptr)
 		{
-			//entity always move towards index 0
-			//so first entity should remain in same chunk in most case
+			//entity operations are batched, thus diff could be batched too
 			chunk_slice slice{ c, 0, 0 };
 			while (slice.start != c->count)
 			{
 				entity e = c->get_entities()[slice.start];
-				struct { uint32_t start, count; } range;
 				if (base.exist(e))
 				{
 					auto& baseE = base.ents.datas[e];
@@ -2223,82 +2254,84 @@ world_delta* world::diff_context(world& base)
 					auto baseG = baseC->type;
 					auto baseType = baseG->get_type();
 					world_delta::slice_delta delta;
-					auto data = buffer.allocate(type.get_size());
-					type.clone(data);
-					delta.rangeCounts = buffer.allocate<uint32_t>(g->firstTag);
-					delta.count = slice.count;
-					delta.ents = buffer.write(c->get_entities() + slice.start, delta.count);
-					delta.data = buffer.top();
-					forloop(i, 0, g->firstTag)
+					auto data = buf.allocate(type.get_size());
+					delta.type = type.clone(data);
+					delta.diffs = world_delta::component_delta{ new world_delta::array_delta[g->firstBuffer] };
+					delta.bufferDiffs = world_delta::buffer_delta{ new std::vector<world_delta::vector_delta>[g->firstTag-g->firstBuffer] };
+
+					delta.ents = buf.write(c->get_entities() + slice.start, slice.count);
+					forloop(i, 0, g->firstBuffer)
 					{
 						auto blid = baseG->index(type.types[i]);
 						if (blid == InvalidIndex)
 						{
 							char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
-							range = { 0, slice.count };
-							buffer.write(range);
-							buffer.write(data, g->sizes[i] * slice.count);
+							delta.diffs[i].push_back(buf.write(data, g->sizes[i] * slice.count));
 						}
 						else
 						{
-							int rangeCount = 0;
-							range = { 0, 0 };
-							//check timestamp?
 							auto size = g->sizes[i];
 							char* baseData = baseC->data() + size * baseSlice.start + baseG->offsets[(int)baseC->ct][blid];
 							char* data = c->data() + size * slice.start + g->offsets[(int)c->ct][i];
-							uint32_t remainToDiff = slice.count;
-							while (remainToDiff != 0)
-							{
-								auto start = size * (slice.count - remainToDiff);
-								auto result = std::mismatch(data + start, data + size * slice.count, baseData + start);
-								auto offset = result.first - data;
-								if (offset == 0)
-									break;
-								auto index = (offset-1) / size;
-								if (index == range.start + range.count)
-									range.count++;
-								else
-								{
-									buffer.write(range);
-									buffer.write(data + size * range.start, size * range.count);
-									range.start = index;
-									range.count = 1;
-									rangeCount++;
-								}
-								remainToDiff = remainToDiff - index - 1;
-							}
-							if (range.count != 0)
-							{
-								buffer.write(range);
-								buffer.write(data + size * range.start, size * range.count);
-								rangeCount++;
-							}
-							delta.rangeCounts[i] = rangeCount;
+							auto adiffs = diff_array(baseData, data, slice.count, size, buf);
+							delta.diffs[i].insert(delta.diffs[i].end(), adiffs.begin(), adiffs.end());
 						}
 					}
-					changed.push_back(delta);
+					forloop(i, g->firstBuffer, g->firstTag)
+					{
+						tagged_index* types = (tagged_index*)g->types;
+						const auto& t = DotsContext->infos[types[i].index()];
+						auto blid = baseG->index(type.types[i]);
+						if (blid == InvalidIndex)
+						{
+							char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
+							forloop(j, 0, slice.count)
+							{
+								world_delta::vector_delta dt;
+								buffer* b = (buffer*)(data + (size_t)g->sizes[i] * j);
+								uint16_t n = b->size / t.elementSize;
+								dt.length = n;
+								dt.content.push_back(buf.write(b->data(), b->size));
+								delta.bufferDiffs[i].emplace_back(std::move(dt));
+							}
+						}
+						else
+						{
+							auto size = g->sizes[i];
+							char* baseData = baseC->data() + size * baseSlice.start + baseG->offsets[(int)baseC->ct][blid];
+							char* data = c->data() + size * slice.start + g->offsets[(int)c->ct][i];
+							forloop(j, 0, slice.count)
+							{
+								world_delta::vector_delta dt;
+								buffer* baseB = (buffer*)(data + (size_t)g->sizes[i] * j); 
+								buffer* b = (buffer*)(data + (size_t)g->sizes[i] * j);
+								uint16_t baseN = baseB->size / t.elementSize;
+								uint16_t n = b->size / t.elementSize;
+								dt.length = n;
+								uint32_t diffed = std::min(baseB->size, b->size);
+								auto adt = diff_array(baseB->data(), b->data(), diffed, t.elementSize, buf);
+								if (diffed < b->size)
+									adt.push_back(buf.write(b->data() + diffed, b->size - diffed));
+								delta.bufferDiffs[i].emplace_back(std::move(adt));
+							}
+						}
+					}
+					wd.changed.push_back(std::move(delta));
 				}
 				else
 				{
 					int i = slice.start;
 					while (!base.exist(c->get_entities()[++i]));
 					slice.count = i - slice.start;
-					auto data = buffer.allocate(type.get_size());
+					auto data = buf.allocate(type.get_size());
 					type.clone(data);
-					world_delta::slice_delta delta;
-					delta.rangeCounts = buffer.allocate<uint32_t>(g->firstTag);
-					delta.count = slice.count;
-					delta.ents = buffer.write(c->get_entities() + slice.start, delta.count);
-					delta.data = buffer.top();
-					range = { 0, slice.count };
-					forloop(i, 0, g->firstTag)
-					{
-						char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
-						buffer.write(range);
-						buffer.write(data, g->sizes[i] * slice.count);
-					}
-					created.push_back(delta);
+					world_delta::slice_data delta;
+					auto data = buf.allocate(type.get_size());
+					delta.type = type.clone(data);
+					delta.ents = buf.write(c->get_entities() + slice.start, slice.count);
+					delta.offset = buf.top();
+					chunk::serialize(slice, &buf);
+					wd.created.push_back(std::move(delta));
 				}
 
 				slice.start += slice.count;
@@ -2306,27 +2339,17 @@ world_delta* world::diff_context(world& base)
 			}
 		}
 	}
-	wd.changed = buffer.write(changed.data(), changed.size());
-	wd.changedCount = changed.size();
-	wd.created = buffer.write(created.data(), created.size());
-	wd.createdCount = created.size();
 	{
 		uint32_t size = std::min(ents.datas.size, base.ents.datas.size);
-		std::vector<entity> deleted;
 		forloop(i, 0, size)
 		{
 			auto& baseE = base.ents.datas[i];
 			if (baseE.v != ents.datas[i].v)
-				deleted.push_back(entity(i, baseE.v));//collect deleted
-
+				wd.destroyed.push_back(entity(i, baseE.v));
 		}
-		wd.destroyed = buffer.write(deleted.data(), deleted.size());
-		wd.destroyedCount = deleted.size();
 	}
-	auto data = (char*)::malloc(sizeof(world_delta) + buffer.buf.size());
-	world_delta* result = new(data) world_delta;
-	memcpy(data + sizeof(world_delta), buffer.buf.data(), buffer.buf.size());
-	return result;
+	wd.store = std::move(buf.buf);
+	return wd;
 }
 
 void world::patch_chunk(chunk* c, patcher_i* patcher)
