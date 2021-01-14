@@ -54,7 +54,7 @@ namespace core
 			struct slice_delta
 			{
 				entity_type type;
-				local_span<entity> ents;
+				local_span<GUID> ents;
 				component_delta diffs;
 				buffer_delta bufferDiffs;
 			};
@@ -62,7 +62,6 @@ namespace core
 			struct slice_data
 			{
 				entity_type type;
-				local_span<entity> ents;
 				intptr_t offset;
 			};
 
@@ -374,7 +373,7 @@ namespace core
 			static void cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct = true) noexcept;
 			static void duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexcept;
 			static void patch(chunk_slice s, patcher_i* patcher) noexcept;
-			static void serialize(chunk_slice s, serializer_i *stream);
+			static void serialize(chunk_slice s, serializer_i *stream, bool withEntities = true);
 			size_t get_size();
 			void link(chunk*) noexcept;
 			void unlink() noexcept;

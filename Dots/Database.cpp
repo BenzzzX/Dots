@@ -397,13 +397,14 @@ void archive(serializer_i* stream, const T* value, size_t count)
 
 
 //todo: handle transient data?
-void chunk::serialize(chunk_slice s, serializer_i* stream)
+void chunk::serialize(chunk_slice s, serializer_i* stream, bool withEntities)
 {
 	archetype* type = s.c->type;
 	uint32_t* offsets = type->offsets[(int)s.c->ct];
 	uint16_t* sizes = type->sizes;
 	tagged_index* types = (tagged_index*)type->types;
-	archive(stream, s.c->get_entities() + s.start, s.count);
+	if(withEntities)
+		archive(stream, s.c->get_entities() + s.start, s.count);
 
 	forloop(i, 0, type->firstTag)
 	{
@@ -2242,14 +2243,33 @@ world_delta world::diff_context(world& base)
 {
 	world_delta wd{};
 	stack_buffer buf;
-	for (auto& pair : archetypes)
+	std::map<GUID, entity> entityMap;
+	for (auto& pair : base.archetypes)
 	{
 		auto g = pair.second;
-		chunk* c = g->firstChunk;
-		auto type = g->get_type();
+
 		auto guid_l = g->index(guid_id);
 		if (guid_l == InvalidIndex)
 			continue;
+
+		chunk* c = g->firstChunk;
+		while (c != nullptr)
+		{
+			auto guids = (GUID*)(c->data() + g->offsets[(int)c->ct][guid_l]);
+			auto ents = c->get_entities();
+			forloop(i, 0, c->count)
+				entityMap.insert({ guids[i], ents[i] });
+			c = c->next;
+		}
+	}
+	for (auto& pair : archetypes)
+	{
+		auto g = pair.second;
+		auto guid_l = g->index(guid_id);
+		if (guid_l == InvalidIndex)
+			continue;
+		chunk* c = g->firstChunk;
+		auto type = g->get_type();
 		
 		while (c != nullptr)
 		{
@@ -2257,15 +2277,23 @@ world_delta world::diff_context(world& base)
 			chunk_slice slice{ c, 0, 0 };
 			while (slice.start != c->count)
 			{
-				entity e = c->get_entities()[slice.start];
-				if (base.exist(e))
+				auto guids = (GUID*)(c->data() + g->offsets[(int)c->ct][guid_l]);
+				auto iter = entityMap.find(guids[slice.start]);
+				if (iter != entityMap.end())
 				{
-					auto& baseE = base.ents.datas[e];
+					entityMap.erase(iter);
+					auto& baseE = base.ents.datas[iter->second];
 					chunk* baseC = baseE.c;
 					chunk_slice baseSlice{ baseC, baseE.i, 0 };
 					int i = baseSlice.start + 1, j = slice.start + 1;
-					while (i < baseC->count && j < c->count && baseC->get_entities()[i] == c->get_entities()[j])
+					while (i < baseC->count && j < c->count)
+					{
+						auto it = entityMap.find(guids[j]);
+						if (it == entityMap.end() || baseC->get_entities()[i] != it->second)
+							break;
+						entityMap.erase(it);
 						(i++, j++);
+					}
 					baseSlice.count = i - baseSlice.start;
 					slice.count = j - baseSlice.start;
 					auto baseG = baseC->type;
@@ -2276,10 +2304,13 @@ world_delta world::diff_context(world& base)
 					delta.diffs = world_delta::component_delta{ new world_delta::array_delta[g->firstBuffer] };
 					delta.bufferDiffs = world_delta::buffer_delta{ new std::vector<world_delta::vector_delta>[g->firstTag-g->firstBuffer] };
 
-					delta.ents = buf.write(c->get_entities() + slice.start, slice.count);
+					delta.ents = buf.write(guids + slice.start, slice.count);
 					forloop(i, 0, g->firstBuffer)
 					{
-						auto blid = baseG->index(type.types[i]);
+						auto t = type.types[i];
+						if (t == guid_id)
+							continue;
+						auto blid = baseG->index(t);
 						if (blid == InvalidIndex)
 						{
 							char* data = c->data() + g->sizes[i] * slice.start + g->offsets[(int)c->ct][i];
@@ -2339,30 +2370,25 @@ world_delta world::diff_context(world& base)
 				else
 				{
 					int i = slice.start;
-					while (!base.exist(c->get_entities()[++i]));
+					while (entityMap.find(guids[++i]) == entityMap.end());
 					slice.count = i - slice.start;
 					world_delta::slice_data delta;
 					auto data = buf.allocate(type.get_size());
 					delta.type = type.clone(data);
-					delta.ents = buf.write(c->get_entities() + slice.start, slice.count);
 					delta.offset = buf.top();
-					chunk::serialize(slice, &buf);
+					chunk::serialize(slice, &buf, false);
 					wd.created.push_back(std::move(delta));
 				}
 
 				slice.start += slice.count;
 				slice.count = 0;
 			}
+			c = c->next;
 		}
 	}
 	{
-		uint32_t size = std::min(ents.datas.size, base.ents.datas.size);
-		forloop(i, 0, size)
-		{
-			auto& baseE = base.ents.datas[i];
-			if (baseE.v != ents.datas[i].v)
-				wd.destroyed.push_back(entity(i, baseE.v));
-		}
+		for (auto& pair : entityMap)
+			wd.destroyed.push_back(pair.second);
 	}
 	wd.store = std::move(buf.buf);
 	return wd;
