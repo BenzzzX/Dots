@@ -2464,6 +2464,8 @@ void world::clear()
 			recycle_chunk(c);
 			c = next;
 		}
+		if(on_archetype_update)
+			on_archetype_update(g.second, false);
 		release_reference(g.second);
 		free(g.second);
 	}
