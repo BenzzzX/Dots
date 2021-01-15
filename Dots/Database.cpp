@@ -15,7 +15,9 @@ index_t disable_id = 0;
 index_t cleanup_id = 1;
 index_t group_id = 2;
 index_t mask_id = 3;
+#ifdef ENABLE_GUID_COMPONENT
 index_t guid_id = 4;
+#endif
 
 builtin_id core::database::get_builtin()
 {
@@ -2160,21 +2162,13 @@ void world::move_context(world& src)
 	src.archetypes.clear();
 }
 
+#ifdef ENABLE_GUID_COMPONENT
 struct stack_buffer : serializer_i
 {
 	std::vector<char> buf;
 
 	void stream(const void* data, uint32_t bytes) { write((char*)data, bytes); };
 	bool is_serialize() override { return true; }
-
-	template<class T>
-	void write(const T& value)
-	{
-		size_t size = sizeof(T);
-		auto dst = buf.data() + buf.size();
-		buf.resize(buf.size() + size);
-		memcpy(dst, &value, size);
-	}
 
 	template<class T>
 	local_span<T> write(const T* value, size_t size)
@@ -2184,15 +2178,6 @@ struct stack_buffer : serializer_i
 		memcpy(dst, value, size);
 		return { dst - buf.data(), size };
 	};
-
-	template<class T>
-	T* allocate(size_t s = 1)
-	{
-		size_t size = sizeof(T) * s;
-		auto dst = buf.data() + buf.size();
-		buf.resize(buf.size() + size);
-		return (T*)dst;
-	}
 
 	char* allocate(size_t size)
 	{
@@ -2238,7 +2223,7 @@ world_delta::array_delta diff_array(const char* baseData, const char* data, size
 	}
 	return result;
 }
-#ifdef ENABLE_GUID_COMPONENT
+
 world_delta world::diff_context(world& base)
 {
 	world_delta wd{};
@@ -3006,7 +2991,9 @@ void core::database::initialize()
 	cleanup_id = DotsContext->cleanup_id;
 	group_id = DotsContext->group_id;
 	mask_id = DotsContext->mask_id;
+#ifdef ENABLE_GUID_COMPONENT
 	guid_id = DotsContext->guid_id;
+#endif
 }
 
 void entity_filter::apply(core::database::matched_archetype& ma) const
