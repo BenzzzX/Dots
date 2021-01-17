@@ -21,6 +21,9 @@
     <ClCompile Include="Codebase.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="CDatabase.cpp">
+      <Filter>Header Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Database.h">
@@ -42,6 +45,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RingBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CDatabase.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

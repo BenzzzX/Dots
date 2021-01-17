@@ -171,3 +171,9 @@ struct chunk_vector : chunk_vector_base
 	}
 	const T& operator[](size_t i) const noexcept { return *get(data, i); }
 };
+
+namespace chunk_vector_pool
+{
+	void free(void* data);
+	void* malloc();
+}

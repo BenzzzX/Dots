@@ -161,7 +161,7 @@ TEST_F(DatabaseTest, DestroyOne)
 	entity_type emptyType;
 	core::entity e = pick(ctx.allocate(emptyType));
 	EXPECT_TRUE(ctx.exist(e));
-	ctx.destroy(ctx.batch(&e, 1)[0]);
+	ctx.destroy(ctx.iter(&e, 1).s);
 	EXPECT_TRUE(!ctx.exist(e));
 }
 
@@ -225,8 +225,8 @@ TEST_F(DatabaseTest, Batch)
 	}
 	EXPECT_EQ(i, 10);
 	EXPECT_TRUE(ctx.exist(e[9]));
-	auto slices = ctx.batch(e, 10);
-	EXPECT_EQ(slices[0].count, 10);
+	auto slices = ctx.iter(e, 10);
+	EXPECT_EQ(slices.s.count, 10);
 }
 
 TEST_F(DatabaseTest, ComponentReadWrite) 
@@ -356,11 +356,11 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	core::entity e2 = pick(ctx.instantiate(e));
 	auto b = buffer_t<test_element>(ctx.get_component_ro(e, tid<test_element>));
 	EXPECT_EQ(b[0].v, 3);
-	ctx.destroy(ctx.batch(&e, 1)[0]);
+	ctx.destroy(ctx.iter(&e, 1).s);
 
 	auto b2 = buffer_t<test_element>(ctx.get_component_ro(e2, tid<test_element>));
 	EXPECT_EQ(b2[0].v, 3);
-	ctx.destroy(ctx.batch(&e2, 1)[0]); //ctx.destroy(e2);
+	ctx.destroy(ctx.iter(&e2, 1).s); //ctx.destroy(e2);
 }
 
 TEST_F(DatabaseTest, Meta) 
