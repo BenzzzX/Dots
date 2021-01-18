@@ -149,11 +149,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CDatabase.cpp" />
     <ClCompile Include="Codebase.cpp" />
     <ClCompile Include="Database.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Buffer.h" />
+    <ClInclude Include="CDatabase.h" />
     <ClInclude Include="ChunkVector.h" />
     <ClInclude Include="Codebase.h" />
     <ClInclude Include="CodebaseImpl.hpp" />

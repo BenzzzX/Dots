@@ -1769,27 +1769,34 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 }
 
-world::batch_range world::batch(const entity* es, uint32_t count) const
+batch_range world::batch(const entity* ents, uint32_t count) const
 {
-	return { *this, es, count };
+	return {*this, ents, count};
 }
 
-world::batch_range::iterator& world::batch_range::iterator::operator++()
+batch_iter world::iter(const entity* es, uint32_t count) const
 {
-	const auto& datas = range.ctx.ents.datas;
-	const auto& start = datas[range.es[i++].id];
+	batch_iter iter{ es,count,0 };
+	next(iter);
+	return iter;
+}
+
+bool world::next(batch_iter& iter) const
+{
+	const auto& datas = ents.datas;
+	const auto& start = datas[iter.es[iter.i++].id];
 	chunk_slice ns{ start.c, start.i, 1 };
-	while (i < range.count)
+	while (iter.i < iter.count)
 	{
-		const auto& curr = datas[range.es[i].id];
+		const auto& curr = datas[iter.es[iter.i].id];
 		if (curr.i != start.i + ns.count || curr.c != start.c)
 		{
-			s = ns;
-			break;
+			iter.s = ns;
+			return true;
 		}
-		i++; ns.count++;
+		iter.i++; ns.count++;
 	}
-	return *this;
+	return false;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)
@@ -2809,7 +2816,7 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 	return true;
 }
 
-namespace chunk_vector_pool
+namespace core::database::chunk_vector_pool
 {
 	constexpr size_t kThreadBinCapacity = 40;
 	const std::thread::id kMainThreadId = std::this_thread::get_id();
@@ -2840,6 +2847,7 @@ namespace chunk_vector_pool
 			return threadbin[--threadbinSize];
 	}
 }
+namespace chunk_vector_pool = core::database::chunk_vector_pool;
 
 void chunk_vector_base::grow()
 {
@@ -3061,4 +3069,15 @@ int entity_filter::get_size() const
 entity_filter entity_filter::clone(char*& buffer) const
 {
 	return { inverseMask };
+}
+
+batch_range::iterator batch_range::begin() const
+{
+	return { ctx, ctx.iter(es, count) };
+}
+
+batch_range::iterator& batch_range::iterator::operator++()
+{
+	valid = ctx.next(iter);
+	return *this;
 }
