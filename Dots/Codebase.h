@@ -208,12 +208,20 @@ def get_##Name##_v = get_##Name<T>::value;
 			}
 			template<class T>
 			detail::array_ret_t<T> get_parameter();
+			template<class... Ts>
+			std::tuple<detail::array_ret_t<Ts>...> get_parameters();
 			template<class T>
 			detail::array_ret_t<T> get_parameter_owned();
+			template<class... Ts>
+			std::tuple<detail::array_ret_t<Ts>...> get_parameters_owned();
 			template<class T>
 			detail::value_ret_t<T> get_parameter(entity e);
+			template<class... Ts>
+			std::tuple<detail::array_ret_t<Ts>...> get_parameters(entity e);
 			template<class T>
 			detail::value_ret_t<T> get_parameter_owned(entity e);
+			template<class... Ts>
+			std::tuple<detail::array_ret_t<Ts>...> get_parameters_owned(entity e);
 			mask get_mask() { return ctx.matched[gid]; }
 			bool is_owned(int paramId)
 			{
@@ -235,7 +243,7 @@ def get_##Name##_v = get_##Name<T>::value;
 
 		struct custom_pass
 		{
-			world& ctx;
+			class pipeline& ctx;
 			int passIndex;
 			std::weak_ptr<custom_pass>* dependencies;
 			int dependencyCount;
@@ -256,6 +264,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			int paramCount;
 			bool hasRandomWrite;
 			filters filter;
+			uint32_t calc_size() const;
 		};
 
 		struct pass : pass_t<> {};
@@ -355,8 +364,6 @@ def get_##Name##_v = get_##Name<T>::value;
 			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
 			template<class P = pass>
 			std::pair<chunk_vector<task>, chunk_vector<task_group>> create_tasks(P& k, int batchCount);
-			template<class P = pass>
-			uint32_t pass_size(const P& p) const;
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 			/*** per chunk slice ***/

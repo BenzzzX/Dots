@@ -117,16 +117,16 @@ namespace core
 			}
 			return { std::move(result), std::move(groups) };
 		}
-
-		template<class P>
-		uint32_t pipeline::pass_size(const P& k) const
+		template<class base>
+		uint32_t pass_t<base>::calc_size() const
 		{
 			uint32_t entityCount = 0;
-			if (k.filter.chunkFilter.changed.length > 0)
-				forloop(i, 0, k.archetypeCount)
-					sync_archetype(k.archetypes[i]);
-			forloop(i, 0, k.archetypeCount)
-			for (auto j : world::query(k.archetypes[i], k.filter.chunkFilter))
+			if (filter.chunkFilter.changed.length > 0)
+				forloop(i, 0, archetypeCount)
+					base::ctx.sync_archetype(archetypes[i]);
+			auto& wrd = (world&)base::ctx;
+			forloop(i, 0, archetypeCount)
+			for (auto j : wrd.query(archetypes[i], filter.chunkFilter))
 				entityCount += j->get_count();
 			return entityCount;
 		}
@@ -305,22 +305,30 @@ namespace core
 			void* ptr = nullptr;
 			int paramId = paramId_c.value;
 			auto localType = ctx.localType[gid * ctx.paramCount + paramId];
+			auto& wrd = (world&)ctx.ctx;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
 				if (localType == InvalidIndex)
-					ptr = const_cast<void*>(ctx.ctx.get_shared_ro(ctx.archetypes[gid], ctx.types[paramId]));
+					ptr = const_cast<void*>(wrd.get_shared_ro(ctx.archetypes[gid], ctx.types[paramId]));
 				else
-					ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
+					ptr = const_cast<void*>(wrd.get_owned_ro_local(slice.c, localType));
 			}
 			else
 			{
 				if (localType == InvalidIndex)
 					ptr = nullptr; // 不允许非 owner 修改 share 的值
 				else
-					ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
+					ptr = const_cast<void*>(wrd.get_owned_rw_local(slice.c, localType));
 			}
 			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
+		}
+
+		template<class P, class ...params>
+		template<class... Ts>
+		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters()
+		{
+			return std::make_tuple(get_parameter<Ts>()...);
 		}
 
 		template<class P, class ...params>
@@ -337,14 +345,22 @@ namespace core
 			void* ptr = nullptr;
 			int paramId = paramId_c.value;
 			auto localType = ctx.localType[gid * ctx.paramCount + paramId];
+			auto& wrd = (world&)ctx.ctx;
 			if constexpr (param.readonly)
 			{ 
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
-				ptr = const_cast<void*>(ctx.ctx.get_owned_ro_local(slice.c, localType));
+				ptr = const_cast<void*>(wrd.get_owned_ro_local(slice.c, localType));
 			}
 			else
-				ptr = const_cast<void*>(ctx.ctx.get_owned_rw_local(slice.c, localType));
+				ptr = const_cast<void*>(wrd.get_owned_rw_local(slice.c, localType));
 			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
+		}
+
+		template<class P, class ...params>
+		template<class... Ts>
+		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters_owned()
+		{
+			return std::make_tuple(get_parameter_owned<Ts>()...);
 		}
 
 		template<class P, class ...params>
@@ -357,13 +373,21 @@ namespace core
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
 			using return_type = detail::value_ret_t<T>;
+			auto& wrd = (world&)ctx.ctx;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
-				return (return_type)const_cast<void*>(ctx.ctx.get_component_ro(e, ctx.types[paramId]));
+				return (return_type)const_cast<void*>(wrd.get_component_ro(e, ctx.types[paramId]));
 			}
 			else
-				return (return_type)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
+				return (return_type)const_cast<void*>(wrd.get_owned_rw(e, ctx.types[paramId]));
+		}
+		
+		template<class P, class ...params>
+		template<class... Ts>
+		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters(entity e)
+		{
+			return std::make_tuple(get_parameter<Ts>(e)...);
 		}
 
 		template<class P, class ...params>
@@ -376,13 +400,21 @@ namespace core
 			auto param = hana::at(paramList, paramId_c);
 			static_assert(param.randomAccess, "only random access parameter can be accessed by entity");
 			using return_type = detail::value_ret_t<T>;
+			auto& wrd = (world&)ctx.ctx;
 			if constexpr (param.readonly)
 			{
 				static_assert(std::is_const_v<T>, "Can only perform const-get for readonly params.");
-				return (return_type)const_cast<void*>(ctx.ctx.get_owned_ro(e, ctx.types[paramId]));
+				return (return_type)const_cast<void*>(wrd.get_owned_ro(e, ctx.types[paramId]));
 			}
 			else
-				return (return_type)const_cast<void*>(ctx.ctx.get_owned_rw(e, ctx.types[paramId]));
+				return (return_type)const_cast<void*>(wrd.get_owned_rw(e, ctx.types[paramId]));
+		}
+
+		template<class P, class ...params>
+		template<class... Ts>
+		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters_owned(entity e)
+		{
+			return std::make_tuple(get_parameter_owned<Ts>(e)...);
 		}
 	}
 }
