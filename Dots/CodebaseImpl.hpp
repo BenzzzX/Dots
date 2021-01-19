@@ -235,6 +235,35 @@ namespace core
 				}
 			};
 
+			auto sync_type = [&](index_t type, bool readonly)
+			{
+				for (auto& pair : dependencyEntries)
+				{
+					index_t localType = pair.first->index(type);
+					auto entries = pair.second.get();
+					if (localType >= pair.first->firstTag || localType == InvalidIndex)
+						return;
+					auto& entry = entries[localType];
+					if (readonly)
+					{
+						if (!entry.owned.expired())
+							dependencies.insert(entry.owned);
+						entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
+						entry.shared.push_back(k);
+					}
+					else
+					{
+						for (auto& dp : entry.shared)
+							if (!dp.expired())
+								dependencies.insert(dp);
+						if (entry.shared.empty() && !entry.owned.expired())
+							dependencies.insert(entry.owned);
+						entry.shared.clear();
+						entry.owned = k;
+					}
+				}
+			};
+
 			auto sync_entities = [&](archetype* at)
 			{
 				auto iter = dependencyEntries.find(at);
@@ -251,18 +280,25 @@ namespace core
 				archetype* at = k->archetypes[i];
 				forloop(j, 0, k->paramCount)
 				{
-					auto localType = k->localType[i * k->paramCount + j];
-					if (localType == InvalidIndex)
+					if (check_bit(k->randomAccess, j))
 					{
-						//assert(check_bit(k->readonly, j))
-						auto type = k->types[j];
-						auto oat = HELPER::get_owning_archetype((world*)this, at, type);
-						if (!oat) // 存在 any 时可能出现
-							continue;
-						sync_entry(oat, oat->index(type), true);
+						sync_type(k->types[j], check_bit(k->readonly, j));
 					}
 					else
-						sync_entry(at, localType, check_bit(k->readonly, j));
+					{
+						auto localType = k->localType[i * k->paramCount + j];
+						if (localType == InvalidIndex)
+						{
+							//assert(check_bit(k->readonly, j))
+							auto type = k->types[j];
+							auto oat = HELPER::get_owning_archetype((world*)this, at, type);
+							if (!oat) // 存在 any 时可能出现
+								continue;
+							sync_entry(oat, oat->index(type), true);
+						}
+						else
+							sync_entry(at, localType, check_bit(k->readonly, j));
+					}
 				}
 				sync_entities(at);
 				auto& changed = k->filter.chunkFilter.changed;
