@@ -322,7 +322,6 @@ namespace core
 		template<class T>
 		inline constexpr auto operation<P, params...>::param_id()
 		{
-			constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
 			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
 		}
 
