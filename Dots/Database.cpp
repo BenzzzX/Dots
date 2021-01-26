@@ -782,6 +782,14 @@ archetype* world::get_archetype(const entity_type& key)
 	return g;
 }
 
+archetype* world::find_archetype(const entity_type& key)
+{
+	auto iter = archetypes.find(key);
+	if (iter != archetypes.end())
+		return iter->second;
+	return nullptr;
+}
+
 archetype* world::get_archetype(chunk_slice s) const noexcept
 {
 	return s.c->type;

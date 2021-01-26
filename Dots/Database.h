@@ -232,6 +232,7 @@ namespace core
 			void merge_chunks(archetype*);
 
 			//archetype behavior
+			archetype* get_archetype(const entity_type&);
 			archetype* construct_archetype(const entity_type& key);
 			void add_archetype(archetype*);
 			void structural_change(archetype* g, chunk* c);
@@ -285,7 +286,7 @@ namespace core
 
 
 			//archetype behavior, lifetime
-			ECS_API archetype* get_archetype(const entity_type&);
+			ECS_API archetype* find_archetype(const entity_type&);
 			ECS_API archetype* get_archetype(chunk_slice) const noexcept;
 			ECS_API archetype* get_cleaning(archetype*);
 			ECS_API bool is_cleaned(const entity_type&);

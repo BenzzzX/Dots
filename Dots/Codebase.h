@@ -160,15 +160,19 @@ def get_##Name##_v = get_##Name<T>::value;
 			using value_ret_t = std::conditional_t<std::is_const_v<T>, std::add_const_t<value_type_t<T>>, value_type_t<T>>;
 		}
 
-
-
 		template<class T>
 		array_type_t<T> init_component(core::database::world& ctx, core::database::chunk_slice c)
 		{
 			using namespace core::codebase;
 			return (array_type_t<T>)const_cast<void*>(ctx.get_component_ro(c.c, cid<T>)) + (size_t)c.start;
 		}
-		
+
+		template<class... Ts>
+		std::tuple<array_type_t<Ts>...> init_components(core::database::world& ctx, core::database::chunk_slice c)
+		{
+			return std::make_tuple(init_component<Ts>(ctx, c)...);
+		}
+
 		struct filters
 		{
 			archetype_filter archetypeFilter;
@@ -379,6 +383,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice s, const entity_type& type);
 
 			//archetype behavior, lifetime
+			using world::find_archetype;
 			using world::get_archetype;
 			using world::get_cleaning;
 			using world::is_cleaned;
