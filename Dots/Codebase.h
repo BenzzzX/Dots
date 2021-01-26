@@ -200,6 +200,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		struct operation //用于简化api
 		{
 			static constexpr hana::tuple<params...> paramList;
+			static constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
 			operation(hana::tuple<params...> ps, const P& k, const task& t)
 			:ctx(k), gid(t.gid), slice(t.slice), indexInKernel(t.indexInKernel){}
 			template<class T>
