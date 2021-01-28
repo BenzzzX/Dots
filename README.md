@@ -1,5 +1,5 @@
 
-<h1 align="center">Dots</h1>
+<h1 align="center">Dots v1</h1>
 <div align="center">
 Data-oriented technology stack in c++
 </div>
@@ -8,3 +8,11 @@ Data-oriented technology stack in c++
 
 # 特性
 * 为面向数据编程实现的基于表的对象模型
+
+# 结构
+* DotsRuntime - dll
+* Dots - lib
+* Test - exe
+
+# 项目
+* [SakuraEngine](https://github.com/SaeruHikari/SakuraEngine)
