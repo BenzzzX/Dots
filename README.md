@@ -8,6 +8,7 @@ Data-oriented technology stack in c++
 
 # 特性
 * 为面向数据编程实现的基于表的对象模型
+* 为代码驱动编程实现的基于表的任务调度
 
 # 结构
 * DotsRuntime - dll
