@@ -1,5 +1,6 @@
-#include "Database.h"
 #include "CDatabase.h"
+#include "Database.h"
+
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 namespace db = core::database;
 /************************************chunk vector****************************************************/
@@ -89,7 +90,7 @@ struct serializer_wrapper final : db::serializer_i
 {
 	::serializer_i s;
 	serializer_wrapper(::serializer_i s) : s(s) {}
-	void stream(const void* data, uint32_t size) { return s.vtable->stream(s.self, data, size); };
+	void stream(const void* data, uint32_t size) override { return s.vtable->stream(s.self, data, size); };
 	bool is_serialize() override { return s.vtable->is_serialize(s.self); };
 };
 

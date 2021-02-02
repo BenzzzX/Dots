@@ -3,7 +3,6 @@ namespace core
 {
 	namespace database
 	{
-
 		struct entity_type
 		{
 			typeset types;

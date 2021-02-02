@@ -2184,7 +2184,7 @@ struct stack_buffer : serializer_i
 {
 	std::vector<char> buf;
 
-	void stream(const void* data, uint32_t bytes) { write((char*)data, bytes); };
+	void stream(const void* data, uint32_t bytes) override { write((char*)data, bytes); };
 	bool is_serialize() override { return true; }
 
 	template<class T>

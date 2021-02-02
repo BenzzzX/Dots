@@ -28,13 +28,13 @@ typedef struct chunk_slice
 } chunk_slice;
 typedef struct typeset
 {
-	const index_t* data = nullptr;
-	tsize_t length = 0;
+	const index_t* data;
+	tsize_t length;
 } typeset;
 typedef struct metaset
 {
-	const entity* data = nullptr;
-	tsize_t length = 0;
+	const entity* data;
+	tsize_t length;
 } metaset;
 typedef struct entity_type
 {
