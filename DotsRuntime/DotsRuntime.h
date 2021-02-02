@@ -400,7 +400,7 @@ namespace core
 				{
 					auto i = hash2type.find(desc.GUID);
 					if (i != hash2type.end())
-						return i->second;
+						return static_cast<index_t>(i->second);
 				}
 				uint32_t rid = -1;
 				if (desc.entityRefs != nullptr)

@@ -395,7 +395,7 @@ void archive(serializer_i* stream, const T& value)
 template<class T>
 void archive(serializer_i* stream, const T* value, size_t count)
 {
-	stream->stream(value, sizeof(T)*count);
+	stream->stream(value, static_cast<uint32_t>(sizeof(T) * count));
 }
 
 
@@ -743,7 +743,7 @@ void world::update_queries(archetype* g, bool add)
 			if (!add)
 			{
 				int j = 0;
-				int count = gs.size();
+				auto count = gs.size();
 				for (; j < count && gs[j].type != g; ++j);
 				if(j == count)
 					continue;
@@ -902,7 +902,8 @@ archetype* world::construct_archetype(const entity_type& key)
 		forloop(j, 0, firstTag)
 		{
 			tsize_t id = stableOrder[j];
-			offset = align[id] * ((offset + align[id] - 1) / align[id]);
+			offset = static_cast<uint32_t>(
+				align[id] * ((offset + align[id] - 1) / align[id]));
 			offsets[id] = offset;
 			offset += sizes[id] * g->chunkCapacity[i];
 		}
@@ -2214,7 +2215,7 @@ world_delta::array_delta diff_array(const char* baseData, const char* data, size
 
 	world_delta::array_delta result;
 
-	uint32_t remainToDiff = count;
+	size_t remainToDiff = count;
 	while (remainToDiff != 0)
 	{
 		auto start = stride * (count - remainToDiff);
@@ -2228,7 +2229,7 @@ world_delta::array_delta diff_array(const char* baseData, const char* data, size
 		else
 		{
 			result.push_back(buf.write(data + stride * range.start, stride* range.count));
-			range.start = index;
+			range.start = static_cast<uint32_t>(index);
 			range.count = 1;
 		}
 		remainToDiff = remainToDiff - index - 1;
@@ -2286,7 +2287,7 @@ world_delta world::diff_context(world& base)
 					auto& baseE = base.ents.datas[iter->second];
 					chunk* baseC = baseE.c;
 					chunk_slice baseSlice{ baseC, baseE.i, 0 };
-					int i = baseSlice.start + 1, j = slice.start + 1;
+					uint32_t i = baseSlice.start + 1, j = slice.start + 1;
 					while (i < baseC->count && j < c->count)
 					{
 						auto it = entityMap.find(guids[j]);
@@ -2468,7 +2469,7 @@ void world::deserialize(serializer_i* s)
 		if (data.c == nullptr)
 		{
 			data.nextFree = ents.free;
-			ents.free = i;
+			ents.free = static_cast<uint32_t>(i);
 		}
 	}
 
@@ -2649,11 +2650,14 @@ void world::entities::new_entities(chunk_slice s)
 	if (i == s.count)
 		return;
 	//fast path
-	uint32_t newId = datas.size;
+	size_t newId = datas.size;
 	datas.resize(datas.size + s.count - i + 1);
 	while (i < s.count)
 	{
-		entity newE(newId, datas[newId].v);
+		entity newE(
+			static_cast<uint32_t>(newId),
+			static_cast<uint32_t>(datas[newId].v)
+		);
 		dst[i] = newE;
 		datas[newE.id].c = s.c;
 		datas[newE.id].i = s.start + i;
@@ -2675,7 +2679,7 @@ void world::entities::new_entities(entity* dst, uint32_t count)
 	if (i == count)
 		return;
 	//fast path
-	uint32_t newId = datas.size;
+	uint32_t newId = static_cast<uint32_t>(datas.size);
 	datas.resize(datas.size + count - i);
 	while (i < count)
 	{

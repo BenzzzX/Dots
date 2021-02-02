@@ -135,7 +135,7 @@ struct chunk_vector : chunk_vector_base
 	{
 		chunk_vector_base::flatten(dst, sizeof(T));
 	}
-	void resize(int newSize)
+	void resize(size_t newSize)
 	{
 		size = newSize;
 		if (newSize > chunkSize * kChunkCapacity)
