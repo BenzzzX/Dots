@@ -343,7 +343,7 @@ entity pipeline::deserialize(serializer_i* s, patcher_i* patcher)
 		forloop(i, 1, size)
 			members[i] = first_entity(deserialize_single(s, patcher));
 		prefab_to_group(members, size);
-		delete members;
+		delete[] members;
 	}
 	return src;
 }
