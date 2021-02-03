@@ -86,7 +86,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			std::initializer_list<int> _{ (register_component<Ts>(), 0)... };
 		}
 
-		ECS_API void initialize();
+		ECS_API void initialize(core::GUID(*new_guid_func)());
 
 		template<class T, bool inRandomAccess = false>
 		struct param_t

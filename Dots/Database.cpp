@@ -19,6 +19,12 @@ index_t mask_id = 3;
 #ifdef ENABLE_GUID_COMPONENT
 index_t guid_id = 4;
 #endif
+core::GUID(*new_guid_func)();
+
+core::GUID core::database::new_guid()
+{
+	return (*new_guid_func)();
+}
 
 builtin_id core::database::get_builtin()
 {
@@ -3005,8 +3011,9 @@ std::byte hexPairToChar(char a, char b)
 	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
 }
 
-void core::database::initialize()
+void core::database::initialize(core::GUID(*guid_generator)())
 {
+	new_guid_func = guid_generator;
 	context::initialize();
 	disable_id = DotsContext->disable_id;
 	cleanup_id = DotsContext->cleanup_id;

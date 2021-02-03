@@ -28,7 +28,7 @@ namespace core
 #endif
 		};
 #ifdef ENABLE_GUID_COMPONENT
-		extern GUID new_guid();
+		ECS_API core::GUID new_guid();
 #endif
 
 		ECS_API builtin_id get_builtin();
@@ -400,6 +400,6 @@ namespace core
 			ECS_API archetype* get_type() noexcept { return type; }
 		};
 		
-		ECS_API void initialize();
+		ECS_API void initialize(core::GUID(*guid_generator)());
 	};
 }
