@@ -2,6 +2,20 @@
 #include <set>
 #pragma once
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
+
+
+namespace boost::hana
+{
+	template <typename Iterable, typename T>
+	constexpr auto index_of(Iterable const& iterable, T const& element)
+	{
+		auto size = decltype(hana::size(iterable)){};
+		auto dropped = decltype(hana::size(
+			hana::drop_while(iterable, hana::not_equal.to(element))
+		)){};
+		return size - dropped;
+	}
+}
 namespace core
 {
 	namespace codebase
@@ -322,7 +336,7 @@ namespace core
 		template<class T>
 		inline constexpr auto operation<P, params...>::param_id()
 		{
-			return *hana::index_if(compList, hana::_ == hana::type_c<T>);
+			return hana::index_of(compList, hana::type_c<T>);
 		}
 
 		template<class P, class ...params>
