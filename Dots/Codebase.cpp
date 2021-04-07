@@ -118,7 +118,7 @@ void core::codebase::initialize()
 #endif 
 {
 #ifdef ENABLE_GUID_COMPONENT
-	core::database::initialize(new_guid_func);
+	core::database::initialize(guid_generator);
 #else
 	core::database::initialize();
 #endif
