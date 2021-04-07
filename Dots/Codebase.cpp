@@ -111,9 +111,17 @@ void pipeline::sync_all_ro() const
 	sync_dependencies(deps);
 }
 
-void core::codebase::initialize(core::GUID(*new_guid_func)())
+#ifdef ENABLE_GUID_COMPONENT
+void core::codebase::initialize(core::GUID(*guid_generator)())
+#else
+void core::codebase::initialize()
+#endif 
 {
+#ifdef ENABLE_GUID_COMPONENT
 	core::database::initialize(new_guid_func);
+#else
+	core::database::initialize();
+#endif
 	auto bi = get_builtin();
 	cid<group> = bi.group_id;
 	cid<disable> = bi.disable_id;

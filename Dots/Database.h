@@ -240,6 +240,7 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
+			chunk_slice as_slice(entity) const;
 			chunk_vector<chunk_slice> cast_slice(chunk_slice, archetype*);
 
 			//serialize behavior
@@ -256,8 +257,11 @@ namespace core
 			chunk_vector<chunk_slice> instantiate_single(entity src, uint32_t count);
 			void serialize_single(serializer_i* s, entity);
 			void serialize_group(serializer_i* s, buffer* g);
+			void deserialize_prefab(serializer_i* s, patcher_i* patcher, buffer* group, chunk_vector<entity>& result);
 			chunk_slice deserialize_single(serializer_i* s, patcher_i* patcher);
 			void destroy_single(chunk_slice);
+			void estimate_group_size(uint32_t& size, buffer* root);
+			void flatten_group(entity* data, uint32_t& i, buffer* root);
 
 			//ownership utils
 			void estimate_shared_size(tsize_t& size, archetype* t) const;
@@ -326,14 +330,14 @@ namespace core
 
 			/*** per chunk or archetype ***/
 			//query
-			ECS_API const void* get_component_ro(chunk* c, index_t type) const noexcept;
-			ECS_API const void* get_owned_ro(chunk* c, index_t type) const noexcept;
-			ECS_API const void* get_shared_ro(chunk* c, index_t type) const noexcept;
-			ECS_API void* get_owned_rw(chunk* c, index_t type) noexcept;
-			ECS_API const void* get_owned_ro_local(chunk* c, index_t type) const noexcept;
-			ECS_API void* get_owned_rw_local(chunk* c, index_t type) noexcept;
-			ECS_API const entity* get_entities(chunk* c) noexcept;
-			ECS_API uint16_t get_size(chunk* c, index_t type) const noexcept;
+			ECS_API const void* get_component_ro(chunk_slice c, index_t type) const noexcept;
+			ECS_API const void* get_owned_ro(chunk_slice c, index_t type) const noexcept;
+			ECS_API const void* get_shared_ro(chunk_slice c, index_t type) const noexcept;
+			ECS_API void* get_owned_rw(chunk_slice c, index_t type) const noexcept;
+			ECS_API const void* get_owned_ro_local(chunk_slice c, index_t type) const noexcept;
+			ECS_API void* get_owned_rw_local(chunk_slice c, index_t type) noexcept;
+			ECS_API const entity* get_entities(chunk_slice c) noexcept;
+			ECS_API uint16_t get_size(chunk_slice c, index_t type) const noexcept;
 			ECS_API const void* get_shared_ro(archetype *g, index_t type) const;
 			ECS_API bool share_component(archetype* g, const typeset& type) const;
 			ECS_API bool own_component(archetype* g, const typeset& type) const;
@@ -399,7 +403,11 @@ namespace core
 			ECS_API uint32_t get_timestamp(index_t type) noexcept;
 			ECS_API archetype* get_type() noexcept { return type; }
 		};
-		
+
+#ifdef ENABLE_GUID_COMPONENT
 		ECS_API void initialize(core::GUID(*guid_generator)());
+#else
+		ECS_API void initialize();
+#endif 
 	};
 }

@@ -219,8 +219,8 @@ TEST_F(DatabaseTest, Batch)
 	int i = 0;
 	for (auto c : ctx.allocate(emptyType, 10))
 	{
-		auto es = ctx.get_entities(c.c);
-		memcpy(e + i, es + c.start, sizeof(core::entity) * c.count);
+		auto es = ctx.get_entities(c);
+		memcpy(e + i, es, sizeof(core::entity) * c.count);
 		i += c.count;
 	}
 	EXPECT_EQ(i, 10);

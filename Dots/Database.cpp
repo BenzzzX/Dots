@@ -18,13 +18,13 @@ index_t group_id = 2;
 index_t mask_id = 3;
 #ifdef ENABLE_GUID_COMPONENT
 index_t guid_id = 4;
-#endif
 core::GUID(*new_guid_func)();
 
 core::GUID core::database::new_guid()
 {
 	return (*new_guid_func)();
 }
+#endif
 
 builtin_id core::database::get_builtin()
 {
@@ -1275,6 +1275,36 @@ void world::serialize_slice(const chunk_slice& slice, serializer_i* s)
 	chunk::serialize(slice, s);
 }
 
+void world::estimate_group_size(uint32_t& size, buffer* root)
+{
+	uint32_t count = root->size / sizeof(entity);
+	auto data = (entity*)root->data();
+	size++;
+	for (int i = 1; i < count; ++i)
+	{
+		auto group_data = (buffer*)get_component_ro(data[i], group_id);
+		if (group_data != nullptr)
+			estimate_group_size(size, group_data);
+		else
+			size++;
+	}
+}
+
+void world::flatten_group(entity* data, uint32_t& j, buffer* root)
+{
+	uint32_t count = root->size / sizeof(entity);
+	auto members = (entity*)root->data();
+	data[j++] = members[0];
+	for (int i = 1; i < count; ++i)
+	{
+		auto group_data = (buffer*)get_component_ro(members[i], group_id);
+		if (group_data != nullptr)
+			flatten_group(data, j, group_data);
+		else
+			data[j++] = members[i];
+	}
+}
+
 void world::group_to_prefab(entity* src, uint32_t size, bool keepExternal)
 {
 	//TODO: should we patch meta?
@@ -1326,11 +1356,27 @@ void world::prefab_to_group(entity* members, uint32_t size)
 	}
 }
 
+adaptive_object flatten_group_impl(world* wld, buffer* group, entity*& arr, uint32_t& size)
+{
+	wld->estimate_group_size(size, group);
+	AO(entity, members, size);
+	size = 0;
+	wld->flatten_group(members, size, group);
+	arr = members;
+	//should user promise groups dont overlap?
+	//std::sort(members, members + size);
+	//auto end = std::unique(members, members + size);
+	//size = end - members;
+	return _ao_members;
+}
+
+#define FG(group, arr, size) \
+entity* arr; uint32_t size=0;\
+auto _ao_##name = flatten_group_impl(this, group, arr, size);
+
 chunk_vector<chunk_slice> world::instantiate_group(buffer* group, uint32_t count)
 {
-	uint32_t size = group->size / sizeof(entity);
-	AO(entity, members, group->size);
-	memcpy(members, group->data(), group->size);
+	FG(group, members, size);
 	group_to_prefab(members, size);
 	auto result = instantiate_prefab(members, size, count);
 	prefab_to_group(members, size);
@@ -1417,14 +1463,10 @@ void world::serialize_single(serializer_i* s, entity src)
 
 void world::serialize_group(serializer_i* s, buffer* group)
 {
-	uint32_t size = group->size / sizeof(entity);
-	stack_array(entity, members, size);
-	memcpy(members, group->data(), group->size);
+	FG(group, members, size);
 	group_to_prefab(members, size, false);
 	forloop(i, 0, size)
-	{
 		serialize_single(s, members[i]);
-	}
 	prefab_to_group(members, size);
 }
 
@@ -1799,6 +1841,8 @@ batch_iter world::iter(const entity* es, uint32_t count) const
 
 bool world::next(batch_iter& iter) const
 {
+	if (iter.i >= iter.count)
+		return false;
 	const auto& datas = ents.datas;
 	const auto& start = datas[iter.es[iter.i++].id];
 	chunk_slice ns{ start.c, start.i, 1 };
@@ -1812,6 +1856,7 @@ bool world::next(batch_iter& iter) const
 		}
 		iter.i++; ns.count++;
 	}
+	iter.s = ns;
 	return false;
 }
 
@@ -1861,7 +1906,7 @@ void world::destroy(chunk_slice s)
 				entity e = ((entity*)group_data->data())[i];
 				auto& data = ents.datas[i];
 				//todo: we could batch instantiated prefab group
-				destroy_single({ data.c, data.i, 1 });
+				destroy({ data.c, data.i, 1 });
 			}
 		}
 	}
@@ -1880,98 +1925,90 @@ chunk_vector<chunk_slice> world::cast(chunk_slice s, const entity_type& type)
 	return cast(s, g);
 }
 
+chunk_slice world::as_slice(entity e) const
+{
+	const auto& data = ents.datas[e.id];
+	return chunk_slice{data.c, data.i, 1};
+}
+
 const void* world::get_component_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
-	const auto& data = ents.datas[e.id];
-	chunk* c = data.c; archetype* g = c->type;
-	tsize_t id = g->index(type);
-	if (id >= g->firstTag)
-		return nullptr;
-	if (id == InvalidIndex)
-		return get_shared_ro(g, type);
-	return c->data() + (size_t)g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
+	return get_component_ro(as_slice(e), type);
 }
 
 const void* world::get_owned_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
-	const auto& data = ents.datas[e.id];
-	chunk* c = data.c; archetype* g = c->type;
-	tsize_t id = g->index(type);
-	if (id == InvalidIndex || id >= g->firstTag)
-		return nullptr;
-	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
+	return get_owned_ro(as_slice(e), type);
 }
 
 const void* world::get_shared_ro(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
-	const auto& data = ents.datas[e.id];
-	chunk* c = data.c; archetype* g = c->type;
-	return get_shared_ro(g, type);
+	return get_shared_ro(as_slice(e), type);
 }
 
 void* world::get_owned_rw(entity e, index_t type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
-	const auto& data = ents.datas[e.id];
-	chunk* c = data.c; archetype* g = c->type;
-	tsize_t id = g->index(type);
-	if (id == InvalidIndex || id >= g->firstTag)
-		return nullptr;
-	g->timestamps(c)[id] = timestamp;
-	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
+	return get_owned_rw(as_slice(e), type);
 }
 
 
-const void* world::get_component_ro(chunk* c, index_t t) const noexcept
+const void* world::get_component_ro(chunk_slice s, index_t t) const noexcept
 {
+	chunk* c = s.c;
 	archetype* g = c->type;
 	tsize_t id = g->index(t);
 	if (id >= g->firstTag)
 		return nullptr;
 	if (id == InvalidIndex)
 		return get_shared_ro(g, t);
-	return c->data() + c->type->offsets[(int)c->ct][id];
+	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * g->sizes[id];
 }
 
-const void* world::get_owned_ro(chunk* c, index_t t) const noexcept
+const void* world::get_owned_ro(chunk_slice s, index_t t) const noexcept
 {
+	chunk* c = s.c;
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id >= c->type->firstTag)
 		return nullptr;
-	return c->data() + c->type->offsets[(int)c->ct][id];
+	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * c->type->sizes[id];
 }
 
-const void* world::get_shared_ro(chunk* c, index_t type) const noexcept
+const void* world::get_shared_ro(chunk_slice s, index_t type) const noexcept
 {
+	chunk* c = s.c;
 	archetype* g = c->type;
 	return get_shared_ro(g, type);
 }
 
-void* world::get_owned_rw(chunk* c, index_t t) noexcept
+void* world::get_owned_rw(chunk_slice s, index_t t) const noexcept
 {
+	chunk* c = s.c;
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id >= c->type->firstTag) 
 		return nullptr;
 	c->type->timestamps(c)[id] = timestamp;
-	return c->data() + c->type->offsets[(int)c->ct][id];
+	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * c->type->sizes[id];
 }
 
-const void* world::get_owned_ro_local(chunk* c, index_t type) const noexcept
+const void* world::get_owned_ro_local(chunk_slice s, index_t type) const noexcept
 {
-	return c->data() + c->type->offsets[(int)c->ct][type];
+	chunk* c = s.c;
+	return c->data() + c->type->offsets[(int)c->ct][type] + s.start * c->type->sizes[type];
 }
 
-void* world::get_owned_rw_local(chunk* c, index_t type) noexcept
+void* world::get_owned_rw_local(chunk_slice s, index_t type) noexcept
 {
+	chunk* c = s.c;
 	c->type->timestamps(c)[type] = timestamp;
-	return c->data() + c->type->offsets[(int)c->ct][type];
+	return c->data() + c->type->offsets[(int)c->ct][type] + s.start * c->type->sizes[type];
 }
 
 const void* world::get_shared_ro(archetype* g, index_t type) const
@@ -2013,13 +2050,14 @@ archetype* world::get_archetype(entity e) const noexcept
 	return data.c->type;
 }
 
-const entity* world::get_entities(chunk* c) noexcept
+const entity* world::get_entities(chunk_slice s) noexcept
 {
-	return c->get_entities();
+	return s.c->get_entities() + s.start;
 }
 
-uint16_t world::get_size(chunk* c, index_t t) const noexcept
+uint16_t world::get_size(chunk_slice s, index_t t) const noexcept
 {
+	chunk* c = s.c;
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id > c->type->firstTag) 
 		return 0;
@@ -2100,9 +2138,7 @@ void world::serialize(serializer_i* s, entity src)
 	if (group_data == nullptr)
 		serialize_single(s, src);
 	else
-	{
 		serialize_group(s, group_data);
-	}
 }
 
 entity first_entity(chunk_slice s)
@@ -2110,27 +2146,35 @@ entity first_entity(chunk_slice s)
 	return s.c->get_entities()[s.start];
 }
 
+
+void world::deserialize_prefab(serializer_i* s, patcher_i* patcher, buffer* group, chunk_vector<entity>& result)
+{
+	uint32_t count = group->size / sizeof(entity);
+	auto members = (entity*)group->data();
+	for (int i = 1; i < count; ++i)
+	{
+		auto slice = deserialize_single(s, patcher);
+		result.push(first_entity(slice));
+		auto group_data = (buffer*)get_component_ro(slice, group_id);
+		if (group_data != nullptr)
+			deserialize_prefab(s, patcher, group_data, result);
+	}
+}
+
 entity world::deserialize(serializer_i* s, patcher_i* patcher)
 {
-	auto slice = deserialize_single(s, patcher);
-	entity src = first_entity(slice);
-	auto group_data = (buffer*)get_component_ro(src, group_id);
+	auto root = deserialize_single(s, patcher);
+	auto group_data = (buffer*)get_component_ro(root, group_id);
+	auto result = first_entity(root);
 	if (group_data != nullptr)
 	{
-		uint32_t size = group_data->size / sizeof(entity);
-		stack_array(entity, members, size);
-		stack_array(chunk_slice, chunks, size);
-		members[0] = src;
-		chunks[0] = slice;
-		forloop(i, 1, size)
-		{
-			chunks[i] = deserialize_single(s, patcher);
-			members[i] = first_entity(chunks[i]);
-		}
-		prefab_to_group(members, size);
-
+		chunk_vector<entity> prefab; prefab.push(result);
+		deserialize_prefab(s, patcher, group_data, prefab);
+		AO(entity, members, prefab.size);
+		prefab.flatten(members);
+		prefab_to_group(members, prefab.size);
 	}
-	return src;
+	return result;
 }
 
 void world::move_context(world& src)
@@ -3011,15 +3055,19 @@ std::byte hexPairToChar(char a, char b)
 	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
 }
 
+#ifdef ENABLE_GUID_COMPONENT
 void core::database::initialize(core::GUID(*guid_generator)())
+#else
+void core::database::initialize()
+#endif 
 {
-	new_guid_func = guid_generator;
 	context::initialize();
 	disable_id = DotsContext->disable_id;
 	cleanup_id = DotsContext->cleanup_id;
 	group_id = DotsContext->group_id;
 	mask_id = DotsContext->mask_id;
 #ifdef ENABLE_GUID_COMPONENT
+	new_guid_func = guid_generator;
 	guid_id = DotsContext->guid_id;
 #endif
 }
@@ -3093,7 +3141,7 @@ entity_filter entity_filter::clone(char*& buffer) const
 
 batch_range::iterator batch_range::begin() const
 {
-	return { ctx, ctx.iter(es, count) };
+	return { ctx, ctx.iter(es, count), true };
 }
 
 batch_range::iterator& batch_range::iterator::operator++()
