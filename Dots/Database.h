@@ -83,6 +83,13 @@ namespace core
 				: c(c), start(s), count(count) {}
 		};
 
+		struct managed_func
+		{
+			void(*copy)(char* dst, const char* src, size_t n) = nullptr;
+			void(*constructor)(char* data, size_t n) = nullptr;
+			void(*destructor)(char* data, size_t n) = nullptr;
+		};
+
 		struct ECS_API archetype
 		{
 			chunk* firstChunk;
@@ -90,6 +97,7 @@ namespace core
 			chunk* firstFree;
 			tsize_t componentCount;
 			tsize_t firstTag;
+			tsize_t firstManaged;
 			tsize_t metaCount;
 			tsize_t firstBuffer;
 			uint16_t chunkCount;
@@ -101,6 +109,7 @@ namespace core
 			uint32_t* offsets[3];
 			uint16_t* sizes;
 			entity* metatypes;
+			managed_func* managedFuncs;
 
 			bool disabled;
 			bool cleaning;
@@ -114,6 +123,7 @@ namespace core
 			uint32_t offsets[3][firstTag];
 			uint16_t sizes[firstTag];
 			entity metatypes[metaCount];
+			managed_func managedFuncs[firstTag - firstManaged]
 			*/
 			inline char* data() noexcept { return (char*)(this + 1); };
 			uint32_t* timestamps(chunk* c) const  noexcept;

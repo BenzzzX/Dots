@@ -105,11 +105,6 @@ struct adaptive_object
 	}
 };
 
-component_vtable& set_vtable(index_t m)
-{
-	return DotsContext->infos[m].vtable;
-}
-
 index_t database::register_type(component_desc desc)
 {
 	return DotsContext->register_type(desc);
@@ -118,6 +113,25 @@ index_t database::register_type(component_desc desc)
 bool chunk_slice::full() { return c != nullptr && start == 0 && count == c->get_count(); }
 
 chunk_slice::chunk_slice(chunk* c) : c(c), start(0), count(c->get_count()) {}
+
+void destruct(char* data, archetype* type, tsize_t t, size_t count)
+{
+	if (auto f = type->managedFuncs[t - type->firstManaged].destructor)
+		f(data, count);
+}
+
+void construct(char* data, archetype* type, tsize_t t, size_t count)
+{
+	if (auto f = type->managedFuncs[t - type->firstManaged].constructor)
+		f(data, count);
+}
+
+void copy(char* dst, const char* src, archetype* type, tsize_t t, size_t count)
+{
+	if (auto f = type->managedFuncs[t - type->firstManaged].copy)
+		f(dst, src, count);
+}
+
 
 void chunk::link(chunk* c) noexcept
 {
@@ -145,7 +159,13 @@ void chunk::clone(chunk* dst) noexcept
 	memcpy(dst, this, get_size());
 	uint32_t* offsets = type->offsets[(int)ct];
 	uint16_t* sizes = type->sizes;
-	forloop(i, type->firstBuffer, type->firstTag)
+	forloop(i, type->firstManaged, type->firstTag)
+	{
+		char* s = data() + offsets[i] + sizes[i];
+		char* d = dst->data() + offsets[i] + sizes[i];
+		::copy(d, s, type, i, dst->count);
+	}
+	forloop(i, type->firstBuffer, type->firstManaged)
 	{
 		char* src = data() + offsets[i] + sizes[i];
 		forloop(j, 0, count)
@@ -204,13 +224,18 @@ void chunk::construct(chunk_slice s) noexcept
 	forloop(i, 0, type->firstBuffer)
 		memset(srcData, 0, (size_t)sizes[i] * s.count);
 #endif
-	forloop(i, type->firstBuffer, type->firstTag)
+	forloop(i, type->firstBuffer, type->firstManaged)
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
 			new((size_t)j * sizes[i] + src) buffer{ 
 				static_cast<uint16_t>( static_cast<size_t>(sizes[i]) - sizeof(buffer) )
 			};
+	}
+	forloop(i, type->firstManaged, type->firstTag)
+	{
+		char* src = srcData;
+		::construct(src, type, i, s.count);
 	}
 
 	tsize_t maskId = type->index(mask_id);
@@ -227,7 +252,13 @@ void chunk::destruct(chunk_slice s) noexcept
 	uint32_t* offsets = type->offsets[(int)s.c->ct];
 	uint16_t* sizes = type->sizes;
 	index_t* types = type->types;
-	forloop(i, type->firstBuffer, type->firstTag)
+
+	forloop(i, type->firstManaged, type->firstTag)
+	{
+		char* src = srcData;
+		::destruct(src, type, i, s.count);
+	}
+	forloop(i, type->firstBuffer, type->firstManaged)
 	{
 		char* src = srcData;
 		forloop(j, 0, s.count)
@@ -283,10 +314,18 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 		}
 		else
 #endif
-			memdup(dstData, srcData, sizes[i], dst.count);
+		memdup(dstData, srcData, sizes[i], dst.count);
 		dstI++;
 	}
-	forloop(i, type->firstBuffer, type->firstTag)
+
+	forloop(i, type->firstManaged, type->firstTag)
+	{
+		const char* s = srcData;
+		char* d = dstData;
+		forloop(j, 0, dst.count)
+			::copy(d + sizes[i] * j, s, type, i, 1);
+	}
+	forloop(i, type->firstBuffer, type->firstManaged)
 	{
 		tagged_index st = to_valid_type(type->types[i]);
 		tagged_index dt = to_valid_type(dstType->types[dstI]);
@@ -317,7 +356,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 	uint32_t* offsets = g->offsets[(int)s.c->ct];
 	uint16_t* sizes = g->sizes;
 	tagged_index* types = (tagged_index*)g->types;
-	forloop(i, 0, g->firstBuffer)
+	auto patch = [&](tsize_t i)
 	{
 		const auto& t = DotsContext->infos[types[i].index()];
 		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
@@ -350,46 +389,54 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 			}
 		}
 		patcher->reset();
-	}
-
-	forloop(i, g->firstBuffer, g->firstTag)
+	};
+	auto patchBuffer = [&](tsize_t i)
 	{
-		const auto& t = DotsContext->infos[types[i].index()];
-		char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
-		forloop(j, 0, s.count)
 		{
-			buffer* b = (buffer*)(arr + (size_t)sizes[i] * j);
-			uint16_t n = b->size / t.elementSize;
-			auto f = t.vtable.patch;
-			if (f != nullptr)
+			const auto& t = DotsContext->infos[types[i].index()];
+			char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
+			forloop(j, 0, s.count)
 			{
-				forloop(l, 0, n)
+				buffer* b = (buffer*)(arr + (size_t)sizes[i] * j);
+				uint16_t n = b->size / t.elementSize;
+				auto f = t.vtable.patch;
+				if (f != nullptr)
 				{
-					char* data = b->data() + (size_t)t.elementSize * l;
-					forloop(k, 0, t.entityRefCount)
+					forloop(l, 0, n)
 					{
-						entity& e = *(entity*)(data + DotsContext->entityRefs[(size_t)t.entityRefs + k]);
-						e = patcher->patch(e);
-					}
-					f(data, patcher);
-				}
-			}
-			else
-			{
-				forloop(l, 0, n)
-				{
-					char* data = b->data() + (size_t)t.elementSize * l;
-					forloop(k, 0, t.entityRefCount)
-					{
-						entity& e = *(entity*)(data + DotsContext->entityRefs[(size_t)t.entityRefs + k]);
-						e = patcher->patch(e);
+						char* data = b->data() + (size_t)t.elementSize * l;
+						forloop(k, 0, t.entityRefCount)
+						{
+							entity& e = *(entity*)(data + DotsContext->entityRefs[(size_t)t.entityRefs + k]);
+							e = patcher->patch(e);
+						}
+						f(data, patcher);
 					}
 				}
+				else
+				{
+					forloop(l, 0, n)
+					{
+						char* data = b->data() + (size_t)t.elementSize * l;
+						forloop(k, 0, t.entityRefCount)
+						{
+							entity& e = *(entity*)(data + DotsContext->entityRefs[(size_t)t.entityRefs + k]);
+							e = patcher->patch(e);
+						}
+					}
+				}
+				patcher->move();
 			}
-			patcher->move();
+			patcher->reset();
 		}
-		patcher->reset();
-	}
+	};
+
+	forloop(i, 0, g->firstBuffer)
+		patch(i);
+	forloop(i, g->firstManaged, g->firstTag)
+		patch(i);
+	forloop(i, g->firstBuffer, g->firstManaged)
+		patchBuffer(i);
 }
 
 template<class T>
@@ -507,8 +554,9 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	dstI = dstType->firstBuffer;
 #endif
 
+
 	//phase1: cast all buffers
-	while (srcI < srcType->firstTag && dstI < dstType->firstTag)
+	while (srcI < srcType->firstManaged && dstI < dstType->firstManaged)
 	{
 		auto st = to_valid_type(srcTypes[srcI]);
 		auto dt = to_valid_type(dstTypes[dstI]);
@@ -537,7 +585,7 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	}
 
 	if (destruct)
-		while (srcI < srcType->firstTag) //destruct 
+		while (srcI < srcType->firstManaged) //destruct 
 		{
 			char* s = src->data() + srcOffsets[srcI] + (size_t)srcSizes[srcI] * srcIndex;
 			forloop(j, 0, count)
@@ -545,8 +593,8 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 			srcI++;
 		}
 	else
-		srcI = srcType->firstTag;
-	while (dstI < dstType->firstTag) //construct
+		srcI = srcType->firstManaged;
+	while (dstI < dstType->firstManaged) //construct
 	{
 		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
 		forloop(j, 0, count)
@@ -556,8 +604,41 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 		dstI++;
 	}
 
+	//phase2: cast all managed
+	while (srcI < srcType->firstTag && dstI < dstType->firstTag)
+	{
+		auto st = to_valid_type(srcTypes[srcI]);
+		auto dt = to_valid_type(dstTypes[dstI]);
+		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
+		char* d = dst.c->data() + dstOffsets[dstI] + dstSizes[dstI] * dst.start;
+		if (st < dt) //destruct 
+		{
+			::destruct(s, srcType, srcI, count);
+			srcI++;
+		}
+		else if (st > dt) //construct
+		{
+			::construct(d, dstType, dstI, count);
+			dstI++;
+		}
+		else //move
+			memcpy(d, s, (size_t)dstSizes[(srcI++, dstI++)] * count);
+	}
 
-	//phase2: maintain mask for new archetype
+	while(srcI < srcType->firstTag) // destruct
+	{
+		char* s = src->data() + srcOffsets[srcI] + srcSizes[srcI] * srcIndex;
+		::destruct(s, srcType, srcI, count);
+		srcI++;
+	}
+	while (dstI < dstType->firstTag) //construct
+	{
+		char* d = dst.c->data() + dstOffsets[dstI] + (size_t)dstSizes[dstI] * dst.start;
+		::construct(d, dstType, dstI, count);
+		dstI++;
+	}
+
+	//phase3: maintain mask for new archetype
 	tsize_t srcMaskId = srcType->index(mask_id);
 	tsize_t dstMaskId = dstType->index(mask_id);
 	if (srcMaskId != InvalidIndex && dstMaskId != InvalidIndex)
@@ -647,7 +728,8 @@ size_t archetype::get_size()
 	return sizeof(index_t) * componentCount + // types
 		sizeof(uint32_t) * firstTag * 3 + // offsets
 		sizeof(uint32_t) * firstTag + // sizes
-		sizeof(entity) * metaCount; // metatypes
+		sizeof(entity) * metaCount +  // metatypes
+		sizeof(managed_func) * (firstTag - firstManaged); //managedFuncs
 }
 
 world::query_cache& world::get_query_cache(const archetype_filter& f) const
@@ -808,6 +890,7 @@ archetype* world::construct_archetype(const entity_type& key)
 	const tsize_t count = key.types.length;
 	tsize_t firstTag = 0;
 	tsize_t firstBuffer = 0;
+	tsize_t firstManaged = 0;
 	tsize_t metaCount = key.metatypes.length;
 	tsize_t c = 0;
 	for (c = 0; c < count; c++)
@@ -819,6 +902,12 @@ archetype* world::construct_archetype(const entity_type& key)
 	for (c = 0; c < firstTag; c++)
 	{
 		auto type = (tagged_index)key.types[c];
+		if (type.is_managed()) break;
+	}
+	firstManaged = c;
+	for (c = 0; c < firstManaged; c++)
+	{
+		auto type = (tagged_index)key.types[c];
 		if (type.is_buffer()) break;
 	}
 	firstBuffer = c;
@@ -827,11 +916,11 @@ archetype* world::construct_archetype(const entity_type& key)
 	archetype proto;
 	proto.componentCount = count;
 	proto.firstTag = firstTag;
+	proto.firstManaged = firstManaged;
 	proto.metaCount = metaCount;
 	proto.componentCount = count;
 	proto.metaCount = metaCount;
 	proto.firstBuffer = firstBuffer;
-	proto.firstTag = firstTag;
 	proto.cleaning = false;
 	proto.copying = false;
 	proto.disabled = false;
@@ -871,11 +960,19 @@ archetype* world::construct_archetype(const entity_type& key)
 	allocate_inline(g->offsets[2], buffer, firstTag);
 	allocate_inline(g->sizes, buffer, firstTag);
 	allocate_inline(g->metatypes, buffer, metaCount);
+	allocate_inline(g->managedFuncs, buffer, firstTag - firstManaged);
 	index_t* types = g->types;
 	entity* metatypes = g->metatypes;
 	memcpy(types, key.types.data, count * sizeof(index_t));
 	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
 	uint16_t* sizes = g->sizes;
+
+	forloop(i, firstManaged, firstTag)
+	{
+		auto type = (tagged_index)key.types[i];
+		auto& info = DotsContext->infos[type.index()];
+		g->managedFuncs[i - firstManaged] = {info.vtable.copy, info.vtable.constructor, info.vtable.destructor};
+	}
 
 	stack_array(size_t, align, firstTag);
 	stack_array(core::GUID, hash, firstTag);

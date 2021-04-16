@@ -66,6 +66,27 @@ def get_##Name##_v = get_##Name<T>::value;
 			
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
+			def managed = !std::is_pod_v<T>;
+			if constexpr(managed)
+			{
+				desc.isManaged = true;
+				if (std::is_constructible_v<T>)
+					desc.vtable.constructor = +[](char* data, size_t count) {
+						for (int i = 0; i < count; ++i)
+							new(((T*)data) + i) T();
+					};
+				if (std::is_destructible_v<T>)
+					desc.vtable.destructor = +[](char* data, size_t count) {
+						for (int i = 0; i < count; ++i)
+							((T*)data)[i].~T();
+					};
+				if (std::is_copy_assignable_v<T>)
+					desc.vtable.destructor = +[](char* dst, const char* src, size_t count)
+					{
+						for (int i = 0; i < count; ++i)
+							((T*)dst)[i] = ((const T*)src)[i];
+					};
+			}
 			desc.manualClean = get_manual_clean_v<T>;
 			desc.manualCopy = get_manual_copy_v<T>;
 			desc.size = std::is_empty_v<T> ? 0 : get_buffer_capacity_v<T> *sizeof(T);

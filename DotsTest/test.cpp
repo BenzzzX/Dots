@@ -872,19 +872,19 @@ void install_test_components()
 	using namespace core::database;
 	using namespace core::guid_parse::literals;
 	
-	tid<test> = register_type({ false, false, false,
+	tid<test> = register_type({ false, false, false, false,
 		"3CFC8364-417F-45C0-B8D3-9E48F04C3DAF"_guid,
 		sizeof(test) });
-	tid<test_track> = register_type({ false, true, true,
+	tid<test_track> = register_type({ false, false, true, true,
 		"23DFDC29-F1FC-439A-B57E-C6E86F577CA1"_guid,
 		sizeof(test_track) });
-	tid<test_element> = register_type({ true, false, false,
+	tid<test_element> = register_type({ true, false, false, false,
 		"48D74F82-D070-4494-907A-0BC72F873FF5"_guid,
 		128, sizeof(test_element) });
-	tid<test_not_exist> = register_type({ false, false, false,
+	tid<test_not_exist> = register_type({ false, false, false, false,
 		"742DE13F-14B0-444C-B546-F21B99ACC335"_guid,
 		0 });
-	tid<test_align> = register_type({ false, false, false,
+	tid<test_align> = register_type({ false, false, false, false,
 		"9C9C1EE9-1312-45E4-A746-3B7915D2B093"_guid,
 		sizeof(test_align), 0, alignof(test_align) });
 	{
@@ -896,7 +896,7 @@ void install_test_components()
 		desc.entityRefs = refs; desc.entityRefCount = 1;
 		tid<test_ref> = register_type(desc);
 	}
-	tid<test_tag> = register_type({ false, false, false,
+	tid<test_tag> = register_type({ false, false, false, false,
 		"6AB0D784-CD4A-4EB1-8CF9-EE8C6BADEB81"_guid,
 		0 });
 }

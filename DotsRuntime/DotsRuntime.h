@@ -158,7 +158,13 @@ namespace core
 
 	namespace database
 	{
-
+		enum component_type
+		{
+			ct_pod = 0,
+			ct_buffer = 0x1,
+			ct_tag = 0x11,
+			ct_managed = 0x10,
+		};
 		class tagged_index
 		{
 			static_assert(sizeof(index_t) * 8 == 32, "index_t should be 32 bits");
@@ -168,19 +174,20 @@ namespace core
 				struct
 				{
 					index_t id : 30;
-					index_t buffer : 1;
-					index_t tag : 1;
+					component_type type : 2;
 				};
 			};
 
 		public:
 			constexpr index_t index() const noexcept { return id; }
-			constexpr bool is_buffer() const noexcept { return buffer; }
-			constexpr bool is_tag() const noexcept { return tag; }
+			constexpr bool is_pod() const noexcept { return type == ct_pod; }
+			constexpr bool is_buffer() const noexcept { return type == ct_buffer; }
+			constexpr bool is_tag() const noexcept { return type == ct_tag; }
+			constexpr bool is_managed() const noexcept { return type == ct_managed; }
 
 			constexpr tagged_index(index_t value = 0) noexcept : value(value) { }
-			constexpr tagged_index(index_t a, bool b, bool c) noexcept
-				: id(a), buffer(b), tag(c) { }
+			constexpr tagged_index(index_t a, component_type t) noexcept
+				: id(a), type(t) { }
 
 			constexpr operator index_t() const { return value; }
 		};
@@ -221,6 +228,10 @@ namespace core
 		struct component_vtable
 		{
 			void(*patch)(char* data, patcher_i* stream) = nullptr;
+			void(*copy)(char* dst, const char* src, size_t n) = nullptr;
+			void(*constructor)(char* data, size_t n) = nullptr;
+			void(*destructor)(char* data, size_t n) = nullptr;
+			//todo: move?
 		};
 
 		enum track_state : uint8_t
@@ -235,6 +246,7 @@ namespace core
 		struct component_desc
 		{
 			bool isElement = false;
+			bool isManaged = false;
 			bool manualCopy = false;
 			bool manualClean = false;
 			core::GUID GUID = core::GUID();
@@ -246,6 +258,7 @@ namespace core
 			component_vtable vtable;
 			const char* name = nullptr;
 		};
+
 		struct stack_allocator
 		{
 			char* stackbuffer = nullptr;
@@ -409,9 +422,22 @@ namespace core
 					for(int i = 0; i < desc.entityRefCount; ++i)
 						entityRefs.push_back(desc.entityRefs[i]);
 				}
-
+				component_type type;
+				if (desc.size == 0)
+					type = ct_tag;
+				else if (desc.isElement)
+					type = ct_buffer;
+				else if (desc.isManaged)
+					type = ct_managed;
+				else
+					type = ct_pod;
+				if (type == ct_managed)
+				{
+					desc.manualClean = false;
+					desc.manualCopy = false;
+				}
 				index_t id = (index_t)infos.size();
-				id = tagged_index{ id, desc.isElement, desc.size == 0 };
+				id = tagged_index{ id, type };
 				type_registry i{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 				infos.push_back(i);
 				uint8_t s = 0;
@@ -425,7 +451,7 @@ namespace core
 				if (desc.manualCopy)
 				{
 					index_t id2 = (index_t)infos.size();
-					id2 = tagged_index{ id2, desc.isElement, desc.size == 0 };
+					id2 = tagged_index{ id2, type };
 					type_registry i2{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 					tracks.push_back(Copying);
 					infos.push_back(i2);
