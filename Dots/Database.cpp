@@ -470,7 +470,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream, bool withEntities)
 	
 	if (stream->is_serialize())
 	{
-		forloop(i, type->firstBuffer, type->firstTag)
+		forloop(i, type->firstBuffer, type->firstManaged)
 		{
 			char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 			forloop(j, 0, s.count)
@@ -482,7 +482,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream, bool withEntities)
 	}
 	else
 	{
-		forloop(i, type->firstBuffer, type->firstTag)
+		forloop(i, type->firstBuffer, type->firstManaged)
 		{
 			char* arr = s.c->data() + offsets[i] + (size_t)sizes[i] * s.start;
 			forloop(j, 0, s.count)

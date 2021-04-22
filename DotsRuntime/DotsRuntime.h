@@ -161,9 +161,9 @@ namespace core
 		enum component_type
 		{
 			ct_pod = 0,
-			ct_buffer = 0x1,
-			ct_tag = 0x11,
-			ct_managed = 0x10,
+			ct_buffer = 0b1,
+			ct_tag = 0b11,
+			ct_managed = 0b10,
 		};
 		class tagged_index
 		{
