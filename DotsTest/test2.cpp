@@ -54,7 +54,7 @@ TEST_F(CodebaseTest, CreatePass) {
 	core::codebase::pipeline ppl(std::move(ctx));
 	filters filter;
 	filter.archetypeFilter = { type };
-	auto params = hana::make_tuple(param<test>);
+	auto params = param_list<test>;
 	auto k = ppl.create_pass(filter, params);
 	EXPECT_EQ(k->archetypeCount, 1);
 	
@@ -81,7 +81,7 @@ TEST_F(CodebaseTest, TaskSingleThread)
 		pipeline ppl(std::move(ctx)); 
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<test>); //定义 pass 的参数
+		def params = param_list<test>; //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
 		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
@@ -119,7 +119,7 @@ TEST_F(CodebaseTest, BufferAPI)
 		pipeline ppl(std::move(ctx));
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<const test3>); //定义 pass 的参数
+		def params = param_list<const test3>; //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
 		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(tasks.begin(), tasks.end(), [k, &counter](task& tk)
@@ -162,7 +162,7 @@ TEST_F(CodebaseTest, TaskMultiThreadStd)
 		pipeline ppl(std::move(ctx));
 		filters filter;
 		filter.archetypeFilter = { type }; //筛选所有的 test
-		def params = hana::make_tuple(param<test>); //定义 pass 的参数
+		def params = param_list<test>; //定义 pass 的参数
 		auto k = ppl.create_pass(filter, params); //创建 pass
 		auto [tasks, groups] = ppl.create_tasks(*k, 100); //从 pass 提取 task
 		std::for_each(std::execution::parallel_unsequenced_policy{}, //使用 std 的多线程调度
@@ -192,7 +192,6 @@ namespace ecs
 
 	//using core::codebase::component_value_type_t;
 	using core::codebase::cid;
-	using core::codebase::param;
 	using core::codebase::operation;
 
 	struct pass_ext
@@ -377,7 +376,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 		filter.archetypeFilter = { 
 			{complist<test>}
 		}; //筛选所有的 test
-		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
+		def params = param_list<const test>; //定义 pass 的参数
 		auto pass = ppl.create_pass(filter, params);
 		ecs::schedule(ppl, pass,
 			[&](const ecs::pipeline& pipeline, const core::codebase::pass& pass, const ecs::task& tk)
@@ -417,7 +416,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		hana::tuple params = { param<test> };
+		hana::tuple params = { param_list<test> };
 		p1 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p1->dependencyCount, 0);
 	}
@@ -427,7 +426,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		hana::tuple params = { param<const test> };
+		hana::tuple params = { param_list<const test> };
 		p2 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p2->dependencyCount, 1);
 		//EXPECT_EQ(p2->dependencies[0], p1);
@@ -439,7 +438,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		hana::tuple params = { param<const test> };
+		hana::tuple params = { param_list<const test> };
 		p3 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p3->dependencyCount, 1);
 		//EXPECT_EQ(p3->dependencies[0], p1);
@@ -452,7 +451,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type2 = { complist<test2> };
 		filters filter;
 		filter.archetypeFilter = { type, {}, type2 };
-		hana::tuple params = { param<test> };
+		hana::tuple params = { param_list<test> };
 		shared_entry refs[] = { write(resource) };
 		p4 = ppl.create_pass(filter, params, refs);
 		EXPECT_EQ(p4->dependencyCount, 2);
@@ -466,7 +465,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test, test2> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		hana::tuple params = { param<test> };
+		hana::tuple params = { param_list<test> };
 		p5 = ppl.create_pass(filter, params);
 		EXPECT_EQ(p5->dependencyCount, 2);
 		//EXPECT_EQ(p5->dependencies[0], p2);
@@ -480,7 +479,7 @@ TEST_F(CodebaseTest, Dependency)
 		entity_type type = { complist<test, test2> };
 		filters filter;
 		filter.archetypeFilter = { type };
-		hana::tuple params = { param<test> };
+		hana::tuple params = { param_list<test> };
 		shared_entry refs[] = { write(resource) };
 		p6 = ppl.create_pass(filter, params, refs);
 		EXPECT_EQ(p6->dependencyCount, 2);

@@ -66,7 +66,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
-			def managed = !std::is_pod_v<T>;
+			def managed = !std::is_trivial_v<T>;
 			if constexpr(managed)
 			{
 				desc.isManaged = true;
@@ -113,16 +113,29 @@ def get_##Name##_v = get_##Name<T>::value;
 		ECS_API void initialize();
 #endif
 
-		template<class T, bool inRandomAccess = false>
+		template<class T>
+		struct rap {};
+
+		template<class T>
 		struct param_t
 		{
 			using TT = std::remove_const_t<T>;
 			def comp_type = hana::type_c<TT>;
 			def readonly = std::is_const_v<T>;
-			def randomAccess = inRandomAccess;
+			def randomAccess = false;
 		};
-		template<class T, bool randomAccess = false>
-		static constexpr param_t<T, randomAccess> param;
+
+		template<class T>
+		struct param_t<rap<T>>
+		{
+			using TT = std::remove_const_t<T>;
+			def comp_type = hana::type_c<TT>;
+			def readonly = std::is_const_v<T>;
+			def randomAccess = true;
+		};
+
+		template<class... Ts>
+		def param_list = hana::make_tuple(param_t<Ts>{}...);
 
 		template<class ...Ts>
 		struct complist_t
