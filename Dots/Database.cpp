@@ -1924,7 +1924,7 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 }
 
-batch_range world::range(const entity* ents, uint32_t count) const
+batch_range world::batch(const entity* ents, uint32_t count) const
 {
 	return {*this, ents, count};
 }
@@ -1955,28 +1955,6 @@ bool world::next(batch_iter& iter) const
 	}
 	iter.s = ns;
 	return false;
-}
-
-chunk_vector<chunk_slice> world::batch(const entity* es, uint32_t count) const
-{
-	chunk_vector<chunk_slice> result;
-	const auto& datas = ents.datas;
-	const auto& start = datas[es[0].id];
-	int i = 1;
-	chunk_slice ns{ start.c, start.i, 1 };
-	while (i < count)
-	{
-		const auto& curr = datas[es[i].id];
-		if (curr.i != start.i + ns.count || curr.c != start.c)
-		{
-			result.push(ns);
-			const auto& split = datas[es[i].id];
-			ns = { split.c, split.i, 1 };
-		}
-		i++; ns.count++;
-	}
-	result.push(ns);
-	return result;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)

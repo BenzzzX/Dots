@@ -309,8 +309,7 @@ namespace core
 
 			//query iterators
 			ECS_API batch_iter iter(const entity* ents, uint32_t count) const;
-			ECS_API batch_range range(const entity* ents, uint32_t count) const;
-			ECS_API chunk_vector<chunk_slice> batch(const entity* ents, uint32_t count) const;
+			ECS_API batch_range batch(const entity* ents, uint32_t count) const;
 			ECS_API bool next(batch_iter& iter) const;
 			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter) const;
 			ECS_API chunk_vector<chunk*> query(const archetype*, const chunk_filter& filter = {}) const;

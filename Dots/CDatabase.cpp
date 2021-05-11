@@ -46,11 +46,6 @@ chunk_slice get_batch(const batch_iter* iter)
 	return iter->s;
 }
 
-chunk_vector batch(world* wrd, const entity* ents, uint32_t count)
-{
-	return move(((db::world*)wrd)->batch((const core::entity*)ents, count));
-}
-
 /************************************casters**************************************************************
 * 
 * 注意这里假设了两边的数据布局完全一致，修改时务必同步两边的修改

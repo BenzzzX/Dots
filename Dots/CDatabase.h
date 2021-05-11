@@ -106,7 +106,6 @@ struct batch_iter
 batch_iter iter_batch(world* wrd, const entity* ents, uint32_t count);
 bool next_batch(world* wrd, batch_iter* iter);
 chunk_slice get_batch(const batch_iter* iter);
-chunk_vector batch(world* wrd, const entity* ents, uint32_t count);
 
 
 chunk_vector allocate(world* wrd, entity_type* type, uint32_t count = 1);
