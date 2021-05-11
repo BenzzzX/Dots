@@ -9,11 +9,11 @@ namespace boost::hana
 	template <typename Iterable, typename T>
 	constexpr auto index_of(Iterable const& iterable, T const& element)
 	{
-		auto size = decltype(hana::size(iterable)){};
+		auto total = decltype(hana::size(iterable)){};
 		auto dropped = decltype(hana::size(
 			hana::drop_while(iterable, hana::not_equal.to(element))
 		)){};
-		return size - dropped;
+		return total - dropped;
 	}
 }
 namespace core
@@ -105,7 +105,6 @@ namespace core
 		template<class T>
 		detail::array_ret_t<T> operation<params...>::get_parameter()
 		{
-			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
 			//using value_type = component_value_type_t<DT>;
 			auto paramId_c = param_id<DT>();
