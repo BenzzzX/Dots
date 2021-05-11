@@ -81,7 +81,7 @@ def get_##Name##_v = get_##Name<T>::value;
 							((T*)data)[i].~T();
 					};
 				if (std::is_copy_assignable_v<T>)
-					desc.vtable.destructor = +[](char* dst, const char* src, size_t count)
+					desc.vtable.copy = +[](char* dst, const char* src, size_t count)
 					{
 						for (int i = 0; i < count; ++i)
 							((T*)dst)[i] = ((const T*)src)[i];
