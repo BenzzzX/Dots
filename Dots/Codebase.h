@@ -219,14 +219,38 @@ def get_##Name##_v = get_##Name<T>::value;
 			int begin;
 			int end;
 		};
-		struct pass;
 
-		template<class P, class... params>
+		struct custom_pass
+		{
+			class pipeline& ctx;
+			int passIndex;
+			std::weak_ptr<custom_pass>* dependencies;
+			int dependencyCount;
+			ECS_API void release_dependencies();
+			ECS_API ~custom_pass();
+		};
+
+		struct pass : custom_pass
+		{
+			archetype** archetypes;
+			mask* matched;
+			index_t* localType;
+			int archetypeCount;
+			index_t* types;
+			index_t* readonly;
+			index_t* randomAccess;
+			int paramCount;
+			bool hasRandomWrite;
+			filters filter;
+			uint32_t calc_size() const;
+		};
+
+		template<class... params>
 		struct operation //用于简化api
 		{
 			static constexpr hana::tuple<params...> paramList;
 			static constexpr auto compList = hana::transform(paramList, [](const auto p) { return p.comp_type; });
-			operation(hana::tuple<params...> ps, const P& k, const task& t)
+			operation(hana::tuple<params...> ps, const pass& k, const task& t)
 			:ctx(k), gid(t.gid), slice(t.slice), indexInKernel(t.indexInKernel){}
 			template<class T>
 			constexpr auto param_id();
@@ -261,43 +285,16 @@ def get_##Name##_v = get_##Name<T>::value;
 			template<class T>
 			bool has_component(entity e) { return ctx.ctx.has_component(e, complist<T>); }
 			const entity* get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }
-			const P& ctx;
+			const pass& ctx;
 			int gid;
 			chunk_slice slice;
 			int indexInKernel;
 			uint32_t get_count() { return slice.count; }
 			uint32_t get_index() { return indexInKernel; }
 		};
-		template<class P, class... params>
-		operation(hana::tuple<params...> ps, const P& k, task& t)->operation<P, params...>;
+		template<class... params>
+		operation(hana::tuple<params...> ps, const pass& k, task& t)->operation<params...>;
 
-		struct custom_pass
-		{
-			class pipeline& ctx;
-			int passIndex;
-			std::weak_ptr<custom_pass>* dependencies;
-			int dependencyCount;
-			ECS_API void release_dependencies();
-			ECS_API ~custom_pass();
-		};
-
-		template<class base = custom_pass>
-		struct pass_t : base
-		{
-			archetype** archetypes;
-			mask* matched;
-			index_t* localType;
-			int archetypeCount;
-			index_t* types;
-			index_t* readonly;
-			index_t* randomAccess;
-			int paramCount;
-			bool hasRandomWrite;
-			filters filter;
-			uint32_t calc_size() const;
-		};
-
-		struct pass : pass_t<> {};
 
 		template<class T>
 		T* allocate_inplace(char*& buffer, size_t size)
@@ -370,17 +367,16 @@ def get_##Name##_v = get_##Name<T>::value;
 			//std::vector<std::pair<archetype*, int>> archetypeIndices;
 			//std::vector<std::vector<task_group*>> ownership;
 			std::unordered_map<archetype*, std::unique_ptr<dependency_entry[]>> dependencyEntries;
-			template<class P>
-			void setup_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
-			template<class P>
-			void setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries = {});
+			void setup_pass_dependency(std::shared_ptr<pass>& k, gsl::span<shared_entry> sharedEntries = {});
+			void setup_custom_pass_dependency(std::shared_ptr<custom_pass>& k, gsl::span<shared_entry> sharedEntries = {});
 			void update_archetype(archetype* at, bool add);
 			int passIndex;
 			virtual void sync_dependencies(gsl::span<std::weak_ptr<custom_pass>> dependencies) const {}
-			friend class world;
+			virtual void setup_custom_pass(const std::shared_ptr<custom_pass>& pass) const {};
+			virtual void setup_pass(const std::shared_ptr<pass>& pass) const {};
 		public:
 			ECS_API pipeline(world&& ctx);
-			ECS_API ~pipeline();
+			ECS_API virtual ~pipeline();
 			ECS_API world release();
 			ECS_API void sync_archetype(archetype* at) const;
 			ECS_API void sync_entry(archetype* at, index_t type) const;
@@ -388,12 +384,10 @@ def get_##Name##_v = get_##Name<T>::value;
 			virtual void sync_all() const {}
 			ECS_API void sync_all_ro() const;
 
-			template<class P = pass, class T>
-			std::shared_ptr<P> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
-			template<class P = custom_pass>
-			std::shared_ptr<P> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
-			template<class P = pass>
-			std::pair<chunk_vector<task>, chunk_vector<task_group>> create_tasks(P& k, int batchCount);
+			template<class T>
+			std::shared_ptr<pass> create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries = {});
+			std::shared_ptr<custom_pass> create_custom_pass(gsl::span<shared_entry> sharedEntries = {});
+			std::pair<chunk_vector<task>, chunk_vector<task_group>> create_tasks(pass& k, int batchCount);
 
 #define forloop(i, z, n) for(auto i = std::decay_t<decltype(n)>(z); i<(n); ++i)
 			/*** per chunk slice ***/

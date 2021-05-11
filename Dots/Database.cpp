@@ -1924,7 +1924,7 @@ chunk_vector<chunk_slice> world::instantiate(entity src, uint32_t count)
 	}
 }
 
-batch_range world::batch(const entity* ents, uint32_t count) const
+batch_range world::range(const entity* ents, uint32_t count) const
 {
 	return {*this, ents, count};
 }
@@ -1955,6 +1955,28 @@ bool world::next(batch_iter& iter) const
 	}
 	iter.s = ns;
 	return false;
+}
+
+chunk_vector<chunk_slice> world::batch(const entity* es, uint32_t count) const
+{
+	chunk_vector<chunk_slice> result;
+	const auto& datas = ents.datas;
+	const auto& start = datas[es[0].id];
+	int i = 1;
+	chunk_slice ns{ start.c, start.i, 1 };
+	while (i < count)
+	{
+		const auto& curr = datas[es[i].id];
+		if (curr.i != start.i + ns.count || curr.c != start.c)
+		{
+			result.push(ns);
+			const auto& split = datas[es[i].id];
+			ns = { split.c, split.i, 1 };
+		}
+		i++; ns.count++;
+	}
+	result.push(ns);
+	return result;
 }
 
 archetype_filter world::cache_query(const archetype_filter& type)
@@ -3114,42 +3136,6 @@ chunk_vector_base& chunk_vector_base::operator=(chunk_vector_base&& r) noexcept
 	r.data = nullptr;
 	r.size = r.chunkSize = 0;
 	return *this;
-}
-
-
-
-// converts a single hex char to a number (0 - 15)
-unsigned char hexDigitToChar(char ch)
-{
-	// 0-9
-	if (ch > 47 && ch < 58)
-		return ch - 48;
-	// a-f
-	if (ch > 96 && ch < 103)
-		return ch - 87;
-	// A-F
-	if (ch > 64 && ch < 71)
-		return ch - 55;
-	return 0;
-}
-
-bool isValidHexChar(char ch)
-{
-	// 0-9
-	if (ch > 47 && ch < 58)
-		return true;
-	// a-f
-	if (ch > 96 && ch < 103)
-		return true;
-	// A-F
-	if (ch > 64 && ch < 71)
-		return true;
-	return false;
-}
-// converts the two hexadecimal characters to an unsigned char (a byte)
-std::byte hexPairToChar(char a, char b)
-{
-	return static_cast<std::byte>(hexDigitToChar(a) * 16 + hexDigitToChar(b));
 }
 
 #ifdef ENABLE_GUID_COMPONENT

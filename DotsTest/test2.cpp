@@ -194,85 +194,108 @@ namespace ecs
 	using core::codebase::cid;
 	using core::codebase::param;
 	using core::codebase::operation;
-	struct custom_pass : core::codebase::custom_pass
+
+	struct pass_ext
 	{
-		marl::Event event{ marl::Event::Mode::Manual };
-		void wait_for_dependencies()
-		{
-			forloop(i, 0, dependencyCount)
-			{
-				auto& dep = dependencies[i];
-				if (auto ptr = std::static_pointer_cast<custom_pass>(dep.lock()))
-					ptr->event.wait();
-			}
-			release_dependencies();
-		}
+		std::weak_ptr<core::codebase::custom_pass> pass;
+		marl::Event event;
 	};
-	struct pass : core::codebase::pass_t<custom_pass> {};
 
 	struct pipeline final : public core::codebase::pipeline
 	{
 		using base_t = core::codebase::pipeline;
 		pipeline(world&& ctx) :base_t(std::move(ctx))
 		{
-			allpasses.reserve(10000);
-		};
-		template<class T>
-		std::shared_ptr<pass> create_pass(const filters& v, T paramList, gsl::span<core::codebase::shared_entry> sharedEntries = {})
-		{
-			auto p = base_t::create_pass<pass>(v, paramList, sharedEntries);
-			allpasses.push_back(std::static_pointer_cast<custom_pass>(p));
-			return p;
+			eventmap.reserve(10000);
 		}
-		std::shared_ptr<custom_pass> create_custom_pass(gsl::span<core::codebase::shared_entry> sharedEntries = {})
+		void setup_pass(const std::shared_ptr<core::codebase::pass>& pass) const override
 		{
-			auto p = base_t::create_custom_pass<custom_pass>(sharedEntries);
-			allpasses.push_back(p);
-			return p;
+			std::weak_ptr<core::codebase::custom_pass> weak = std::static_pointer_cast<core::codebase::custom_pass>(pass);
+			pass_ext ext{ weak, marl::Event{ marl::Event::Mode::Manual } };
+			eventmap.insert(std::make_pair(pass.get(), ext));
+		}
+		void setup_custom_pass(const std::shared_ptr<core::codebase::custom_pass>& pass) const override
+		{
+			std::weak_ptr<core::codebase::custom_pass> weak = pass;
+			pass_ext ext{ weak, marl::Event{ marl::Event::Mode::Manual } };
+			eventmap.insert(std::make_pair(pass.get(), ext));
 		}
 		void wait() const
 		{
-			forloop(i, 0u, allpasses.size())
-				if (auto pass = allpasses[i].lock())
-					pass->event.wait();
-			allpasses.clear();
+			for (auto iter : eventmap)
+				if (iter.second.pass.lock())
+					iter.second.event.wait();
+			eventmap.clear();
 		}
 		void forget()
 		{
-			allpasses.erase(remove_if(allpasses.begin(), allpasses.end(), [](auto& n) {return n.expired(); }), allpasses.end());
+			for (auto iter = eventmap.begin(); iter != eventmap.end();)
+			{
+				if (iter->second.pass.expired())
+					iter = eventmap.erase(iter);
+				else
+					++iter;
+			}
 		}
+		void signal_pass(const std::shared_ptr<core::codebase::custom_pass>& pass)
+		{
+			eventmap.find(pass.get())->second.event.signal();
+		}
+		void wait_pass(const std::shared_ptr<core::codebase::custom_pass>& pass)
+		{
+			eventmap.find(pass.get())->second.event.wait();
+		}
+		void wait_for_dependencies(const std::shared_ptr<core::codebase::custom_pass>& pass)
+		{
+			forloop(i, 0, pass->dependencyCount)
+			{
+				auto& dep = pass->dependencies[i];
+				if (auto ptr = dep.lock())
+					eventmap.find(ptr.get())->second.event.wait();
+			}
+			pass->release_dependencies();
+		}
+		void wait_pass(const std::shared_ptr<core::codebase::pass>& pass)
+		{
+			wait_pass(std::static_pointer_cast<core::codebase::custom_pass>(pass));
+		}
+		void wait_for_dependencies(const std::shared_ptr<core::codebase::pass>& pass)
+		{
+			wait_for_dependencies(std::static_pointer_cast<core::codebase::custom_pass>(pass));
+		}
+
 		void sync_dependencies(gsl::span<std::weak_ptr<core::codebase::custom_pass>> dependencies) const override
 		{
 			for (auto dpr : dependencies)
 				if (auto dp = dpr.lock())
-					((custom_pass*)dp.get())->event.wait();
+					eventmap.find(dp.get())->second.event.wait();
 		}
 		void sync_all() const
 		{
 			wait();
 		}
-		mutable std::vector<std::weak_ptr<custom_pass>> allpasses;
+		mutable std::unordered_map<core::codebase::custom_pass*, pass_ext> eventmap;
 		bool force_no_group_parallel = false;
 		bool force_no_fibers = false;
 	};
 
 	template<bool ForceParallel = false, bool ForceNoGroupParallel = false, bool ForceNotFiber = false, class F, class F2>
 	FORCEINLINE void schedule_init(
-		pipeline& pipeline, std::shared_ptr<pass> p, F&& f, F2&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
+		pipeline& pipeline, std::shared_ptr<core::codebase::pass> p, F&& f, F2&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
 	{
-		static_assert(std::is_invocable_v<std::decay_t<F>, const ecs::pipeline&, const pass&>,
+		static_assert(std::is_invocable_v<std::decay_t<F>, const ecs::pipeline&, const core::codebase::pass&>,
 			"F must be an invokable of void(const ecs::pipeline&, const ecs::pass&)>");
-		static_assert(std::is_invocable_v<std::decay_t<F2>, const ecs::pipeline&, const pass&, const ecs::task&>,
+		static_assert(std::is_invocable_v<std::decay_t<F2>, const ecs::pipeline&, const core::codebase::pass&, const ecs::task&>,
 			"F2 must be an invokable of void(const ecs::pipeline&, const ecs::pass&, const ecs::task&)>");
 		static_assert(!(ForceParallel & ForceNoGroupParallel),
 			"A schedule can not force both parallel and not parallel!");
 		auto toSchedule = [&, p, batchCount, f, t, externalDependencies = std::move(externalDependencies)]() mutable
 		{
-			defer(p->event.signal());
+			defer(pipeline.signal_pass(p));
 			auto [tasks, groups] = pipeline.create_tasks(*p, batchCount);
 			//defer(tasks.reset());
 			f(pipeline, *p);
-			p->wait_for_dependencies();
+			pipeline.wait_for_dependencies(p);
 			p->release_dependencies();
 			for (auto& ed : externalDependencies)
 				ed.wait();
@@ -317,9 +340,9 @@ namespace ecs
 
 	template<bool ForceParallel = false, bool ForceNoParallel = false, class F>
 	FORCEINLINE void schedule(
-		pipeline& pipeline, std::shared_ptr<pass> p, F&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
+		pipeline& pipeline, std::shared_ptr<core::codebase::pass> p, F&& t, int batchCount, std::vector<marl::Event> externalDependencies = {})
 	{
-		schedule_init(pipeline, p, [](const ecs::pipeline&, const pass&) {}, std::forward<F>(t), batchCount, externalDependencies);
+		schedule_init(pipeline, p, [](const ecs::pipeline&, const core::codebase::pass&) {}, std::forward<F>(t), batchCount, externalDependencies);
 	}
 }
 
@@ -357,7 +380,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 		def params = boost::hana::make_tuple(param<const test>); //定义 pass 的参数
 		auto pass = ppl.create_pass(filter, params);
 		ecs::schedule(ppl, pass,
-			[&](const ecs::pipeline& pipeline, const ecs::pass& pass, const ecs::task& tk)
+			[&](const ecs::pipeline& pipeline, const core::codebase::pass& pass, const ecs::task& tk)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, pass, tk };
@@ -368,7 +391,7 @@ TEST_F(CodebaseTest, MarlIntergration)
 					counter.fetch_add(tests[i]);
 			}, 100);
 		// 等待单一pass
-		pass->event.wait();
+		ppl.wait_pass(pass);
 		// 等待pipeline
 		ppl.wait();
 	}
@@ -479,7 +502,6 @@ void install_test2_components()
 
 TEST(DSTest, KDTree)
 {
-
 	std::vector<point3df> points;
 	std::random_device r;
 	std::default_random_engine el(r());

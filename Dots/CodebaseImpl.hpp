@@ -20,18 +20,9 @@ namespace core
 {
 	namespace codebase
 	{
-		template<class P>
-		std::shared_ptr<P> pipeline::create_custom_pass(gsl::span<shared_entry> sharedEntries)
-		{
-			char* buffer = (char*)::malloc(sizeof(P));
-			P* k = new(buffer) P{ *this };
-			std::shared_ptr<P> ret{ k };
-			k->passIndex = passIndex++;
-			setup_custom_pass_dependency(ret, sharedEntries);
-			return ret;
-		}
-		template<class P, class T>
-		std::shared_ptr<P> pipeline::create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries)
+		
+		template<class T>
+		std::shared_ptr<pass> pipeline::create_pass(const filters& v, T paramList, gsl::span<shared_entry> sharedEntries)
 		{
 			static_assert(hana::is_a<hana::tuple_tag>(paramList), "parameter list should be a hana::list");
 
@@ -41,15 +32,15 @@ namespace core
 			const auto bal = paramCount / bits + 1;
 			
 			size_t bufferSize =
-				sizeof(P) //自己
+				sizeof(pass) //自己
 				+ v.get_size()
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
 				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
 				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)::malloc(bufferSize);
-			P* k = new(buffer) P{ *this };
-			std::shared_ptr<P> ret{ k };
-			buffer += sizeof(P);
+			pass* k = new(buffer) pass{ *this };
+			std::shared_ptr<pass> ret{ k };
+			buffer += sizeof(pass);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;
 			k->paramCount = (int)paramCount;
@@ -86,63 +77,8 @@ namespace core
 				counter++;
 			}
 			setup_pass_dependency(ret, sharedEntries);
+			setup_pass(ret);
 			return ret;
-		}
-
-		template<class P>
-		std::pair<chunk_vector<task>, chunk_vector<task_group>> pipeline::create_tasks(P& k, int batchCount)
-		{
-			int indexInKernel = 0;
-			chunk_vector<task> result;
-			chunk_vector<task_group> groups;
-			task_group group;
-			group.begin = group.end = 0;
-			int batch = batchCount;
-			forloop(i, 0, k.archetypeCount)
-				for (auto c : k.ctx.query(k.archetypes[i], k.filter.chunkFilter))
-				{
-					uint32_t allocated = 0;
-					while (allocated != c->get_count())
-					{
-						uint32_t sliceCount;
-						sliceCount = std::min(c->get_count() - allocated, (uint32_t)batch);
-						task newTask{ };
-						newTask.gid = i;
-						newTask.slice = chunk_slice{ c, allocated, sliceCount };
-						newTask.indexInKernel = indexInKernel;
-						allocated += sliceCount;
-						indexInKernel += sliceCount;
-						batch -= sliceCount;
-						result.push(newTask);
-
-						if (batch == 0)
-						{
-							group.end = result.size;
-							groups.push(group);
-							group.begin = group.end;
-							batch = batchCount;
-						}
-					}
-				}
-			if (group.end != result.size)
-			{
-				group.end = result.size;
-				groups.push(group);
-			}
-			return { std::move(result), std::move(groups) };
-		}
-		template<class base>
-		uint32_t pass_t<base>::calc_size() const
-		{
-			uint32_t entityCount = 0;
-			if (filter.chunkFilter.changed.length > 0)
-				forloop(i, 0, archetypeCount)
-					base::ctx.sync_archetype(archetypes[i]);
-			auto& wrd = (world&)base::ctx;
-			forloop(i, 0, archetypeCount)
-			for (auto j : wrd.query(archetypes[i], filter.chunkFilter))
-				entityCount += j->get_count();
-			return entityCount;
 		}
 
 		namespace detail
@@ -157,191 +93,17 @@ namespace core
 			};
 			using weak_ptr_set = std::set<std::weak_ptr<custom_pass>, weak_ptr_compare>;
 		}
-		template<class P>
-		void setup_shared_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries, detail::weak_ptr_set& dependencies)
-		{
-			for (auto& i : sharedEntries)
-			{
-				auto& entry = i.entry;
-				if (i.readonly)
-				{
-					if (!entry.owned.expired())
-						dependencies.insert(entry.owned);
-					entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
-					entry.shared.push_back(k);
-				}
-				else
-				{
-					for (auto dp : entry.shared)
-						dependencies.insert(dp);
-					if (entry.shared.empty() && !entry.owned.expired())
-						dependencies.insert(entry.owned);
-					entry.shared.clear();
-					entry.owned = k;
-				}
-			}
-		}
 
-		template<class P>
-		void pipeline::setup_custom_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
-		{
-			detail::weak_ptr_set dependencies;
-			setup_shared_dependency(k, sharedEntries, dependencies);
-			k->dependencies = new std::weak_ptr<custom_pass>[dependencies.size()];
-			k->dependencyCount = static_cast<int>(dependencies.size());
-			int i = 0;
-			for (auto dp : dependencies)
-				k->dependencies[i++] = dp;
-		}
-
-		template<class P>
-		void pipeline::setup_pass_dependency(std::shared_ptr<P>& k, gsl::span<shared_entry> sharedEntries)
-		{
-			constexpr uint16_t InvalidIndex = (uint16_t)-1;
-			detail::weak_ptr_set dependencies;
-			std::set<std::pair<archetype*, index_t>> syncedEntry;
-			setup_shared_dependency(k, sharedEntries, dependencies);
-
-			struct HELPER
-			{
-				static archetype* get_owning_archetype(world* ctx, archetype* sharing, index_t type)
-				{
-					if (sharing->index(type) != InvalidIndex)
-						return sharing;
-					entity* metas = sharing->metatypes;
-					forloop(i, 0, sharing->metaCount)
-						if (archetype* owning = get_owning_archetype(ctx, ctx->get_archetype(metas[i]), type))
-							return owning;
-					return nullptr;
-				}
-			};
-
-			auto sync_entry = [&](archetype* at, index_t localType, bool readonly)
-			{
-				auto pair = std::make_pair(at, localType);
-				if (syncedEntry.find(pair) != syncedEntry.end())
-					return;
-				syncedEntry.insert(pair);
-				auto iter = dependencyEntries.find(at);
-				if (iter == dependencyEntries.end())
-					return;
-
-				auto entries = (*iter).second.get();
-				if (localType >= at->firstTag || localType == InvalidIndex)
-					return;
-				auto& entry = entries[localType];
-				if (readonly)
-				{
-					if (!entry.owned.expired())
-						dependencies.insert(entry.owned);
-					entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
-					entry.shared.push_back(k);
-				}
-				else
-				{
-					for (auto& dp : entry.shared)
-						if (!dp.expired())
-							dependencies.insert(dp);
-					if (entry.shared.empty() && !entry.owned.expired())
-						dependencies.insert(entry.owned);
-					entry.shared.clear();
-					entry.owned = k;
-				}
-			};
-
-			auto sync_type = [&](index_t type, bool readonly)
-			{
-				for (auto& pair : dependencyEntries)
-				{
-					index_t localType = pair.first->index(type);
-					auto entries = pair.second.get();
-					if (localType >= pair.first->firstTag || localType == InvalidIndex)
-						return;
-					auto& entry = entries[localType];
-					if (readonly)
-					{
-						if (!entry.owned.expired())
-							dependencies.insert(entry.owned);
-						entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
-						entry.shared.push_back(k);
-					}
-					else
-					{
-						for (auto& dp : entry.shared)
-							if (!dp.expired())
-								dependencies.insert(dp);
-						if (entry.shared.empty() && !entry.owned.expired())
-							dependencies.insert(entry.owned);
-						entry.shared.clear();
-						entry.owned = k;
-					}
-				}
-			};
-
-			auto sync_entities = [&](archetype* at)
-			{
-				auto iter = dependencyEntries.find(at);
-				if (iter == dependencyEntries.end())
-					return;
-				auto entries = (*iter).second.get();
-				auto& entry = entries[at->firstTag];
-				entry.shared.erase(remove_if(entry.shared.begin(), entry.shared.end(), [](auto& n) {return n.expired(); }), entry.shared.end());
-				entry.shared.push_back(k);
-			};
-
-			forloop(i, 0, k->archetypeCount)
-			{
-				archetype* at = k->archetypes[i];
-				forloop(j, 0, k->paramCount)
-				{
-					if (check_bit(k->randomAccess, j))
-					{
-						sync_type(k->types[j], check_bit(k->readonly, j));
-					}
-					else
-					{
-						auto localType = k->localType[i * k->paramCount + j];
-						if (localType == InvalidIndex)
-						{
-							//assert(check_bit(k->readonly, j))
-							auto type = k->types[j];
-							auto oat = HELPER::get_owning_archetype((world*)this, at, type);
-							if (!oat) // 存在 any 时可能出现
-								continue;
-							sync_entry(oat, oat->index(type), true);
-						}
-						else
-							sync_entry(at, localType, check_bit(k->readonly, j));
-					}
-				}
-				sync_entities(at);
-				auto& changed = k->filter.chunkFilter.changed;
-				forloop(j, 0, changed.length)
-				{
-					auto localType = at->index(changed[j]);
-					sync_entry(at, localType, true);
-				}
-			}
-			if (dependencies.size() > 0)
-				k->dependencies = new std::weak_ptr<custom_pass>[dependencies.size()];
-			else
-				k->dependencies = nullptr;
-			k->dependencyCount = static_cast<int>(dependencies.size());
-			int i = 0;
-			for (auto dp : dependencies)
-				k->dependencies[i++] = dp;
-		}
-
-		template<class P, class ...params>
+		template<class ...params>
 		template<class T>
-		inline constexpr auto operation<P, params...>::param_id()
+		inline constexpr auto operation<params...>::param_id()
 		{
 			return hana::index_of(compList, hana::type_c<T>);
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class T>
-		detail::array_ret_t<T> operation<P, params...>::get_parameter()
+		detail::array_ret_t<T> operation<params...>::get_parameter()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			using DT = std::remove_const_t<T>;
@@ -373,16 +135,16 @@ namespace core
 			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class... Ts>
-		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters()
+		std::tuple<detail::array_ret_t<Ts>...> operation<params...>::get_parameters()
 		{
 			return std::make_tuple(get_parameter<Ts>()...);
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class T>
-		detail::array_ret_t<T> operation<P, params...>::get_parameter_owned()
+		detail::array_ret_t<T> operation<params...>::get_parameter_owned()
 		{
 			constexpr uint16_t InvalidIndex = (uint16_t)-1;
 			//using value_type = component_value_type_t<std::decay_t<T>>;
@@ -405,16 +167,16 @@ namespace core
 			return (ptr && localType != InvalidIndex) ? (return_type)ptr + slice.start : (return_type)ptr;
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class... Ts>
-		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters_owned()
+		std::tuple<detail::array_ret_t<Ts>...> operation<params...>::get_parameters_owned()
 		{
 			return std::make_tuple(get_parameter_owned<Ts>()...);
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class T>
-		detail::value_ret_t<T> operation<P, params...>::get_parameter(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
@@ -432,16 +194,16 @@ namespace core
 				return (return_type)const_cast<void*>(wrd.get_owned_rw(e, ctx.types[paramId]));
 		}
 		
-		template<class P, class ...params>
+		template<class ...params>
 		template<class... Ts>
-		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters(entity e)
+		std::tuple<detail::array_ret_t<Ts>...> operation<params...>::get_parameters(entity e)
 		{
 			return std::make_tuple(get_parameter<Ts>(e)...);
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class T>
-		detail::value_ret_t<T> operation<P, params...>::get_parameter_owned(entity e)
+		detail::value_ret_t<T> operation<params...>::get_parameter_owned(entity e)
 		{
 			//using value_type = component_value_type_t<std::decay_t<T>>;
 			auto paramId_c = param_id<std::decay_t<T>>();
@@ -459,9 +221,9 @@ namespace core
 				return (return_type)const_cast<void*>(wrd.get_owned_rw(e, ctx.types[paramId]));
 		}
 
-		template<class P, class ...params>
+		template<class ...params>
 		template<class... Ts>
-		std::tuple<detail::array_ret_t<Ts>...> operation<P, params...>::get_parameters_owned(entity e)
+		std::tuple<detail::array_ret_t<Ts>...> operation<params...>::get_parameters_owned(entity e)
 		{
 			return std::make_tuple(get_parameter_owned<Ts>(e)...);
 		}
