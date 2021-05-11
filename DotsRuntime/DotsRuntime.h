@@ -158,7 +158,7 @@ namespace core
 
 	namespace database
 	{
-		enum component_type
+		enum component_type : index_t
 		{
 			ct_pod = 0,
 			ct_buffer = 0b1,
