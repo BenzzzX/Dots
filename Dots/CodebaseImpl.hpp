@@ -39,7 +39,8 @@ namespace core
 				+ bal * sizeof(index_t) * 2; //readonly + random access
 			char* buffer = (char*)::malloc(bufferSize);
 			pass* k = new(buffer) pass{ *this };
-			std::shared_ptr<pass> ret{ k };
+			auto deleter = [](pass* p) { ::free(p); };
+			std::shared_ptr<pass> ret{ k, deleter };
 			buffer += sizeof(pass);
 			k->passIndex = passIndex++;
 			k->archetypeCount = (int)archs.size;

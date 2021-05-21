@@ -1074,12 +1074,10 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	tsize_t dstMetaSize = srcType.metatypes.length;
 	tsize_t shrSize = diff.shrink.types.length;
 	std::optional<stack_object> _so_phase0;
-	std::optional<stack_object> _so_phase1_1;
-	std::optional<stack_object> _so_phase1_2;
+	std::optional<stack_object> _so_phase1;
 	std::optional<stack_object> _so_phase2;
 	std::optional<stack_object> _so_phase3;
-	std::optional<stack_object> _so_phase4_1;
-	std::optional<stack_object> _so_phase4_2;
+	std::optional<stack_object> _so_phase4;
 
 	//phase 0 : start copying state duto instantiate
 	if (inst && g->withTracked)
@@ -1105,14 +1103,11 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	{
 		dstSize = srcSize + diff.extend.types.length;
 		dstMetaSize = srcMetaSize + diff.extend.metatypes.length;
-		_so_phase1_1.emplace(sizeof(index_t) * dstSize);
-		dstTypes = (index_t*)_so_phase1_1->self;
-		_so_phase1_2.emplace(sizeof(entity) * dstMetaSize);
-		dstMetaTypes = (entity*)_so_phase1_2->self;
+		_so_phase1.emplace(sizeof(index_t) * dstSize + sizeof(entity) * dstMetaSize);
 		auto key = entity_type::merge(
 			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
-			diff.extend, dstTypes, dstMetaTypes);
-		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
+			diff.extend, _so_phase1->self);
+		srcTypes = key.types.data; srcMetaTypes = key.metatypes.data;
 		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
 	}
 
@@ -1162,14 +1157,11 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 4 : shrink
 	if (diff.shrink != EmptyType)
 	{
-		_so_phase4_1.emplace(sizeof(index_t) * srcSize);
-		dstTypes = (index_t*)_so_phase4_1->self;
-		_so_phase4_2.emplace(sizeof(entity) * srcMetaSize);
-		dstMetaTypes = (entity*)_so_phase4_2->self;
+		_so_phase4.emplace(sizeof(index_t) * srcSize + sizeof(entity) * srcMetaSize);
 		auto key = entity_type::substract(
 			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
-			{ {shrTypes, shrSize}, diff.shrink.metatypes }, dstTypes, dstMetaTypes);
-		srcTypes = dstTypes; srcMetaTypes = dstMetaTypes;
+			{ {shrTypes, shrSize}, diff.shrink.metatypes }, _so_phase4->self);
+		srcTypes = key.types.data; srcMetaTypes = key.metatypes.data;
 		srcSize = key.types.length; srcMetaSize = key.metatypes.length;
 	}
 
@@ -2152,13 +2144,9 @@ const entity* world::get_entities(chunk_slice s) noexcept
 	return s.c->get_entities() + s.start;
 }
 
-uint16_t world::get_size(chunk_slice s, index_t t) const noexcept
+uint16_t world::get_size(index_t t) const noexcept
 {
-	chunk* c = s.c;
-	tsize_t id = c->type->index(t);
-	if (id == InvalidIndex || id > c->type->firstTag) 
-		return 0;
-	return c->type->sizes[id];
+	return DotsContext->infos[((tagged_index)t).index()].size;
 }
 
 entity_type world::get_type(entity e) const noexcept
@@ -2544,12 +2532,12 @@ world_delta world::diff_context(world& base)
 }
 #endif
 
-void world::patch_chunk(chunk* c, patcher_i* patcher)
+void world::patch_chunk(chunk_slice s, patcher_i* patcher)
 {
-	entity* es = (entity*)c->data();
-	forloop(i, 0, c->count)
+	entity* es = (entity*)s.c->data() + s.start;
+	forloop(i, 0, s.count)
 		es[i] = patcher->patch(es[i]);
-	chunk::patch(c, patcher);
+	chunk::patch(s, patcher);
 }
 
 const int ZeroValue = 0;
@@ -2978,33 +2966,15 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 
 namespace core::database::chunk_vector_pool
 {
-	constexpr size_t kThreadBinCapacity = 40;
-	const std::thread::id kMainThreadId = std::this_thread::get_id();
-	thread_local std::array<void*, kThreadBinCapacity> threadbin{};
-	thread_local size_t threadbinSize = 0;
-	constexpr size_t kChunkSize = chunk_vector_base::kChunkSize;
-
 	void free(void* data)
 	{
-		if (std::this_thread::get_id() == kMainThreadId)
-		{
-			DotsContext->free(alloc_type::fastbin, data);
-			return;
-		}
-		if (threadbinSize < kThreadBinCapacity)
-			threadbin[threadbinSize++] = data;
-		else
-			::free(data);
+		DotsContext->free(alloc_type::fastbin, data);
+		return;
 	}
 
 	void* malloc()
 	{
-		if (std::this_thread::get_id() == kMainThreadId)
-			return DotsContext->malloc(alloc_type::fastbin);
-		if (threadbinSize == 0)
-			return ::malloc(kChunkSize);
-		else
-			return threadbin[--threadbinSize];
+		return DotsContext->malloc(alloc_type::fastbin);
 	}
 }
 namespace chunk_vector_pool = core::database::chunk_vector_pool;

@@ -126,7 +126,7 @@ TEST_F(CodebaseTest, BufferAPI)
 			{
 				//使用 operation 封装 task 的操作，通过先前定义的参数来保证类型安全
 				auto o = operation{ params, *k, tk };
-				core::entity e = core::entity::invalid();
+				core::entity e = core::NullEntity;
 				o.has_component<test3>(e);
 				//以 slice 为粒度执行具体的逻辑
 				auto tests = o.get_parameter<const test3>();
@@ -395,6 +395,22 @@ TEST_F(CodebaseTest, MarlIntergration)
 		ppl.wait();
 	}
 	EXPECT_EQ(counter, 5000050000);
+}
+
+TEST_F(CodebaseTest, CommandBuffer)
+{
+	using namespace core::codebase;
+	pipeline ppl(std::move(ctx));
+	command_buffer buffer;
+	auto& local = buffer.write();
+	auto e = local.allocate({ complist<test> });
+	local.cast({ {complist<test2>}, {complist<test>} });
+	local.set_component(test2{ 121 });
+	buffer.execute(ppl);
+	for(auto ma : ppl.query(archetype_filter{ {complist<test2>} }))
+		for(auto s : ppl.query(ma.type))
+			EXPECT_EQ(((test2*)ppl.get_component_ro(s, cid<test2>))->v, 121);
+			
 }
 
 TEST_F(CodebaseTest, Dependency)

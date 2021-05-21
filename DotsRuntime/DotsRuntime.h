@@ -52,6 +52,7 @@
 #include <array>
 #include <map>
 #include <bitset>
+#include "concurrentqueue.h"
 #include "Set.h"
 
 namespace core
@@ -221,7 +222,7 @@ namespace core
 		{
 			entity e;
 		};
-		using mask = std::bitset<32>;
+		using mask = std::bitset<32>; //TODO: atomic api
 		struct disable {};
 		struct cleanup {};
 
@@ -328,12 +329,9 @@ namespace core
 			std::vector<intptr_t> entityRefs;
 			std::map<core::GUID, size_t> hash2type;
 
-			std::array<void*, kFastBinCapacity + 10> fastbin{};
-			std::array<void*, kSmallBinCapacity + 10> smallbin{};
-			std::array<void*, kLargeBinCapacity + 10> largebin{};
-			size_t fastbinSize = 0;
-			size_t smallbinSize = 0;
-			size_t largebinSize = 0;
+			moodycamel::ConcurrentQueue<void*> fastbin{ kFastBinCapacity };
+			moodycamel::ConcurrentQueue<void*> smallbin{ kSmallBinCapacity };
+			moodycamel::ConcurrentQueue<void*> largebin{ kLargeBinCapacity };
 			index_t disable_id;
 			index_t cleanup_id;
 			index_t group_id;
@@ -357,108 +355,12 @@ namespace core
 				return stack.free(ptr, size);
 			}
 
-			void free(alloc_type type, void* data)
-			{
-				switch (type)
-				{
-				case alloc_type::fastbin:
-					if (fastbinSize < kLargeBinCapacity)
-						fastbin[fastbinSize++] = data;
-					else
-						::free(data);
-					break;
-				case alloc_type::smallbin:
-					if (smallbinSize < kSmallBinCapacity)
-						smallbin[smallbinSize++] = data;
-					else
-						::free(data);
-					break;
-				case alloc_type::largebin:
-					if (largebinSize < kLargeBinCapacity)
-						largebin[largebinSize++] = data;
-					else
-						::free(data);
-					break;
-				}
-			}
+			ECS_RT_API void free(alloc_type type, void* data);
 
-			void* malloc(alloc_type type)
-			{
-				switch (type)
-				{
-				case alloc_type::fastbin:
-					if (fastbinSize == 0)
-						return ::malloc(kFastBinSize);
-					else
-						return fastbin[--fastbinSize];
-					break;
-				case alloc_type::smallbin:
-					if (smallbinSize == 0)
-						return ::malloc(kSmallBinSize);
-					else
-						return smallbin[--smallbinSize];
-					break;
-				case alloc_type::largebin:
-					if (largebinSize == 0)
-						return ::malloc(kLargeBinSize);
-					else
-						return largebin[--largebinSize];
-					break;
-				}
-				return nullptr;
-			}
+			ECS_RT_API void* malloc(alloc_type type);
 
-			index_t register_type(component_desc desc)
-			{
-				{
-					auto i = hash2type.find(desc.GUID);
-					if (i != hash2type.end())
-						return static_cast<index_t>(i->second);
-				}
-				uint32_t rid = -1;
-				if (desc.entityRefs != nullptr)
-				{
-					rid = (uint32_t)entityRefs.size();
-					for(int i = 0; i < desc.entityRefCount; ++i)
-						entityRefs.push_back(desc.entityRefs[i]);
-				}
-				component_type type;
-				if (desc.size == 0)
-					type = ct_tag;
-				else if (desc.isElement)
-					type = ct_buffer;
-				else if (desc.isManaged)
-					type = ct_managed;
-				else
-					type = ct_pod;
-				if (type == ct_managed)
-				{
-					desc.manualClean = false;
-					desc.manualCopy = false;
-				}
-				index_t id = (index_t)infos.size();
-				id = tagged_index{ id, type };
-				type_registry i{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
-				infos.push_back(i);
-				uint8_t s = 0;
-				if (desc.manualClean)
-					s = s | ManualCleaning;
-				if (desc.manualCopy)
-					s = s | ManualCopying;
-				tracks.push_back((track_state)s);
-				hash2type.insert({ desc.GUID, id });
-
-				if (desc.manualCopy)
-				{
-					index_t id2 = (index_t)infos.size();
-					id2 = tagged_index{ id2, type };
-					type_registry i2{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
-					tracks.push_back(Copying);
-					infos.push_back(i2);
-				}
-
-				return id;
-			}
+			ECS_RT_API index_t register_type(component_desc desc);
+			ECS_RT_API index_t find_type(GUID guid);
 		private:
 			context();
 		};

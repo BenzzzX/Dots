@@ -145,6 +145,38 @@ namespace core
 		{
 			entity_type extend = EmptyType;
 			entity_type shrink = EmptyType;
+
+			bool operator==(const type_diff& other) const
+			{
+				return extend == other.extend && shrink == other.shrink;
+			}
+
+			bool operator!=(const type_diff& other) const
+			{
+				return !(*this == other);
+			}
+
+			static type_diff merge(const type_diff& a, const type_diff& b, void* dst)
+			{
+				entity_type et = entity_type::merge(a.extend, b.extend, dst);
+				dst = (char*)dst + et.get_size();
+				entity_type sr = entity_type::merge(a.shrink, b.shrink, dst);
+				return { et, sr };
+			}
+
+			int get_size() const
+			{
+				return extend.get_size() +
+					shrink.get_size();
+			}
+
+			type_diff clone(char*& buffer) const
+			{
+				return {
+					extend.clone(buffer),
+					shrink.clone(buffer)
+				};
+			}
 		};
 
 		struct batch_iter
@@ -250,7 +282,6 @@ namespace core
 			//entity behavior
 			chunk_slice allocate_slice(archetype*, uint32_t = 1);
 			void free_slice(chunk_slice);
-			chunk_slice as_slice(entity) const;
 			chunk_vector<chunk_slice> cast_slice(chunk_slice, archetype*);
 
 			//serialize behavior
@@ -318,6 +349,7 @@ namespace core
 
 			/*** per entity ***/
 			//query
+			ECS_API chunk_slice as_slice(entity) const;
 			ECS_API const void* get_component_ro(entity, index_t type) const noexcept;
 			ECS_API const void* get_owned_ro(entity, index_t type) const noexcept;
 			ECS_API const void* get_shared_ro(entity, index_t type) const noexcept;
@@ -347,7 +379,7 @@ namespace core
 			ECS_API const void* get_owned_ro_local(chunk_slice c, index_t type) const noexcept;
 			ECS_API void* get_owned_rw_local(chunk_slice c, index_t type) noexcept;
 			ECS_API const entity* get_entities(chunk_slice c) noexcept;
-			ECS_API uint16_t get_size(chunk_slice c, index_t type) const noexcept;
+			ECS_API uint16_t get_size(index_t type) const noexcept;
 			ECS_API const void* get_shared_ro(archetype *g, index_t type) const;
 			ECS_API bool share_component(archetype* g, const typeset& type) const;
 			ECS_API bool own_component(archetype* g, const typeset& type) const;
@@ -359,7 +391,7 @@ namespace core
 #ifdef ENABLE_GUID_COMPONENT
 			ECS_API world_delta diff_context(world& base);
 #endif
-			ECS_API void patch_chunk(chunk* c, patcher_i* patcher);
+			ECS_API void patch_chunk(chunk_slice c, patcher_i* patcher);
 			//serialize
 			ECS_API void serialize(serializer_i* s);
 			ECS_API void deserialize(serializer_i* s);

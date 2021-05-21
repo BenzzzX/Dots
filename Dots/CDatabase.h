@@ -164,7 +164,7 @@ void* get_owned_rw(world* wrd, chunk* c, index_t type);
 const void* get_owned_ro_local(world* wrd, chunk* c, index_t type);
 void* get_owned_rw_local(world* wrd, chunk* c, index_t type);
 const entity* get_entities(world* wrd, chunk* c);
-uint16_t get_size(world* wrd, chunk* c, index_t type);
+uint16_t get_size(world* wrd, index_t type);
 const void* get_shared_ro_arch(world* wrd, archetype* g, index_t type);
 bool share_component_arch(world* wrd, archetype* g, const typeset* type);
 bool own_component_arch(world* wrd, archetype* g, const typeset* type);

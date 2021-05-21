@@ -325,9 +325,9 @@ const entity* get_entities(world* wrd, chunk* c)
 	return (const entity*)cast(wrd)->get_entities(cast(c));
 }
 
-uint16_t get_size(world* wrd, chunk* c, index_t type)
+uint16_t get_size(world* wrd, index_t type)
 {
-	return cast(wrd)->get_size(cast(c), type);
+	return cast(wrd)->get_size(type);
 }
 
 const void* get_shared_ro_arch(world* wrd, archetype* g, index_t type)

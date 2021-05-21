@@ -2,6 +2,8 @@
 #include "Database.h"
 #include "boost/hana.hpp"
 #include "gsl/span"
+#include <queue>
+#include <concurrentqueue.h>
 
 #define def static constexpr auto
 namespace core
@@ -63,10 +65,17 @@ def get_##Name##_v = get_##Name<T>::value;
 		template<class T>
 		index_t register_component()
 		{
-			
+			{
+				auto t = DotsContext->find_type(T::guid);
+				if (t != -1)
+					return t;
+			}
+
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
-			def managed = !std::is_trivial_v<T>;
+			def managed = !(std::is_trivially_move_constructible_v <T> && 
+				std::is_trivially_destructible_v<T> &&
+				std::is_trivially_copy_constructible_v<T>);
 			if constexpr(managed)
 			{
 				desc.isManaged = true;
@@ -374,6 +383,132 @@ def get_##Name##_v = get_##Name<T>::value;
 			return { true, target.ptr->entry };
 		}
 
+		template<class T>
+		struct chunked
+		{
+			T* data;
+			static constexpr size_t capacity = kFastBinSize / sizeof(T);
+			chunked() { data = (T*)DotsContext->malloc(alloc_type::fastbin); }
+			~chunked() { DotsContext->free(alloc_type::fastbin, data); }
+			T& operator[](size_t i) { return data[i]; }
+			const T& operator[](size_t i) const { return data[i]; }
+		}; 
+		
+		template<class T>
+		struct thread_storage
+		{
+			chunked<std::thread::id> ids;
+			chunked<T> storages;
+			std::atomic<size_t> size{ 0 };
+			T& get()
+			{
+				auto id = std::this_thread::get_id();
+				for (int i = 0; i < size; ++i)
+					if (id == ids[i])
+						return storages[i];
+				auto slot = size++;
+				assert(slot < chunked<T>::capacity);
+				ids[slot] = id;
+				return *new (&storages[slot]) T();
+			}
+			~thread_storage()
+			{
+				int n = size.load();
+				for (int i = 0; i < n; ++i)
+					storages[i].~T();
+			}
+		};
+
+		struct command_buffer
+		{
+			struct cmd_allocate
+			{
+				size_t e;
+				entity_type type;
+			};
+			struct cmd_instantiate
+			{
+				size_t e;
+				core::entity source;
+			};
+			struct cmd_cast
+			{
+				size_t e;
+				type_diff diff;
+			};
+			struct cmd_destroy
+			{
+				size_t e;
+			};
+			struct cmd_set
+			{
+				size_t e;
+				index_t type;
+				void* data;
+				size_t size;
+			};
+			struct cmd_patch
+			{
+				size_t e;
+				index_t type;
+			};
+			struct storage_t : chunk_vector_base
+			{
+				void* push(size_t ds)
+				{
+					if (chunkSize == 0)
+						grow();
+					auto indexInChunk = (size % kChunkSize);
+					if (indexInChunk + ds >= kChunkSize)
+					{
+						size = (chunkSize + 1) * kChunkSize;
+						indexInChunk = 0;
+						grow();
+					}
+					void* dst = (char*)data[size / kChunkSize] + indexInChunk;
+					size += ds;
+					return dst;
+				}
+			};
+			struct local
+			{
+			private:
+				command_buffer* global;
+				storage_t storage;
+				chunk_vector<entity> entities;
+				chunk_vector<cmd_allocate> allocates;
+				chunk_vector<cmd_instantiate> instantiates;
+				chunk_vector<cmd_cast> casts;
+				chunk_vector<cmd_destroy> destroies;
+				chunk_vector<cmd_set> sets;
+				chunk_vector<cmd_patch> patches;
+				friend command_buffer;
+			public:
+				void cast(type_diff diff);
+				void set_component(index_t type, void* data, size_t size);
+				void patch_component(index_t type);
+				template<class T>
+				void set_component(T&& data)
+				{
+					set_component(cid<T>, &data, sizeof(T));
+				}
+				template<class T>
+				void patch_component()
+				{
+					patch_component(cid<T>);
+				}
+				core::entity allocate(entity_type type);
+				core::entity instantiate(core::entity e);
+				void begin(core::entity e);
+				void destroy(core::entity e);
+			};
+			std::atomic<uint32_t> allocates;
+			thread_storage<local> locals;
+			local& write() { auto& l = locals.get(); l.global = this; return l; }
+			void execute(class pipeline& ppl);
+		};
+		
+
 		class pipeline : protected world //计算管线，Database 的多线程交互封装
 		{
 		protected:
@@ -388,6 +523,8 @@ def get_##Name##_v = get_##Name<T>::value;
 			virtual void setup_custom_pass(const std::shared_ptr<custom_pass>& pass) const {};
 			virtual void setup_pass(const std::shared_ptr<pass>& pass) const {};
 		public:
+			ECS_API pipeline(const pipeline&) = delete;
+			ECS_API pipeline(pipeline&&);
 			ECS_API pipeline(world&& ctx);
 			ECS_API virtual ~pipeline();
 			ECS_API world release();
@@ -425,6 +562,8 @@ def get_##Name##_v = get_##Name<T>::value;
 
 			//query iterators
 			using world::batch;
+			using world::iter;
+			using world::next;
 			using world::query;
 			ECS_API chunk_vector<chunk*> query(archetype* g, const chunk_filter& filter = {});
 			using world::get_archetypes;
@@ -432,6 +571,7 @@ def get_##Name##_v = get_##Name<T>::value;
 
 			/*** per entity ***/
 			//query
+			using world::as_slice;
 			ECS_API const void* get_component_ro(entity e, index_t type) const noexcept;
 			ECS_API const void* get_owned_ro(entity e, index_t type) const noexcept;
 			ECS_API const void* get_shared_ro(entity e, index_t type) const noexcept;
@@ -475,31 +615,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			using world::get_timestamp;
 			using world::inc_timestamp;
 		};
-}
-	/*
-	auto params = make_params(param<counter>, param<const material>, param<fuck, access::random_acesss>>);
-	auto refs = make_refs(write(fishTree));
-
-	auto pass = create_pass(ctx, params, refs);
-	chunk_vector<task> tasks = create_tasks(pass, -1);
-	auto handle = xxx::parallel_for(tasks, [&pass, &fishTree](task& curr)
-	{
-		operation o{params, pass, curr}
-		auto counters = o.get_parameter<counter>(); // component
-		auto mat = o.get_parameter<material>(); // component may shared
-		if(!o.is_owned<material>())
-			forloop(i, 0, o.get_count())
-				set_material(o.get_index()+i, *mat);
-		else
-			forloop(i, 0, o.get_count())
-				set_material(o.get_index()+i, mat[i]);
-
-		forloop(i, 0, o.get_count())
-			counters[i]++;
-		o.get_parameter<fuck>(e); //random access
-	});
-	setup_dependencies(handle, pass);
-	*/
+	}
 }
 #include "CodebaseImpl.hpp"
 #undef def

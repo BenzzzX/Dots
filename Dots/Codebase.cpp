@@ -27,6 +27,15 @@ pipeline::pipeline(world&& ctx)
 	}
 }
 
+pipeline::pipeline(pipeline&& ppl)
+	:world(std::move(ppl)), dependencyEntries(std::move(ppl.dependencyEntries))
+{
+	on_archetype_update = [this](archetype* at, bool add)
+	{
+		update_archetype(at, add);
+	};
+}
+
 void pipeline::update_archetype(archetype* at, bool add)
 {
 	if (add)
@@ -115,7 +124,8 @@ std::shared_ptr<custom_pass> pipeline::create_custom_pass(gsl::span<shared_entry
 {
 	char* buffer = (char*)::malloc(sizeof(custom_pass));
 	custom_pass* k = new(buffer) custom_pass{ *this };
-	std::shared_ptr<custom_pass> ret{ k };
+	auto deleter = [](custom_pass* p) { ::free(p); };
+	std::shared_ptr<custom_pass> ret{ k, deleter };
 	k->passIndex = passIndex++;
 	setup_custom_pass_dependency(ret, sharedEntries);
 	setup_custom_pass(ret);
@@ -682,4 +692,192 @@ filters filters::clone(char*& buffer) const
 		chunkFilter.clone(buffer),
 		entityFilter.clone(buffer)
 	};
+}
+
+void command_buffer::local::cast(type_diff diff)
+{
+	thread_local char buffer[100];
+	auto e = entities.size - 1;
+	if (casts.size > 0 && casts.last().e == e)
+	{
+		auto& origin = casts.last().diff;
+		type_diff newMerged = type_diff::merge(origin, diff, buffer);
+		char* data = (char*)storage.push(newMerged.get_size());
+		auto d = newMerged.clone(data);
+		origin = newMerged;
+	}
+	else if (allocates.size > 0 && allocates.last().e == e)
+	{
+		auto& origin = allocates.last().type;
+		char* buf = buffer;
+		auto shrinked = entity_type::substract(origin, diff.shrink, buf);
+		buf += shrinked.get_size();
+		auto extended = entity_type::merge(origin, diff.extend, buf);
+		char* data = (char*)storage.push(extended.get_size());
+		auto d = extended.clone(data);
+		origin = extended;
+	}
+	else
+	{
+		char* data = (char*)storage.push(diff.get_size());
+		auto d = diff.clone(data);
+		casts.push(e, d);
+	}
+}
+
+void command_buffer::local::set_component(index_t type, void* data, size_t size)
+{
+	auto e = entities.size - 1;
+	void* s = storage.push(size);
+	memcpy(s, data, size);
+	sets.push(e, type, s, size);
+}
+
+void command_buffer::local::patch_component(index_t type)
+{
+	auto e = entities.size - 1;
+	patches.push(e, type);
+}
+
+core::entity command_buffer::local::allocate(entity_type type)
+{
+	char* data = (char*)storage.push(type.get_size());
+	auto d = type.clone(data);
+	auto e = core::entity::make_transient(global->allocates++);
+	entities.push(e);
+	allocates.push(entities.size - 1, d);
+	return e;
+}
+
+core::entity command_buffer::local::instantiate(core::entity source)
+{
+	auto e = core::entity::make_transient(global->allocates++);
+	entities.push(e);
+	instantiates.push(entities.size - 1, source);
+	return e;
+}
+
+void command_buffer::local::begin(core::entity e)
+{
+	entities.push(e);
+}
+
+void command_buffer::local::destroy(core::entity e)
+{
+	destroies.push(e);
+}
+
+void command_buffer::execute(pipeline& ppl)
+{
+	std::vector<core::entity> newEnts;
+	newEnts.resize(allocates);
+	for (int i = 0; i < locals.size; ++i)
+	{
+		auto& loc = locals.storages[i];
+		auto iter = loc.allocates.begin();
+		auto end = loc.allocates.end();
+		while (iter != end)
+		{
+			auto rb = iter;
+			entity_type type = iter->type;
+			size_t count = 1;
+			iter++;
+			while (iter != end && iter->type == type)
+				count++;
+			for (auto s : ppl.allocate(type, count))
+			{
+				auto es = ppl.get_entities(s);
+				for (uint32_t j = 0; j < s.count; ++j)
+					newEnts[loc.entities[(rb++)->e].id] = es[j];
+			}
+		}
+	}
+	for (int i = 0; i < locals.size; ++i)
+	{
+		//todo: instantiate is context-sensitive operation
+		//is it making sense to batch instantiates?
+		auto& loc = locals.storages[i];
+		auto iter = loc.instantiates.begin();
+		auto end = loc.instantiates.end();
+		while (iter != end)
+		{
+			auto rb = iter;
+			core::entity source = iter->source;
+			size_t count = 1;
+			iter++;
+			while (iter != end && iter->source == source)
+				count++;
+			for (auto s : ppl.instantiate(source, count))
+			{
+				auto es = ppl.get_entities(s);
+				for (uint32_t j = 0; j < s.count; ++j)
+					newEnts[loc.entities[(rb++)->e].id] = es[j];
+			}
+		}
+	}
+	for (int i = 0; i < locals.size; ++i)
+	{
+		auto& loc = locals.storages[i];
+		for (auto& e : loc.entities)
+			if (e.is_transient())
+				e = newEnts[e.id];
+	}
+	for (int i = 0; i < locals.size; ++i)
+	{
+		auto& loc = locals.storages[i];
+		auto iter = loc.casts.begin();
+		auto end = loc.casts.end();
+		while (iter != end)
+		{
+			type_diff diff = iter->diff;
+			chunk_slice s = ppl.as_slice(loc.entities[iter->e]);
+			iter++;
+			auto canMerge = [&]
+			{
+				chunk_slice s2 = ppl.as_slice(loc.entities[iter->e]);
+				return diff == iter->diff && s2.c == s.c && s2.start == s.start + s.count;
+			};
+			while (iter != end && canMerge())
+				s.count++;
+			ppl.cast(s, diff);
+		}
+	}
+	for (int i = 0; i < locals.size; ++i)
+	{
+		auto& loc = locals.storages[i];
+		for (auto& set : loc.sets)
+			if (auto p = ppl.get_owned_rw(loc.entities[set.e], set.type))
+				memcpy(p, set.data, set.size);
+		for (auto& patch : loc.patches)
+			if (char* p = (char*)ppl.get_owned_rw(loc.entities[patch.e], patch.type))
+			{
+				const auto& t = DotsContext->infos[tagged_index(patch.type).index()];
+				for (int k = 0; k < t.entityRefCount; ++k)
+				{
+					auto& e = *(entity*)(p + DotsContext->entityRefs[t.entityRefs + k]);
+					if(e.is_transient())
+						e = newEnts[e.id];
+				}
+			}
+	}
+	for (int i = 0; i < locals.size; ++i)
+	{
+		auto& loc = locals.storages[i];
+
+		auto iter = loc.destroies.begin();
+		auto end = loc.destroies.end();
+		while (iter != end)
+		{
+			chunk_slice s = ppl.as_slice(iter->e);
+			iter++;
+			auto canMerge = [&]
+			{
+				chunk_slice s2 = ppl.as_slice(iter->e);
+				return s2.c == s.c && s2.start == s.start + s.count;
+			};
+			while (iter != end && canMerge())
+				s.count++;
+			ppl.destroy(s);
+		}
+	}
 }

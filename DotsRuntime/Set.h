@@ -9,7 +9,7 @@ namespace core
 	struct handle
 	{
 		using underlying_type = T;
-		static_assert(A + B == sizeof(T) * 8, "size not fit into T");
+		static_assert(A + B == sizeof(T) * 8, "size does not fit into T");
 		union
 		{
 			T value;
@@ -19,9 +19,11 @@ namespace core
 				T id : A;
 			};
 		};
+		constexpr static T Null = std::numeric_limits<T>::max();
 		constexpr static T TransientMagicNumber = ((1 << B) - 1);
 		constexpr operator T() const { return value; }
 		constexpr handle() = default;
+		constexpr handle(nullptr_t) : value(Null) {};
 		constexpr handle(T t) : value(t) { }
 		constexpr handle(T i, T v) : id(i), version(v) { }
 		constexpr bool is_transient() { return version == ((1 << B) - 1); }
@@ -36,12 +38,8 @@ namespace core
 	{
 		using ut = handle<24, 8>;
 		using ut::handle;
-		inline static constexpr entity invalid()
-		{
-			return UINT_MAX;
-		}
 	};
-	constexpr entity NullEntity = UINT_MAX;
+	constexpr entity NullEntity = entity::Null;
 
 
 	namespace database
@@ -118,9 +116,10 @@ namespace core
 				return s;
 			}
 
-			static set merge(const set& lhs, const set& rhs, T* dst)
+			static set merge(const set& lhs, const set& rhs, void* d)
 			{
 				tsize_t i = 0, j = 0, k = 0;
+				T* dst = (T*)d;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])
@@ -137,9 +136,10 @@ namespace core
 				return  { dst, k };
 			}
 
-			static set substract(const set& lhs, const set& rhs, T* dst)
+			static set substract(const set& lhs, const set& rhs, void* d)
 			{
 				tsize_t i = 0, j = 0, k = 0;
+				T* dst = (T*)d;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])
@@ -154,9 +154,10 @@ namespace core
 				return  { dst, k };
 			}
 
-			static set intersect(const set& lhs, const set& rhs, T* dst)
+			static set intersect(const set& lhs, const set& rhs, void* d)
 			{
 				tsize_t i = 0, j = 0, k = 0;
+				T* dst = (T*)d;
 				while (i < lhs.length && j < rhs.length)
 				{
 					if (lhs[i] > rhs[j])

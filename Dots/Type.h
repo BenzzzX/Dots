@@ -28,17 +28,19 @@ namespace core
 				}
 			};
 
-			static entity_type merge(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
+			static entity_type merge(const entity_type& lhs, const entity_type& rhs, void* dst)
 			{
 				typeset ts = typeset::merge(lhs.types, rhs.types, dst);
-				metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, metaDst);
+				dst = (char*)dst + ts.get_size();
+				metaset ms = metaset::merge(lhs.metatypes, rhs.metatypes, dst);
 				return { ts, ms };
 			}
 
-			static entity_type substract(const entity_type& lhs, const entity_type& rhs, index_t* dst, entity* metaDst)
+			static entity_type substract(const entity_type& lhs, const entity_type& rhs, void* dst)
 			{
 				typeset ts = typeset::substract(lhs.types, rhs.types, dst);
-				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, metaDst);
+				dst = (char*)dst + ts.get_size();
+				metaset ms = metaset::substract(lhs.metatypes, rhs.metatypes, dst);
 				return { ts, ms };
 			}
 
