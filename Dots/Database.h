@@ -330,6 +330,10 @@ namespace core
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, type_diff);
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, const entity_type& type);
 
+			//stuctural change (entity)
+			ECS_API void destroy(const entity* ents, uint32_t count); //todo
+			ECS_API chunk_vector<chunk_slice> cast(const entity* ents, uint32_t count, type_diff); //todo
+			ECS_API chunk_vector<chunk_slice> cast(const entity* ents, uint32_t count, const entity_type& type); //todo
 
 			//archetype behavior, lifetime
 			ECS_API archetype* find_archetype(const entity_type&);
@@ -339,18 +343,18 @@ namespace core
 			ECS_API archetype* get_casted(archetype*, type_diff diff, bool inst = false);
 			ECS_API chunk_vector<chunk_slice> cast(chunk_slice, archetype* g);
 
-			//query iterators
+			//entity -> chunk_slice
+			ECS_API chunk_slice as_slice(entity) const;
 			ECS_API batch_iter iter(const entity* ents, uint32_t count) const;
 			ECS_API batch_range batch(const entity* ents, uint32_t count) const;
 			ECS_API bool next(batch_iter& iter) const;
+
+			//query
 			ECS_API chunk_vector<matched_archetype> query(const archetype_filter& filter) const;
 			ECS_API chunk_vector<chunk*> query(const archetype*, const chunk_filter& filter = {}) const;
 			ECS_API chunk_vector<archetype*> get_archetypes();
 
-
-			/*** per entity ***/
-			//query
-			ECS_API chunk_slice as_slice(entity) const;
+			//query (entity)
 			ECS_API const void* get_component_ro(entity, type_index type) const noexcept;
 			ECS_API const void* get_owned_ro(entity, type_index type) const noexcept;
 			ECS_API const void* get_shared_ro(entity, type_index type) const noexcept;
@@ -361,18 +365,17 @@ namespace core
 			ECS_API bool is_component_enabled(entity, const typeset& type) const noexcept;
 			ECS_API bool exist(entity) const noexcept;
 			ECS_API archetype* get_archetype(entity) const noexcept;
-			//update
+			//update (entity)
 			ECS_API void* get_owned_rw(entity, type_index type) const noexcept;
 			ECS_API void enable_component(entity, const typeset& type) const noexcept;
 			ECS_API void disable_component(entity, const typeset& type) const noexcept;
 			ECS_API entity_type get_type(entity) const noexcept; /* note: only owned */
-			//entity/group serialize
+			//entity/group serialize 
 			ECS_API chunk_vector<entity> gather_reference(entity);
 			ECS_API void serialize(serializer_i* s, entity);
 			ECS_API entity deserialize(serializer_i* s, patcher_i* patcher);
 
-			/*** per chunk or archetype ***/
-			//query
+			//query (chunk_slice)
 			ECS_API const void* get_component_ro(chunk_slice c, type_index type) const noexcept;
 			ECS_API const void* get_owned_ro(chunk_slice c, type_index type) const noexcept;
 			ECS_API const void* get_shared_ro(chunk_slice c, type_index type) const noexcept;
@@ -385,7 +388,6 @@ namespace core
 			ECS_API bool share_component(archetype* g, const typeset& type) const;
 			ECS_API bool own_component(archetype* g, const typeset& type) const;
 			ECS_API bool has_component(archetype* g, const typeset& type) const;
-
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);
