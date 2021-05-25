@@ -334,6 +334,7 @@ namespace core
 			ECS_API void destroy(const entity* ents, uint32_t count); //todo
 			ECS_API chunk_vector<chunk_slice> cast(const entity* ents, uint32_t count, type_diff); //todo
 			ECS_API chunk_vector<chunk_slice> cast(const entity* ents, uint32_t count, const entity_type& type); //todo
+			ECS_API chunk_vector<chunk_slice> cast(const entity* ents, uint32_t count, archetype* g);
 
 			//archetype behavior, lifetime
 			ECS_API archetype* find_archetype(const entity_type&);

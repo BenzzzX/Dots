@@ -2006,6 +2006,12 @@ void world::destroy(chunk_slice s)
 	destroy_single(s);
 }
 
+void world::destroy(const entity* ents, uint32_t count)
+{
+	for (auto s : batch(ents, count))
+		destroy(s);
+}
+
 chunk_vector<chunk_slice> world::cast(chunk_slice s, type_diff diff)
 {
 	archetype* g = get_casted(s.c->type, diff);
@@ -2016,6 +2022,24 @@ chunk_vector<chunk_slice> world::cast(chunk_slice s, const entity_type& type)
 {
 	archetype* g = get_archetype(type);
 	return cast(s, g);
+}
+
+chunk_vector<chunk_slice> world::cast(const entity* ents, uint32_t count, type_diff diff)
+{
+	for (auto s : batch(ents, count))
+		cast(s, diff);
+}
+
+chunk_vector<chunk_slice> world::cast(const entity* ents, uint32_t count, const entity_type& type)
+{
+	for (auto s : batch(ents, count))
+		cast(s, type);
+}
+
+chunk_vector<chunk_slice> world::cast(const entity* ents, uint32_t count, archetype* g)
+{
+	for (auto s : batch(ents, count))
+		cast(s, g);
 }
 
 chunk_slice world::as_slice(entity e) const
