@@ -28,15 +28,15 @@ namespace core
 
 			auto paramCount = hana::length(paramList).value;
 			auto archs = query(v.archetypeFilter);
-			constexpr size_t bits = std::numeric_limits<index_t>::digits;
+			constexpr size_t bits = std::numeric_limits<uint32_t>::digits;
 			const auto bal = paramCount / bits + 1;
 			
 			size_t bufferSize =
 				sizeof(pass) //自己
 				+ v.get_size()
 				+ archs.size * (sizeof(void*) + sizeof(mask)) // mask + archetype
-				+ paramCount * sizeof(index_t) * (archs.size + 1) //type + local type list
-				+ bal * sizeof(index_t) * 2; //readonly + random access
+				+ paramCount * sizeof(type_index) * (archs.size + 1) //type + local type list
+				+ bal * sizeof(type_index) * 2; //readonly + random access
 			char* buffer = (char*)::malloc(bufferSize);
 			pass* k = new(buffer) pass{ *this };
 			auto deleter = [](pass* p) { ::free(p); };
@@ -47,12 +47,12 @@ namespace core
 			k->paramCount = (int)paramCount;
 			k->archetypes = allocate_inplace<archetype*>(buffer, archs.size);
 			k->matched = allocate_inplace<mask>(buffer, archs.size);
-			k->types = allocate_inplace<index_t>(buffer, paramCount);
-			k->readonly = allocate_inplace<index_t>(buffer, bal);
-			k->randomAccess = allocate_inplace<index_t>(buffer, bal);
-			memset(k->readonly, 0, sizeof(index_t) * bal);
-			memset(k->randomAccess, 0, sizeof(index_t) * bal);
-			k->localType = allocate_inplace<index_t>(buffer, paramCount * archs.size);
+			k->types = allocate_inplace<type_index>(buffer, paramCount);
+			k->readonly = allocate_inplace<uint32_t>(buffer, bal);
+			k->randomAccess = allocate_inplace<uint32_t>(buffer, bal);
+			memset(k->readonly, 0, sizeof(uint32_t) * bal);
+			memset(k->randomAccess, 0, sizeof(uint32_t) * bal);
+			k->localType = allocate_inplace<uint32_t>(buffer, paramCount * archs.size);
 			k->filter = v.clone(buffer);
 			k->hasRandomWrite = false;
 			int t = 0;

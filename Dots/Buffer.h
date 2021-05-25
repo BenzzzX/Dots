@@ -1,6 +1,5 @@
 #pragma once
 
-
 constexpr uint32_t GroupBufferSize = sizeof(core::entity) * 5;
 
 inline void* buffer_malloc(size_t size)

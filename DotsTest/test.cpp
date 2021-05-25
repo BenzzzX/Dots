@@ -3,7 +3,7 @@
 
 
 template<class T>
-core::database::index_t tid = 0;
+core::database::type_index tid = 0;
 
 struct test
 {
@@ -146,7 +146,7 @@ TEST_F(DatabaseTest, AllocateTenMillion)
 TEST_F(DatabaseTest, Instatiate)
 {
 	using namespace core::database;
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	core::entity e[2];
 	e[0] = pick(ctx.allocate(type));
@@ -172,7 +172,7 @@ TEST_F(DatabaseTest, Cast)
 	core::entity e = pick(ctx.allocate(emptyType));
 	EXPECT_TRUE(ctx.exist(e));
 
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	for (auto c : ctx.batch(&e, 1))
 		ctx.cast(c, type);
@@ -182,7 +182,7 @@ TEST_F(DatabaseTest, Cast)
 TEST_F(DatabaseTest, NotExist)
 {
 	using namespace core::database;
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	core::entity e = pick(ctx.allocate(type));
 	EXPECT_TRUE(ctx.exist(e));
@@ -190,7 +190,7 @@ TEST_F(DatabaseTest, NotExist)
 	auto component = (test_not_exist*)ctx.get_component_ro(e, tid<test_not_exist>);
 	EXPECT_TRUE(!component);
 
-	index_t nt[] = { tid<test_not_exist> };
+	type_index nt[] = { tid<test_not_exist> };
 	entity_type none_type{ nt };
 	auto atypes = ctx.query({ none_type });
 	EXPECT_TRUE(atypes.size == 0);
@@ -203,7 +203,7 @@ TEST_F(DatabaseTest, CastDiff)
 	core::entity e = pick(ctx.allocate(emptyType));
 	EXPECT_TRUE(ctx.exist(e));
 
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	type_diff diff = { type };
 	for (auto c : ctx.batch(&e, 1))
@@ -234,7 +234,7 @@ TEST_F(DatabaseTest, ComponentReadWrite)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	//就地初始化，避免多次查询
 	for (auto c : ctx.allocate(type))
@@ -258,7 +258,7 @@ TEST_F(DatabaseTest, Align)
 	using namespace core::database;
 	core::entity e = {};
 
-	index_t t[] = { tid<test>, tid<test_align>, tid<test_element> };
+	type_index t[] = { tid<test>, tid<test_align>, tid<test_element> };
 	entity_type type{ t };
 	//就地初始化，避免多次查询
 	ctx.allocate(type);
@@ -277,7 +277,7 @@ TEST_F(DatabaseTest, LifeTimeTrack)
 	using namespace core::database;
 
 	//初始化
-	index_t t[] = { tid<test_track> };
+	type_index t[] = { tid<test_track> };
 	entity_type type{ t };
 	core::entity e = pick(ctx.allocate(type));
 	{
@@ -322,7 +322,7 @@ TEST_F(DatabaseTest, BufferReadWrite)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { tid<test_element> };
+	type_index t[] = { tid<test_element> };
 	entity_type type{ t };
 	for (auto c : ctx.allocate(type))
 	{
@@ -342,7 +342,7 @@ TEST_F(DatabaseTest, BufferInstatiate)
 	using namespace core::database;
 	core::entity e;
 
-	index_t t[] = { tid<test_element> };
+	type_index t[] = { tid<test_element> };
 	entity_type type{ t };
 	for (auto c : ctx.allocate(type))
 	{
@@ -370,7 +370,7 @@ TEST_F(DatabaseTest, Meta)
 	core::entity e;
 
 	{
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		for (auto c : ctx.allocate(type))
 		{
@@ -397,7 +397,7 @@ TEST_F(DatabaseTest, Meta)
 	}
 
 	{
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type({ t });
 
 		for (auto c : ctx.batch(&e, 1))
@@ -418,7 +418,7 @@ TEST_F(DatabaseTest, DistroyMiddle)
 {
 	using namespace core::database;
 	core::entity es[100];
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	{
 		int counter = 1;
@@ -453,7 +453,7 @@ TEST_F(DatabaseTest, SimpleLoop)
 	using namespace core::database;
 	for (int x = 0; x < 5; x++)
 	{
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		{
 			int counter = 1;
@@ -486,9 +486,9 @@ TEST_F(DatabaseTest, DisableMask)
 {
 	using namespace core::database;
 	core::entity es[100];
-	index_t t[] = { get_builtin().mask_id, tid<test> };
+	type_index t[] = { get_builtin().mask_id, tid<test> };
 	std::sort(t, t + 2);
-	index_t dt[] = { tid<test> };
+	type_index dt[] = { tid<test> };
 	entity_type type{ t };
 	{
 		int counter = 1;
@@ -530,7 +530,7 @@ TEST_F(DatabaseTest, DisableMask)
 	}
 
 	{
-		index_t qt[] = { get_builtin().mask_id };
+		type_index qt[] = { get_builtin().mask_id };
 		entity_type queryType{ typeset{qt,1} };
 		int counter = 0;
 		for (auto i : ctx.query({ queryType })) // 空 Query
@@ -571,7 +571,7 @@ TEST_F(DatabaseTest, DisableMask)
 TEST_F(DatabaseTest, MoveContext) 
 {
 	using namespace core::database;
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	{
 		int counter = 1;
@@ -625,7 +625,7 @@ TEST_F(DatabaseTest, Group)
 	using namespace core::database;
 	core::entity es[10];
 	{
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
@@ -638,7 +638,7 @@ TEST_F(DatabaseTest, Group)
 		}
 	}
 	{
-		index_t t[] = { get_builtin().group_id };
+		type_index t[] = { get_builtin().group_id };
 		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
@@ -648,7 +648,7 @@ TEST_F(DatabaseTest, Group)
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
 	{
-		index_t t[] = { tid<test_ref> };
+		type_index t[] = { tid<test_ref> };
 		entity_type type{ t };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es+1, 1))
@@ -663,11 +663,11 @@ TEST_F(DatabaseTest, Group)
 			newE = ctx.get_entities(c.c)[c.start];
 		}
 		{
-			index_t t[] = { get_builtin().group_id };
+			type_index t[] = { get_builtin().group_id };
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
@@ -724,7 +724,7 @@ struct buffer_deserializer : core::database::serializer_i
 TEST_F(DatabaseTest, Deserialize) 
 {
 	using namespace core::database;
-	index_t t[] = { tid<test_element>, tid<test>, tid<test_align> };
+	type_index t[] = { tid<test_element>, tid<test>, tid<test_align> };
 	entity_type type{ t };
 	{
 		int counter = 1;
@@ -767,7 +767,7 @@ TEST_F(DatabaseTest, Deserialize)
 TEST_F(DatabaseTest, EntityDeserialize) 
 {
 	using namespace core::database;
-	index_t t[] = { tid<test> };
+	type_index t[] = { tid<test> };
 	entity_type type{ t };
 	auto e = pick(ctx.allocate(type));
 	((test*)ctx.get_owned_rw(e, tid<test>))->v = -1.f;
@@ -784,7 +784,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 	using namespace core::database;
 	core::entity es[10];
 	{
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		int counter = 1;
 		for (auto c : ctx.allocate(type, 10))
@@ -797,7 +797,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		}
 	}
 	{
-		index_t t[] = { get_builtin().group_id };
+		type_index t[] = { get_builtin().group_id };
 		entity_type type{ t };
 		type_diff addGroup{ type };
 		for (auto s : ctx.batch(es, 1))
@@ -807,7 +807,7 @@ TEST_F(DatabaseTest, GroupDeserialize)
 		memcpy(group.data(), es, sizeof(core::entity) * group.size());
 	}
 	{
-		index_t t[] = { tid<test_ref> };
+		type_index t[] = { tid<test_ref> };
 		entity_type type{ t };
 		type_diff addRef{ type };
 		for (auto s : ctx.batch(es + 1, 1))
@@ -826,11 +826,11 @@ TEST_F(DatabaseTest, GroupDeserialize)
 			newE = ctx.deserialize(&ds, nullptr);
 		}
 		{
-			index_t t[] = { get_builtin().group_id };
+			type_index t[] = { get_builtin().group_id };
 			EXPECT_TRUE(ctx.has_component(newE, { t,1 }));
 		}
 
-		index_t t[] = { tid<test> };
+		type_index t[] = { tid<test> };
 		entity_type type{ t };
 		int counter = 0;
 		for (auto i : ctx.query({ type }))
@@ -859,7 +859,7 @@ TEST_F(DatabaseTest, FormatTest)
 TEST_F(DatabaseTest, Tag)
 {
 	using namespace core::database;
-	index_t t[] = { tid<test_tag> };
+	type_index t[] = { tid<test_tag> };
 	entity_type type{ t };
 	core::entity e;
 	e = pick(ctx.allocate(type));

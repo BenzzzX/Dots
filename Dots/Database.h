@@ -16,15 +16,16 @@ namespace core
 		struct chunk;
 		class world;
 
-		ECS_API index_t register_type(component_desc desc);
+		extern context* DotsContext;
+		ECS_API type_index register_type(component_desc desc);
 		struct builtin_id
 		{
-			index_t disable_id;
-			index_t cleanup_id;
-			index_t group_id;
-			index_t mask_id;
+			type_index disable_id;
+			type_index cleanup_id;
+			type_index group_id;
+			type_index mask_id;
 #ifdef ENABLE_GUID_COMPONENT
-			index_t guid_id;
+			type_index guid_id;
 #endif
 		};
 #ifdef ENABLE_GUID_COMPONENT
@@ -105,7 +106,7 @@ namespace core
 			uint32_t timestamp;
 			uint32_t size;
 			uint32_t entitySize;
-			index_t* types;
+			type_index* types;
 			uint32_t* offsets[3];
 			uint16_t* sizes;
 			entity* metatypes;
@@ -119,7 +120,7 @@ namespace core
 			bool zerosize;
 
 			/*
-			index_t types[componentCount];
+			type_index types[componentCount];
 			uint32_t offsets[3][firstTag];
 			uint16_t sizes[firstTag];
 			entity metatypes[metaCount];
@@ -127,7 +128,7 @@ namespace core
 			*/
 			inline char* data() noexcept { return (char*)(this + 1); };
 			uint32_t* timestamps(chunk* c) const  noexcept;
-			tsize_t index(index_t type) const  noexcept;
+			tsize_t index(type_index type) const  noexcept;
 			mask get_mask(const typeset& subtype) noexcept;
 
 			inline entity_type get_type() const;
@@ -253,7 +254,7 @@ namespace core
 			mutable queries_t queries;
 			entities ents;
 			uint32_t* typeTimestamps;
-			index_t typeCapacity;
+			uint32_t typeCapacity;
 
 			//query behavior
 			query_cache& get_query_cache(const archetype_filter& f) const;
@@ -311,7 +312,7 @@ namespace core
 
 			friend chunk;
 		public:
-			ECS_API world(index_t typeCapacity = 4096u);
+			ECS_API world(uint32_t typeCapacity = 4096u);
 			ECS_API world(const world& other/*todo: ,archetype_filter*/);
 			ECS_API world(world&& other);
 			ECS_API ~world();
@@ -350,9 +351,9 @@ namespace core
 			/*** per entity ***/
 			//query
 			ECS_API chunk_slice as_slice(entity) const;
-			ECS_API const void* get_component_ro(entity, index_t type) const noexcept;
-			ECS_API const void* get_owned_ro(entity, index_t type) const noexcept;
-			ECS_API const void* get_shared_ro(entity, index_t type) const noexcept;
+			ECS_API const void* get_component_ro(entity, type_index type) const noexcept;
+			ECS_API const void* get_owned_ro(entity, type_index type) const noexcept;
+			ECS_API const void* get_shared_ro(entity, type_index type) const noexcept;
 			ECS_API bool is_a(entity, const entity_type& type) const noexcept;
 			ECS_API bool share_component(entity, const typeset& type) const;
 			ECS_API bool has_component(entity, const typeset& type) const noexcept;
@@ -361,7 +362,7 @@ namespace core
 			ECS_API bool exist(entity) const noexcept;
 			ECS_API archetype* get_archetype(entity) const noexcept;
 			//update
-			ECS_API void* get_owned_rw(entity, index_t type) const noexcept;
+			ECS_API void* get_owned_rw(entity, type_index type) const noexcept;
 			ECS_API void enable_component(entity, const typeset& type) const noexcept;
 			ECS_API void disable_component(entity, const typeset& type) const noexcept;
 			ECS_API entity_type get_type(entity) const noexcept; /* note: only owned */
@@ -372,15 +373,15 @@ namespace core
 
 			/*** per chunk or archetype ***/
 			//query
-			ECS_API const void* get_component_ro(chunk_slice c, index_t type) const noexcept;
-			ECS_API const void* get_owned_ro(chunk_slice c, index_t type) const noexcept;
-			ECS_API const void* get_shared_ro(chunk_slice c, index_t type) const noexcept;
-			ECS_API void* get_owned_rw(chunk_slice c, index_t type) const noexcept;
-			ECS_API const void* get_owned_ro_local(chunk_slice c, index_t type) const noexcept;
-			ECS_API void* get_owned_rw_local(chunk_slice c, index_t type) noexcept;
+			ECS_API const void* get_component_ro(chunk_slice c, type_index type) const noexcept;
+			ECS_API const void* get_owned_ro(chunk_slice c, type_index type) const noexcept;
+			ECS_API const void* get_shared_ro(chunk_slice c, type_index type) const noexcept;
+			ECS_API void* get_owned_rw(chunk_slice c, type_index type) const noexcept;
+			ECS_API const void* get_owned_ro_local(chunk_slice c, type_index type) const noexcept;
+			ECS_API void* get_owned_rw_local(chunk_slice c, type_index type) noexcept;
 			ECS_API const entity* get_entities(chunk_slice c) noexcept;
-			ECS_API uint16_t get_size(index_t type) const noexcept;
-			ECS_API const void* get_shared_ro(archetype *g, index_t type) const;
+			ECS_API uint16_t get_size(type_index type) const noexcept;
+			ECS_API const void* get_shared_ro(archetype *g, type_index type) const;
 			ECS_API bool share_component(archetype* g, const typeset& type) const;
 			ECS_API bool own_component(archetype* g, const typeset& type) const;
 			ECS_API bool has_component(archetype* g, const typeset& type) const;
@@ -442,7 +443,7 @@ namespace core
 			ECS_API uint32_t get_count() { return count; }
 			ECS_API mask get_mask(const typeset& ts) { return type->get_mask(ts); }
 			ECS_API const entity* get_entities() const { return (entity*)data(); }
-			ECS_API uint32_t get_timestamp(index_t type) noexcept;
+			ECS_API uint32_t get_timestamp(type_index type) noexcept;
 			ECS_API archetype* get_type() noexcept { return type; }
 		};
 

@@ -82,7 +82,7 @@ void pipeline::sync_archetype(archetype* at) const
 	sync_dependencies(deps);
 }
 
-void pipeline::sync_entry(archetype* at, index_t type) const
+void pipeline::sync_entry(archetype* at, type_index type) const
 {
 	auto pair = dependencyEntries.find(at);
 	auto entries = pair->second.get();
@@ -228,12 +228,12 @@ void pipeline::setup_pass_dependency(std::shared_ptr<pass>& k, gsl::span<shared_
 {
 	constexpr uint16_t InvalidIndex = (uint16_t)-1;
 	detail::weak_ptr_set dependencies;
-	std::set<std::pair<archetype*, index_t>> syncedEntry;
+	std::set<std::pair<archetype*, type_index>> syncedEntry;
 	setup_shared_dependency(std::static_pointer_cast<custom_pass>(k), sharedEntries, dependencies);
 
 	struct HELPER
 	{
-		static archetype* get_owning_archetype(world* ctx, archetype* sharing, index_t type)
+		static archetype* get_owning_archetype(world* ctx, archetype* sharing, type_index type)
 		{
 			if (sharing->index(type) != InvalidIndex)
 				return sharing;
@@ -245,7 +245,7 @@ void pipeline::setup_pass_dependency(std::shared_ptr<pass>& k, gsl::span<shared_
 		}
 	};
 
-	auto sync_entry = [&](archetype* at, index_t localType, bool readonly)
+	auto sync_entry = [&](archetype* at, type_index localType, bool readonly)
 	{
 		auto pair = std::make_pair(at, localType);
 		if (syncedEntry.find(pair) != syncedEntry.end())
@@ -278,11 +278,11 @@ void pipeline::setup_pass_dependency(std::shared_ptr<pass>& k, gsl::span<shared_
 		}
 	};
 
-	auto sync_type = [&](index_t type, bool readonly)
+	auto sync_type = [&](type_index type, bool readonly)
 	{
 		for (auto& pair : dependencyEntries)
 		{
-			index_t localType = pair.first->index(type);
+			type_index localType = pair.first->index(type);
 			auto entries = pair.second.get();
 			if (localType >= pair.first->firstTag || localType == InvalidIndex)
 				return;
@@ -460,7 +460,7 @@ chunk_vector<chunk*> pipeline::query(archetype* g, const chunk_filter& filter)
 }
 
 
-const void* pipeline::get_component_ro(entity e, index_t type) const noexcept
+const void* pipeline::get_component_ro(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -475,7 +475,7 @@ const void* pipeline::get_component_ro(entity e, index_t type) const noexcept
 	return c->data() + (size_t)g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
-const void* pipeline::get_owned_ro(entity e, index_t type) const noexcept
+const void* pipeline::get_owned_ro(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -488,7 +488,7 @@ const void* pipeline::get_owned_ro(entity e, index_t type) const noexcept
 	return c->data() + g->offsets[(int)c->ct][id] + (size_t)data.i * g->sizes[id];
 }
 
-const void* pipeline::get_shared_ro(entity e, index_t type) const noexcept
+const void* pipeline::get_shared_ro(entity e, type_index type) const noexcept
 {
 	return get_shared_ro(get_archetype(e), type);
 }
@@ -508,7 +508,7 @@ bool pipeline::is_component_enabled(entity e, const typeset& type) const noexcep
 	return (m & mm) == mm;
 }
 
-void* pipeline::get_owned_rw(entity e, index_t type) const noexcept
+void* pipeline::get_owned_rw(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -607,7 +607,7 @@ entity pipeline::deserialize(serializer_i* s, patcher_i* patcher)
 	return src;
 }
 
-const void* pipeline::get_component_ro(chunk* c, index_t t) const noexcept
+const void* pipeline::get_component_ro(chunk* c, type_index t) const noexcept
 {
 	archetype* g = c->type;
 	tsize_t id = g->index(t);
@@ -618,7 +618,7 @@ const void* pipeline::get_component_ro(chunk* c, index_t t) const noexcept
 	sync_entry(g, t);
 	return c->data() + c->type->offsets[(int)c->ct][id];
 }
-const void* pipeline::get_owned_ro(chunk* c, index_t t) const noexcept
+const void* pipeline::get_owned_ro(chunk* c, type_index t) const noexcept
 {
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id >= c->type->firstTag)
@@ -626,12 +626,12 @@ const void* pipeline::get_owned_ro(chunk* c, index_t t) const noexcept
 	sync_entry(c->type, t);
 	return c->data() + c->type->offsets[(int)c->ct][id];
 }
-const void* pipeline::get_shared_ro(chunk* c, index_t t) const noexcept
+const void* pipeline::get_shared_ro(chunk* c, type_index t) const noexcept
 {
 	archetype* g = c->type;
 	return get_shared_ro(g, t);
 }
-void* pipeline::get_owned_rw(chunk* c, index_t t) noexcept
+void* pipeline::get_owned_rw(chunk* c, type_index t) noexcept
 {
 	tsize_t id = c->type->index(t);
 	if (id == InvalidIndex || id >= c->type->firstTag)
@@ -641,7 +641,7 @@ void* pipeline::get_owned_rw(chunk* c, index_t t) noexcept
 	return c->data() + c->type->offsets[(int)c->ct][id];
 }
 
-const void* pipeline::get_shared_ro(archetype* g, index_t type) const
+const void* pipeline::get_shared_ro(archetype* g, type_index type) const
 {
 	entity* metas = g->metatypes;
 	forloop(i, 0, g->metaCount)
@@ -725,7 +725,7 @@ void command_buffer::local::cast(type_diff diff)
 	}
 }
 
-void command_buffer::local::set_component(index_t type, void* data, size_t size)
+void command_buffer::local::set_component(type_index type, void* data, size_t size)
 {
 	auto e = entities.size - 1;
 	void* s = storage.push(size);
@@ -733,7 +733,7 @@ void command_buffer::local::set_component(index_t type, void* data, size_t size)
 	sets.push(e, type, s, size);
 }
 
-void command_buffer::local::patch_component(index_t type)
+void command_buffer::local::patch_component(type_index type)
 {
 	auto e = entities.size - 1;
 	patches.push(e, type);
@@ -851,7 +851,7 @@ void command_buffer::execute(pipeline& ppl)
 		for (auto& patch : loc.patches)
 			if (char* p = (char*)ppl.get_owned_rw(loc.entities[patch.e], patch.type))
 			{
-				const auto& t = DotsContext->infos[tagged_index(patch.type).index()];
+				const auto& t = DotsContext->infos[type_index(patch.type).index()];
 				for (int k = 0; k < t.entityRefCount; ++k)
 				{
 					auto& e = *(entity*)(p + DotsContext->entityRefs[t.entityRefs + k]);

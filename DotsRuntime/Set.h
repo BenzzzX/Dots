@@ -5,73 +5,9 @@
 #undef max
 namespace core
 {
-	template<size_t A, size_t B, class T = uint32_t>
-	struct handle
-	{
-		using underlying_type = T;
-		static_assert(A + B == sizeof(T) * 8, "size does not fit into T");
-		union
-		{
-			T value;
-			struct
-			{
-				T version : B;
-				T id : A;
-			};
-		};
-		constexpr static T Null = std::numeric_limits<T>::max();
-		constexpr static T TransientMagicNumber = ((1 << B) - 1);
-		constexpr operator T() const { return value; }
-		constexpr handle() = default;
-		constexpr handle(nullptr_t) : value(Null) {};
-		constexpr handle(T t) : value(t) { }
-		constexpr handle(T i, T v) : id(i), version(v) { }
-		constexpr bool is_transient() { return version == ((1 << B) - 1); }
-		constexpr static T make_transient(T i) { return handle{ i, TransientMagicNumber }.value; }
-		constexpr static T recycle(T version)
-		{
-			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
-		}
-	};
-
-	struct entity : handle<24, 8>
-	{
-		using ut = handle<24, 8>;
-		using ut::handle;
-	};
-	constexpr entity NullEntity = entity::Null;
-
-
+	using tsize_t = uint16_t;
 	namespace database
 	{
-		using index_t = uint32_t;
-		using tsize_t = uint16_t;
-#ifdef __EMSCRIPTEN__
-		constexpr size_t _FNV_offset_basis = 2166136261U;
-		constexpr size_t _FNV_prime = 16777619U;
-#else
-		constexpr size_t _FNV_offset_basis = sizeof(size_t) == sizeof(uint32_t) ? 2166136261U : 14695981039346656037ULL;
-		constexpr size_t _FNV_prime = sizeof(uint32_t) ? 16777619U : 1099511628211ULL;
-#endif
-
-		inline size_t hash_append(size_t val, const unsigned char* const data, const size_t length) noexcept
-		{ // accumulate range [data, data + length) into partial FNV-1a uuid val
-			for (size_t i = 0; i < length; ++i) {
-				val ^= static_cast<size_t>(data[i]);
-				val *= _FNV_prime;
-			}
-
-			return val;
-		}
-
-		template <class T>
-		inline size_t hash_array(const T* const data, const size_t length, const size_t basis = _FNV_offset_basis) noexcept
-		{ // bitwise hashes the representation of an array
-			static_assert(std::is_trivial_v<T>, "Only trivial types can be directly hashed.");
-			return hash_append(
-				basis, reinterpret_cast<const unsigned char*>(data), length * sizeof(T));
-		}
-
 		template<class T>
 		struct set
 		{
@@ -200,8 +136,5 @@ namespace core
 				return j == s.length;
 			}
 		};
-
-		using typeset = set<index_t>;
-		using metaset = set<entity>;
 	}
 }

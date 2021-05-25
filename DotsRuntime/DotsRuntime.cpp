@@ -1,10 +1,6 @@
 #include "DotsRuntime.h"
 
 using namespace core::database;
-namespace core::database
-{
-	context* DotsContext;
-}
 
 context::context()
 {
@@ -59,10 +55,10 @@ context::context()
 	stack.init(10000);
 }
 
-void context::initialize()
+context& context::get()
 {
 	static context instance;
-	DotsContext = &instance;
+	return instance;
 }
 
 void context::free(alloc_type type, void* data)
@@ -105,14 +101,14 @@ void* context::malloc(alloc_type type)
 	return result;
 }
 
-index_t context::register_type(component_desc desc)
+type_index context::register_type(component_desc desc)
 {
 	{
 		auto i = hash2type.find(desc.GUID);
 		if (i != hash2type.end())
 			return static_cast<index_t>(i->second);
 	}
-	uint32_t rid = -1;
+	uint32_t rid = 0;
 	if (desc.entityRefs != nullptr)
 	{
 		rid = (uint32_t)entityRefs.size();
@@ -134,7 +130,7 @@ index_t context::register_type(component_desc desc)
 		desc.manualCopy = false;
 	}
 	index_t id = (index_t)infos.size();
-	id = tagged_index{ id, type };
+	id = type_index{ id, type };
 	type_registry i{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 	infos.push_back(i);
 	uint8_t s = 0;
@@ -148,19 +144,11 @@ index_t context::register_type(component_desc desc)
 	if (desc.manualCopy)
 	{
 		index_t id2 = (index_t)infos.size();
-		id2 = tagged_index{ id2, type };
+		id2 = type_index{ id2, type };
 		type_registry i2{ desc.GUID, desc.size, desc.elementSize, desc.alignment, rid, desc.entityRefCount, desc.name, desc.vtable };
 		tracks.push_back(Copying);
 		infos.push_back(i2);
 	}
 
 	return id;
-}
-
-index_t context::find_type(GUID guid)
-{
-	auto i = hash2type.find(guid);
-	if (i != hash2type.end())
-		return static_cast<index_t>(i->second);
-	return -1;
 }

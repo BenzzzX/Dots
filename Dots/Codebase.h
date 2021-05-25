@@ -60,17 +60,11 @@ def get_##Name##_v = get_##Name<T>::value;
 		struct is_buffer<T, std::void_t<typename T::value_type>> : is_template<buffer_t, typename T::value_type> {};
 
 		template<class T>
-		inline index_t cid;
+		inline type_index cid;
 
 		template<class T>
-		index_t register_component()
+		type_index register_component()
 		{
-			{
-				auto t = DotsContext->find_type(T::guid);
-				if (t != -1)
-					return t;
-			}
-
 			component_desc desc;
 			desc.isElement = is_buffer<T>{};
 			def managed = !(std::is_trivially_move_constructible_v <T> && 
@@ -151,7 +145,7 @@ def get_##Name##_v = get_##Name<T>::value;
 		{
 			operator core::database::typeset() const
 			{
-				static core::database::index_t list[] = { core::codebase::cid<Ts>... };
+				static type_index list[] = { core::codebase::cid<Ts>... };
 				return list;
 			}
 		};
@@ -256,11 +250,11 @@ def get_##Name##_v = get_##Name<T>::value;
 		{
 			archetype** archetypes;
 			mask* matched;
-			index_t* localType;
+			uint32_t* localType;
 			int archetypeCount;
-			index_t* types;
-			index_t* readonly;
-			index_t* randomAccess;
+			type_index* types;
+			uint32_t* readonly;
+			uint32_t* randomAccess;
 			int paramCount;
 			bool hasRandomWrite;
 			filters filter;
@@ -305,7 +299,7 @@ def get_##Name##_v = get_##Name<T>::value;
 				return ctx.localType[gid * ctx.paramCount + paramId] != InvalidIndex;
 			}
 			template<class T>
-			bool has_component(entity e) { return ctx.ctx.has_component(e, complist<T>); }
+			bool has_component() { return ctx.ctx.has_component(slice.c->type, complist<T>); }
 			const entity* get_entities() { return ctx.ctx.get_entities(slice.c) + slice.start; }
 			const pass& ctx;
 			int gid;
@@ -443,14 +437,14 @@ def get_##Name##_v = get_##Name<T>::value;
 			struct cmd_set
 			{
 				size_t e;
-				index_t type;
+				type_index type;
 				void* data;
 				size_t size;
 			};
 			struct cmd_patch
 			{
 				size_t e;
-				index_t type;
+				type_index type;
 			};
 			struct storage_t : chunk_vector_base
 			{
@@ -485,8 +479,8 @@ def get_##Name##_v = get_##Name<T>::value;
 				friend command_buffer;
 			public:
 				void cast(type_diff diff);
-				void set_component(index_t type, void* data, size_t size);
-				void patch_component(index_t type);
+				void set_component(type_index type, void* data, size_t size);
+				void patch_component(type_index type);
 				template<class T>
 				void set_component(T&& data)
 				{
@@ -502,7 +496,7 @@ def get_##Name##_v = get_##Name<T>::value;
 				void begin(core::entity e);
 				void destroy(core::entity e);
 			};
-			std::atomic<uint32_t> allocates;
+			std::atomic<uint32_t> allocates = 0;
 			thread_storage<local> locals;
 			local& write() { auto& l = locals.get(); l.global = this; return l; }
 			void execute(class pipeline& ppl);
@@ -529,7 +523,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			ECS_API virtual ~pipeline();
 			ECS_API world release();
 			ECS_API void sync_archetype(archetype* at) const;
-			ECS_API void sync_entry(archetype* at, index_t type) const;
+			ECS_API void sync_entry(archetype* at, type_index type) const;
 
 			virtual void sync_all() const {}
 			ECS_API void sync_all_ro() const;
@@ -572,9 +566,9 @@ def get_##Name##_v = get_##Name<T>::value;
 			/*** per entity ***/
 			//query
 			using world::as_slice;
-			ECS_API const void* get_component_ro(entity e, index_t type) const noexcept;
-			ECS_API const void* get_owned_ro(entity e, index_t type) const noexcept;
-			ECS_API const void* get_shared_ro(entity e, index_t type) const noexcept;
+			ECS_API const void* get_component_ro(entity e, type_index type) const noexcept;
+			ECS_API const void* get_owned_ro(entity e, type_index type) const noexcept;
+			ECS_API const void* get_shared_ro(entity e, type_index type) const noexcept;
 			using world::is_a;
 			using world::share_component;
 			using world::has_component;
@@ -582,7 +576,7 @@ def get_##Name##_v = get_##Name<T>::value;
 			ECS_API bool is_component_enabled(entity e, const typeset& type) const noexcept;
 			using world::exist;
 			//update
-			ECS_API void* get_owned_rw(entity e, index_t type) const noexcept;
+			ECS_API void* get_owned_rw(entity e, type_index type) const noexcept;
 			ECS_API void enable_component(entity e, const typeset& type) const noexcept;
 			ECS_API void disable_component(entity e, const typeset& type) const noexcept;
 			using world::get_type; /* note: only owned */
@@ -594,13 +588,13 @@ def get_##Name##_v = get_##Name<T>::value;
 
 			/*** per chunk or archetype ***/
 			//query
-			ECS_API const void* get_component_ro(chunk* c, index_t t) const noexcept;
-			ECS_API const void* get_owned_ro(chunk* c, index_t t) const noexcept;
-			ECS_API const void* get_shared_ro(chunk* c, index_t t) const noexcept;
-			ECS_API void* get_owned_rw(chunk* c, index_t t) noexcept;
+			ECS_API const void* get_component_ro(chunk* c, type_index t) const noexcept;
+			ECS_API const void* get_owned_ro(chunk* c, type_index t) const noexcept;
+			ECS_API const void* get_shared_ro(chunk* c, type_index t) const noexcept;
+			ECS_API void* get_owned_rw(chunk* c, type_index t) noexcept;
 			using world::get_entities;
 			using world::get_size;
-			ECS_API const void* get_shared_ro(archetype* g, index_t type) const;
+			ECS_API const void* get_shared_ro(archetype* g, type_index type) const;
 
 			/*** per world ***/
 			ECS_API void move_context(world& src);

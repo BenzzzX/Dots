@@ -11,13 +11,17 @@ type* name = (type*)_ao_##name.self;
 
 using namespace core;
 using namespace database;
+namespace core::database
+{
+	context* DotsContext;
+}
 
-index_t disable_id = 0;
-index_t cleanup_id = 1;
-index_t group_id = 2;
-index_t mask_id = 3;
+type_index disable_id = 0;
+type_index cleanup_id = 1;
+type_index group_id = 2;
+type_index mask_id = 3;
 #ifdef ENABLE_GUID_COMPONENT
-index_t guid_id = 4;
+type_index guid_id = 4;
 core::GUID(*new_guid_func)();
 
 core::GUID core::database::new_guid()
@@ -105,7 +109,7 @@ struct adaptive_object
 	}
 };
 
-index_t database::register_type(component_desc desc)
+type_index database::register_type(component_desc desc)
 {
 	return DotsContext->register_type(desc);
 }
@@ -181,7 +185,7 @@ void chunk::clone(chunk* dst) noexcept
 	}
 }
 
-uint32_t chunk::get_timestamp(index_t t) noexcept
+uint32_t chunk::get_timestamp(type_index t) noexcept
 {
 	tsize_t id = type->index(t);
 	if (id == InvalidIndex) return 0;
@@ -251,7 +255,7 @@ void chunk::destruct(chunk_slice s) noexcept
 	archetype* type = s.c->type;
 	uint32_t* offsets = type->offsets[(int)s.c->ct];
 	uint16_t* sizes = type->sizes;
-	index_t* types = type->types;
+	type_index* types = type->types;
 
 	forloop(i, type->firstManaged, type->firstTag)
 	{
@@ -278,7 +282,7 @@ void memdup(void* dst, const void* src, size_t size, size_t count) noexcept
 	}
 }
 
-tagged_index to_valid_type(tagged_index t)
+type_index to_valid_type(type_index t)
 {
 	if (DotsContext->tracks[t.index()] == Copying)
 		return t - 1;
@@ -297,11 +301,11 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	uint32_t* offsets = type->offsets[(int)src->ct];
 	uint32_t* dstOffsets = dstType->offsets[(int)dst.c->ct];
 	uint16_t* sizes = type->sizes;
-	index_t* types = type->types;
+	type_index* types = type->types;
 	forloop(i, 0, type->firstBuffer)
 	{
-		tagged_index st = to_valid_type(type->types[i]);
-		tagged_index dt = to_valid_type(dstType->types[dstI]);
+		type_index st = to_valid_type(type->types[i]);
+		type_index dt = to_valid_type(dstType->types[dstI]);
 
 		if (st != dt)
 			continue;
@@ -327,8 +331,8 @@ void chunk::duplicate(chunk_slice dst, const chunk* src, tsize_t srcIndex) noexc
 	}
 	forloop(i, type->firstBuffer, type->firstManaged)
 	{
-		tagged_index st = to_valid_type(type->types[i]);
-		tagged_index dt = to_valid_type(dstType->types[dstI]);
+		type_index st = to_valid_type(type->types[i]);
+		type_index dt = to_valid_type(dstType->types[dstI]);
 
 		if (st != dt)
 			continue;
@@ -355,7 +359,7 @@ void chunk::patch(chunk_slice s, patcher_i* patcher) noexcept
 	archetype* g = s.c->type;
 	uint32_t* offsets = g->offsets[(int)s.c->ct];
 	uint16_t* sizes = g->sizes;
-	tagged_index* types = (tagged_index*)g->types;
+	type_index* types = (type_index*)g->types;
 	auto patch = [&](tsize_t i)
 	{
 		const auto& t = DotsContext->infos[types[i].index()];
@@ -458,7 +462,7 @@ void chunk::serialize(chunk_slice s, serializer_i* stream, bool withEntities)
 	archetype* type = s.c->type;
 	uint32_t* offsets = type->offsets[(int)s.c->ct];
 	uint16_t* sizes = type->sizes;
-	tagged_index* types = (tagged_index*)type->types;
+	type_index* types = (type_index*)type->types;
 	if(withEntities)
 		archive(stream, s.c->get_entities() + s.start, s.count);
 
@@ -521,7 +525,7 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 	uint32_t* dstOffsets = dstType->offsets[(int)dst.c->ct];
 	uint16_t* srcSizes = srcType->sizes;
 	uint16_t* dstSizes = dstType->sizes;
-	index_t* srcTypes = srcType->types; index_t* dstTypes = dstType->types;
+	type_index* srcTypes = srcType->types; type_index* dstTypes = dstType->types;
 
 	//phase0: cast all components
 	while (srcI < srcType->firstBuffer && dstI < dstType->firstBuffer)
@@ -674,10 +678,10 @@ void chunk::cast(chunk_slice dst, chunk* src, tsize_t srcIndex, bool destruct) n
 
 uint32_t* archetype::timestamps(chunk* c) const noexcept { return (uint32_t*)((char*)c + c->get_size()) - firstTag; }
 
-tsize_t archetype::index(index_t type) const noexcept
+tsize_t archetype::index(type_index type) const noexcept
 {
-	index_t* ts = types;
-	index_t* result = std::lower_bound(ts, ts + componentCount, type);
+	type_index* ts = types;
+	type_index* result = std::lower_bound(ts, ts + componentCount, type);
 	if (result != ts + componentCount && *result == type)
 		return tsize_t(result - ts);
 	else
@@ -713,7 +717,7 @@ mask archetype::get_mask(const typeset& subtype) noexcept
 
 entity_type archetype::get_type() const
 {
-	index_t* ts = types;
+	type_index* ts = types;
 	entity* ms = metatypes;
 	return entity_type
 	{
@@ -725,7 +729,7 @@ entity_type archetype::get_type() const
 
 size_t archetype::get_size()
 {
-	return sizeof(index_t) * componentCount + // types
+	return sizeof(type_index) * componentCount + // types
 		sizeof(uint32_t) * firstTag * 3 + // offsets
 		sizeof(uint32_t) * firstTag + // sizes
 		sizeof(entity) * metaCount +  // metatypes
@@ -749,7 +753,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f) const
 			auto at = f.all.types;
 			forloop(i, 0, at.length)
 			{
-				tagged_index type = at[i];
+				type_index type = at[i];
 				if (type == cleanup_id)
 					includeClean = true;
 				if (type == disable_id)
@@ -771,8 +775,8 @@ world::query_cache& world::get_query_cache(const archetype_filter& f) const
 
 			tsize_t size = 0;
 			estimate_shared_size(size, g);
-			stack_array(index_t, _type, size);
-			stack_array(index_t, _buffer, size);
+			stack_array(type_index, _type, size);
+			stack_array(type_index, _buffer, size);
 			typeset type{ _type, 0 };
 			typeset buffer{ _buffer ,0 };
 			get_shared_type(type, g, buffer);
@@ -786,7 +790,7 @@ world::query_cache& world::get_query_cache(const archetype_filter& f) const
 			{
 				auto type = g->get_type();
 				auto cc = f.all.types.length + f.any.types.length;
-				stack_array(index_t, cd, cc);
+				stack_array(type_index, cd, cc);
 				auto checking = typeset::merge(f.all.types, f.any.types, cd);
 				mask m = g->get_mask(checking);
 				cache.archetypes.push_back({ g, m });
@@ -809,8 +813,8 @@ void world::update_queries(archetype* g, bool add)
 		on_archetype_update(g, add);
 	tsize_t size = 0;
 	estimate_shared_size(size, g);
-	stack_array(index_t, _type, size);
-	stack_array(index_t, _buffer, size);
+	stack_array(type_index, _type, size);
+	stack_array(type_index, _buffer, size);
 	typeset type{ _type, 0 };
 	typeset buffer{ _buffer ,0 };
 	get_shared_type(type, g, buffer);
@@ -895,19 +899,19 @@ archetype* world::construct_archetype(const entity_type& key)
 	tsize_t c = 0;
 	for (c = 0; c < count; c++)
 	{
-		auto type = (tagged_index)key.types[c];
+		auto type = (type_index)key.types[c];
 		if (type.is_tag()) break;
 	}
 	firstTag = c;
 	for (c = 0; c < firstTag; c++)
 	{
-		auto type = (tagged_index)key.types[c];
+		auto type = (type_index)key.types[c];
 		if (type.is_managed()) break;
 	}
 	firstManaged = c;
 	for (c = 0; c < firstManaged; c++)
 	{
-		auto type = (tagged_index)key.types[c];
+		auto type = (type_index)key.types[c];
 		if (type.is_buffer()) break;
 	}
 	firstBuffer = c;
@@ -932,13 +936,13 @@ archetype* world::construct_archetype(const entity_type& key)
 	proto.timestamp = timestamp;
 	proto.lastChunk = proto.firstChunk = proto.firstFree = nullptr;
 
-	const index_t disableType = disable_id;
-	const index_t cleanupType = cleanup_id;
-	const index_t maskType = mask_id;
+	const type_index disableType = disable_id;
+	const type_index cleanupType = cleanup_id;
+	const type_index maskType = mask_id;
 	uint16_t entitySize = sizeof(entity);
 	forloop(i, 0, count)
 	{
-		auto type = (tagged_index)key.types[i];
+		auto type = (type_index)key.types[i];
 		if (type == disableType)
 			proto.disabled = true;
 		else if (type == cleanupType)
@@ -961,15 +965,15 @@ archetype* world::construct_archetype(const entity_type& key)
 	allocate_inline(g->sizes, buffer, firstTag);
 	allocate_inline(g->metatypes, buffer, metaCount);
 	allocate_inline(g->managedFuncs, buffer, firstTag - firstManaged);
-	index_t* types = g->types;
+	type_index* types = g->types;
 	entity* metatypes = g->metatypes;
-	memcpy(types, key.types.data, count * sizeof(index_t));
+	memcpy(types, key.types.data, count * sizeof(type_index));
 	memcpy(metatypes, key.metatypes.data, key.metatypes.length * sizeof(entity));
 	uint16_t* sizes = g->sizes;
 
 	forloop(i, firstManaged, firstTag)
 	{
-		auto type = (tagged_index)key.types[i];
+		auto type = (type_index)key.types[i];
 		auto& info = DotsContext->infos[type.index()];
 		g->managedFuncs[i - firstManaged] = {info.vtable.copy, info.vtable.constructor, info.vtable.destructor};
 	}
@@ -979,7 +983,7 @@ archetype* world::construct_archetype(const entity_type& key)
 	stack_array(tsize_t, stableOrder, firstTag);
 	forloop(i, 0, firstTag)
 	{
-		auto type = (tagged_index)key.types[i];
+		auto type = (type_index)key.types[i];
 		auto& info = DotsContext->infos[type.index()];
 		sizes[i] = info.size;
 		hash[i] = info.GUID;
@@ -1026,15 +1030,15 @@ archetype* world::get_cleaning(archetype* g)
 	else if (!g->withTracked) return nullptr;
 
 	tsize_t k = 0, count = g->componentCount;
-	const index_t cleanupType = cleanup_id;
-	index_t* types = g->types;
+	const type_index cleanupType = cleanup_id;
+	type_index* types = g->types;
 	entity* metatypes = g->metatypes;
 
-	stack_array(index_t, dstTypes, count + 1);
+	stack_array(type_index, dstTypes, count + 1);
 	dstTypes[k++] = cleanupType;
 	forloop(i, 0, count)
 	{
-		auto type = (tagged_index)types[i];
+		auto type = (type_index)types[i];
 		auto stage = DotsContext->tracks[type.index()];
 		if ((stage & ManualCleaning) != 0)
 			dstTypes[k++] = type;
@@ -1063,10 +1067,10 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		return nullptr;
 
 	entity_type srcType = g->get_type();
-	const index_t* srcTypes = srcType.types.data;
+	const type_index* srcTypes = srcType.types.data;
 	const entity* srcMetaTypes = srcType.metatypes.data;
-	const index_t* shrTypes = diff.shrink.types.data;
-	index_t* dstTypes;
+	const type_index* shrTypes = diff.shrink.types.data;
+	type_index* dstTypes;
 	entity* dstMetaTypes;
 	tsize_t srcSize = srcType.types.length;
 	tsize_t srcMetaSize = srcType.metatypes.length;
@@ -1082,12 +1086,12 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 0 : start copying state duto instantiate
 	if (inst && g->withTracked)
 	{
-		_so_phase0.emplace(sizeof(index_t) * dstSize);
-		dstTypes = (index_t*)_so_phase0->self;
+		_so_phase0.emplace(sizeof(type_index) * dstSize);
+		dstTypes = (type_index*)_so_phase0->self;
 
 		forloop(i, 0, srcSize)
 		{
-			auto type = (tagged_index)srcTypes[i];
+			auto type = (type_index)srcTypes[i];
 			auto stage = DotsContext->tracks[type.index()];
 			if ((stage & ManualCopying) != 0)
 				dstTypes[i] = type + 1;
@@ -1103,7 +1107,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	{
 		dstSize = srcSize + diff.extend.types.length;
 		dstMetaSize = srcMetaSize + diff.extend.metatypes.length;
-		_so_phase1.emplace(sizeof(index_t) * dstSize + sizeof(entity) * dstMetaSize);
+		_so_phase1.emplace(sizeof(type_index) * dstSize + sizeof(entity) * dstMetaSize);
 		auto key = entity_type::merge(
 			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
 			diff.extend, _so_phase1->self);
@@ -1114,12 +1118,12 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 2 : complete copying duto extend
 	if (g->copying && diff.extend != EmptyType)
 	{
-		_so_phase2.emplace(sizeof(index_t) * srcSize);
+		_so_phase2.emplace(sizeof(type_index) * srcSize);
 		tsize_t k = 0, mk = 0;
-		dstTypes = (index_t*)_so_phase2->self;
+		dstTypes = (type_index*)_so_phase2->self;
 		auto can_zip = [&](int i)
 		{
-			auto type = (tagged_index)srcTypes[i];
+			auto type = (type_index)srcTypes[i];
 			auto stage = DotsContext->tracks[type.index()];
 			if (((stage & ManualCopying) != 0) && (srcTypes[i + 1] == type + 1))
 				return true;
@@ -1127,7 +1131,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 		};
 		forloop(i, 0, srcSize)
 		{
-			auto type = (tagged_index)srcTypes[i];
+			auto type = (type_index)srcTypes[i];
 			dstTypes[k++] = type;
 			if (i < srcSize - 1 && can_zip(i))
 				i++;
@@ -1139,12 +1143,12 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 3 : interupt copying duto shrink
 	if (g->copying && diff.shrink != EmptyType)
 	{
-		_so_phase3.emplace(sizeof(index_t) * diff.shrink.types.length * 2);
-		index_t* newShrTypes = (index_t*)_so_phase3->self;
+		_so_phase3.emplace(sizeof(type_index) * diff.shrink.types.length * 2);
+		type_index* newShrTypes = (type_index*)_so_phase3->self;
 		tsize_t k = 0;
 		forloop(i, 0, shrSize)
 		{
-			auto type = (tagged_index)shrTypes[i];
+			auto type = (type_index)shrTypes[i];
 			newShrTypes[k++] = type;
 			auto stage = DotsContext->tracks[type.index()];
 			if ((stage & ManualCopying) != 0)
@@ -1157,7 +1161,7 @@ archetype* world::get_casted(archetype* g, type_diff diff, bool inst)
 	//phase 4 : shrink
 	if (diff.shrink != EmptyType)
 	{
-		_so_phase4.emplace(sizeof(index_t) * srcSize + sizeof(entity) * srcMetaSize);
+		_so_phase4.emplace(sizeof(type_index) * srcSize + sizeof(entity) * srcMetaSize);
 		auto key = entity_type::substract(
 			{ {srcTypes, srcSize}, {srcMetaTypes, srcMetaSize} },
 			{ {shrTypes, shrSize}, diff.shrink.metatypes }, _so_phase4->self);
@@ -1286,7 +1290,7 @@ void world::serialize_archetype(archetype* g, serializer_i* s)
 	tsize_t tlength = type.types.length, mlength = type.metatypes.length;
 	archive(s, tlength);
 	forloop(i, 0, tlength)
-		archive(s, DotsContext->infos[tagged_index(type.types[i]).index()].GUID);
+		archive(s, DotsContext->infos[type_index(type.types[i]).index()].GUID);
 	archive(s, mlength);
 	archive(s, type.metatypes.data, mlength);
 }
@@ -1299,13 +1303,13 @@ archetype* world::deserialize_archetype(serializer_i* s, patcher_i* patcher, boo
 		return nullptr;
 	tsize_t tlength;
 	archive(s, tlength);
-	stack_array(index_t, types, tlength);
+	stack_array(type_index, types, tlength);
 	forloop(i, 0, tlength)
 	{
 		core::GUID uu;
 		archive(s, uu);
 		//todo: check validation
-		types[i] = (index_t)DotsContext->hash2type[uu];
+		types[i] = (type_index)DotsContext->hash2type[uu];
 	}
 	tsize_t mlength;
 	archive(s, mlength);
@@ -1568,7 +1572,7 @@ void world::structural_change(archetype* g, chunk* c)
 		g->timestamp = timestamp;
 		forloop(i, 0, t.types.length)
 		{
-			auto type = (tagged_index)t.types[i];
+			auto type = (type_index)t.types[i];
 			typeTimestamps[type.index()] = timestamp;
 		}
 	}
@@ -1767,8 +1771,8 @@ bool static_castable(const entity_type& typeA, const entity_type& typeB)
 	int i = 0;
 	for (; i < size; ++i)
 	{
-		tagged_index st = typeA.types[i];
-		tagged_index dt = typeB.types[i];
+		type_index st = typeA.types[i];
+		type_index dt = typeB.types[i];
 		if (st.is_tag() && dt.is_tag())
 			return true;
 		if (to_valid_type(st) != to_valid_type(dt))
@@ -1777,9 +1781,9 @@ bool static_castable(const entity_type& typeA, const entity_type& typeB)
 	if (typeA.types.length == typeB.types.length)
 		return true;
 	else if (i >= typeA.types.length)
-		return tagged_index(typeB.types[i]).is_tag();
+		return type_index(typeB.types[i]).is_tag();
 	else if (i >= typeB.types.length)
-		return tagged_index(typeA.types[i]).is_tag();
+		return type_index(typeA.types[i]).is_tag();
 	else
 		return false;
 }
@@ -1808,7 +1812,7 @@ chunk_vector<chunk_slice> world::cast(chunk_slice s, archetype* g)
 	}
 }
 
-world::world(index_t typeCapacity)
+world::world(uint32_t typeCapacity)
 	:typeCapacity(typeCapacity)
 {
 	typeTimestamps = (uint32_t*)::malloc(typeCapacity * sizeof(uint32_t));
@@ -1835,9 +1839,9 @@ world::world(const world& other)
 		// mark copying stage
 		forloop(i, 0, newG->componentCount)
 		{
-			auto type = (tagged_index)newG->types[i];
+			auto type = (type_index)newG->types[i];
 			if ((DotsContext->tracks[type.index()] & ManualCopying) != 0)
-				newG->types[i] = index_t(type) + 1;
+				newG->types[i] = type_index(type) + 1;
 		}
 
 		//clone chunks
@@ -1973,7 +1977,7 @@ void world::get_shared_type(typeset& type, archetype* t, typeset& buffer) const
 	{
 		auto g = get_archetype(metas[i]);
 		std::swap(type, buffer);
-		type = typeset::merge(g->get_type().types, buffer, (index_t*)type.data);
+		type = typeset::merge(g->get_type().types, buffer, (type_index*)type.data);
 		get_shared_type(type, g, buffer);
 	}
 }
@@ -2020,28 +2024,28 @@ chunk_slice world::as_slice(entity e) const
 	return chunk_slice{data.c, data.i, 1};
 }
 
-const void* world::get_component_ro(entity e, index_t type) const noexcept
+const void* world::get_component_ro(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	return get_component_ro(as_slice(e), type);
 }
 
-const void* world::get_owned_ro(entity e, index_t type) const noexcept
+const void* world::get_owned_ro(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	return get_owned_ro(as_slice(e), type);
 }
 
-const void* world::get_shared_ro(entity e, index_t type) const noexcept
+const void* world::get_shared_ro(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
 	return get_shared_ro(as_slice(e), type);
 }
 
-void* world::get_owned_rw(entity e, index_t type) const noexcept
+void* world::get_owned_rw(entity e, type_index type) const noexcept
 {
 	if (!exist(e))
 		return nullptr;
@@ -2049,7 +2053,7 @@ void* world::get_owned_rw(entity e, index_t type) const noexcept
 }
 
 
-const void* world::get_component_ro(chunk_slice s, index_t t) const noexcept
+const void* world::get_component_ro(chunk_slice s, type_index t) const noexcept
 {
 	chunk* c = s.c;
 	archetype* g = c->type;
@@ -2061,7 +2065,7 @@ const void* world::get_component_ro(chunk_slice s, index_t t) const noexcept
 	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * g->sizes[id];
 }
 
-const void* world::get_owned_ro(chunk_slice s, index_t t) const noexcept
+const void* world::get_owned_ro(chunk_slice s, type_index t) const noexcept
 {
 	chunk* c = s.c;
 	tsize_t id = c->type->index(t);
@@ -2070,14 +2074,14 @@ const void* world::get_owned_ro(chunk_slice s, index_t t) const noexcept
 	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * c->type->sizes[id];
 }
 
-const void* world::get_shared_ro(chunk_slice s, index_t type) const noexcept
+const void* world::get_shared_ro(chunk_slice s, type_index type) const noexcept
 {
 	chunk* c = s.c;
 	archetype* g = c->type;
 	return get_shared_ro(g, type);
 }
 
-void* world::get_owned_rw(chunk_slice s, index_t t) const noexcept
+void* world::get_owned_rw(chunk_slice s, type_index t) const noexcept
 {
 	chunk* c = s.c;
 	tsize_t id = c->type->index(t);
@@ -2087,20 +2091,20 @@ void* world::get_owned_rw(chunk_slice s, index_t t) const noexcept
 	return c->data() + c->type->offsets[(int)c->ct][id] + s.start * c->type->sizes[id];
 }
 
-const void* world::get_owned_ro_local(chunk_slice s, index_t type) const noexcept
+const void* world::get_owned_ro_local(chunk_slice s, type_index type) const noexcept
 {
 	chunk* c = s.c;
 	return c->data() + c->type->offsets[(int)c->ct][type] + s.start * c->type->sizes[type];
 }
 
-void* world::get_owned_rw_local(chunk_slice s, index_t type) noexcept
+void* world::get_owned_rw_local(chunk_slice s, type_index type) noexcept
 {
 	chunk* c = s.c;
 	c->type->timestamps(c)[type] = timestamp;
 	return c->data() + c->type->offsets[(int)c->ct][type] + s.start * c->type->sizes[type];
 }
 
-const void* world::get_shared_ro(archetype* g, index_t type) const
+const void* world::get_shared_ro(archetype* g, type_index type) const
 {
 	entity* metas = g->metatypes;
 	forloop(i, 0, g->metaCount)
@@ -2144,9 +2148,9 @@ const entity* world::get_entities(chunk_slice s) noexcept
 	return s.c->get_entities() + s.start;
 }
 
-uint16_t world::get_size(index_t t) const noexcept
+uint16_t world::get_size(type_index t) const noexcept
 {
-	return DotsContext->infos[((tagged_index)t).index()].size;
+	return DotsContext->infos[((type_index)t).index()].size;
 }
 
 entity_type world::get_type(entity e) const noexcept
@@ -2464,7 +2468,7 @@ world_delta world::diff_context(world& base)
 					}
 					forloop(i, g->firstBuffer, g->firstTag)
 					{
-						tagged_index* types = (tagged_index*)g->types;
+						type_index* types = (type_index*)g->types;
 						const auto& t = DotsContext->infos[types[i].index()];
 						auto blid = baseG->index(type.types[i]);
 						if (blid == InvalidIndex)
@@ -2786,7 +2790,7 @@ void world::entities::new_entities(chunk_slice s)
 		return;
 	//fast path
 	size_t newId = datas.size;
-	datas.resize(datas.size + s.count - i + 1);
+	datas.resize(datas.size + s.count - i);
 	while (i < s.count)
 	{
 		entity newE(
@@ -2858,8 +2862,8 @@ void world::entities::free_entities(chunk_slice s)
 	freeData.nextFree = free;
 	free = toFree[0].id;
 	//shrink
-	while (datas.size > 0 && datas.last().c == nullptr)
-		datas.pop();
+	//while (datas.size > 0 && datas.last().c == nullptr)
+	//	datas.pop();
 }
 
 void world::entities::move_entities(chunk_slice dst, const chunk* src, uint32_t srcIndex)
@@ -2932,7 +2936,7 @@ chunk_vector<archetype*> world::get_archetypes()
 bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 {
 	//todo: cache these things?
-	stack_array(index_t, _components, t.types.length + sharedT.length);
+	stack_array(type_index, _components, t.types.length + sharedT.length);
 	auto components = typeset::merge(t.types, sharedT, _components);
 
 	if (!components.all(all.types))
@@ -2940,8 +2944,8 @@ bool archetype_filter::match(const entity_type& t, const typeset& sharedT) const
 	if (any.types.length > 0 && !components.any(any.types))
 		return false;
 
-	stack_array(index_t, _nonOwned, none.types.length);
-	stack_array(index_t, _nonShared, none.types.length);
+	stack_array(type_index, _nonOwned, none.types.length);
+	stack_array(type_index, _nonShared, none.types.length);
 	auto nonOwned = typeset::substract(none.types, shared, _nonOwned);
 	auto nonShared = typeset::substract(none.types, owned, _nonShared);
 	if (t.types.any(nonOwned))
@@ -3092,7 +3096,7 @@ void core::database::initialize(core::GUID(*guid_generator)())
 void core::database::initialize()
 #endif 
 {
-	context::initialize();
+	DotsContext = &context::get();
 	disable_id = DotsContext->disable_id;
 	cleanup_id = DotsContext->cleanup_id;
 	group_id = DotsContext->group_id;

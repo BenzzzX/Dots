@@ -57,6 +57,42 @@
 
 namespace core
 {
+	template<size_t A, size_t B, class T = uint32_t>
+	struct handle
+	{
+		using underlying_type = T;
+		static_assert(A + B == sizeof(T) * 8, "size does not fit into T");
+		union
+		{
+			T value;
+			struct
+			{
+				T version : B;
+				T id : A;
+			};
+		};
+		constexpr static T Null = std::numeric_limits<T>::max();
+		constexpr static T TransientMagicNumber = ((1 << B) - 1);
+		constexpr operator T() const { return value; }
+		constexpr handle() = default;
+		constexpr handle(nullptr_t) : value(Null) {};
+		constexpr handle(T t) : value(t) { }
+		constexpr handle(T i, T v) : id(i), version(v) { }
+		constexpr bool is_transient() { return version == ((1 << B) - 1); }
+		constexpr static T make_transient(T i) { return handle{ i, TransientMagicNumber }.value; }
+		constexpr static T recycle(T version)
+		{
+			return (version + 1) == TransientMagicNumber ? (version + 2) : (version + 1);
+		}
+	};
+
+	struct entity : handle<24, 8>
+	{
+		using ut = handle<24, 8>;
+		using ut::handle;
+	};
+	constexpr entity NullEntity = entity::Null;
+
 	struct GUID {
 		struct
 		{
@@ -72,6 +108,32 @@ namespace core
 			return reinterpret_cast<const value_type&>(*this) < reinterpret_cast<const value_type&>(rhs);
 		}
 	};
+#ifdef __EMSCRIPTEN__
+	constexpr size_t _FNV_offset_basis = 2166136261U;
+	constexpr size_t _FNV_prime = 16777619U;
+#else
+	constexpr size_t _FNV_offset_basis = sizeof(size_t) == sizeof(uint32_t) ? 2166136261U : 14695981039346656037ULL;
+	constexpr size_t _FNV_prime = sizeof(uint32_t) ? 16777619U : 1099511628211ULL;
+#endif
+
+	inline size_t hash_append(size_t val, const unsigned char* const data, const size_t length) noexcept
+	{ // accumulate range [data, data + length) into partial FNV-1a uuid val
+		for (size_t i = 0; i < length; ++i) {
+			val ^= static_cast<size_t>(data[i]);
+			val *= _FNV_prime;
+		}
+
+		return val;
+	}
+
+	template <class T>
+	inline size_t hash_array(const T* const data, const size_t length, const size_t basis = _FNV_offset_basis) noexcept
+	{ // bitwise hashes the representation of an array
+		static_assert(std::is_trivial_v<T>, "Only trivial types can be directly hashed.");
+		return hash_append(
+			basis, reinterpret_cast<const unsigned char*>(data), length * sizeof(T));
+	}
+
 	namespace guid_parse
 	{
 		namespace details
@@ -159,6 +221,7 @@ namespace core
 
 	namespace database
 	{
+		using index_t = uint32_t;
 		enum component_type : index_t
 		{
 			ct_pod = 0,
@@ -166,7 +229,7 @@ namespace core
 			ct_tag = 0b11,
 			ct_managed = 0b10,
 		};
-		class tagged_index
+		class type_index
 		{
 			static_assert(sizeof(index_t) * 8 == 32, "index_t should be 32 bits");
 			union
@@ -186,8 +249,9 @@ namespace core
 			constexpr bool is_tag() const noexcept { return type == ct_tag; }
 			constexpr bool is_managed() const noexcept { return type == ct_managed; }
 
-			constexpr tagged_index(index_t value = 0) noexcept : value(value) { }
-			constexpr tagged_index(index_t a, component_type t) noexcept
+			constexpr type_index() noexcept : value(0) {}
+			constexpr type_index(index_t value) noexcept : value(value) { }
+			constexpr type_index(index_t a, component_type t) noexcept
 				: id(a), type(t) { }
 
 			constexpr operator index_t() const { return value; }
@@ -216,15 +280,6 @@ namespace core
 			virtual void move() {}
 			virtual void reset() {}
 		};
-
-		// Internal Components
-		struct group
-		{
-			entity e;
-		};
-		using mask = std::bitset<32>; //TODO: atomic api
-		struct disable {};
-		struct cleanup {};
 
 		struct component_vtable
 		{
@@ -321,7 +376,6 @@ namespace core
 			component_vtable vtable;
 		};
 
-		ECS_RT_API extern struct context* DotsContext;
 		struct context
 		{
 			std::vector<type_registry> infos;
@@ -332,18 +386,18 @@ namespace core
 			moodycamel::ConcurrentQueue<void*> fastbin{ kFastBinCapacity };
 			moodycamel::ConcurrentQueue<void*> smallbin{ kSmallBinCapacity };
 			moodycamel::ConcurrentQueue<void*> largebin{ kLargeBinCapacity };
-			index_t disable_id;
-			index_t cleanup_id;
-			index_t group_id;
-			index_t mask_id;
+			type_index disable_id;
+			type_index cleanup_id;
+			type_index group_id;
+			type_index mask_id;
 
 #ifdef ENABLE_GUID_COMPONENT
-			index_t guid_id;
+			type_index guid_id;
 #endif
 
 			stack_allocator stack;
 
-			ECS_RT_API static void initialize();
+			ECS_RT_API static context& get();
 
 			void* stack_alloc(size_t size, size_t align = alignof(int))
 			{
@@ -359,10 +413,30 @@ namespace core
 
 			ECS_RT_API void* malloc(alloc_type type);
 
-			ECS_RT_API index_t register_type(component_desc desc);
-			ECS_RT_API index_t find_type(GUID guid);
+			ECS_RT_API type_index register_type(component_desc desc);
 		private:
 			context();
 		};
+	}
+
+	inline size_t hash_array(const database::type_index* const data, const size_t length, const size_t basis = _FNV_offset_basis) noexcept
+	{
+		return hash_append(
+			basis, reinterpret_cast<const unsigned char*>(data), length * sizeof(database::type_index));
+	}
+
+	namespace database
+	{
+		using typeset = set<type_index>;
+		using metaset = set<entity>;
+
+		// Internal Components
+		struct group
+		{
+			entity e;
+		};
+		using mask = std::bitset<32>; //TODO: atomic api
+		struct disable {};
+		struct cleanup {};
 	}
 }

@@ -23,7 +23,7 @@ namespace TransformSystem
 {
 	void UpdateHierachy(world& ctx);
 
-	void UpdateLocalToX(world& ctx, index_t X, const archetype_filter& filter);
+	void UpdateLocalToX(world& ctx, type_index X, const archetype_filter& filter);
 
 	void SolveParentToWorld(world& ctx);
 
@@ -90,11 +90,11 @@ void TransformSystem::AddChild(world& ctx, entity e, entity child)
 
 void TransformSystem::UpdateHierachy(world& ctx)
 {
-	index_t _cleanT[] = { get_builtin().cleanup_id };
-	index_t _toCleanT[] = { parent_id, child_id };
-	index_t _ltpT[] = { local_to_parent_id };
-	index_t _parentT[] = { parent_id };
-	index_t _treeT[] = { local_to_parent_id , parent_id };
+	type_index _cleanT[] = { get_builtin().cleanup_id };
+	type_index _toCleanT[] = { parent_id, child_id };
+	type_index _ltpT[] = { local_to_parent_id };
+	type_index _parentT[] = { parent_id };
+	type_index _treeT[] = { local_to_parent_id , parent_id };
 	{
 		//清理删除 Entity 后的层级关系
 
@@ -141,7 +141,7 @@ void TransformSystem::UpdateHierachy(world& ctx)
 	//需不需要检查 Parent 和 Child 的合法性？
 }
 
-void TransformSystem::UpdateLocalToX(world& ctx, index_t X, const archetype_filter& filter)
+void TransformSystem::UpdateLocalToX(world& ctx, type_index X, const archetype_filter& filter)
 {
 	for(auto i : ctx.query(filter)) //遍历 Archetype
 	{
@@ -178,8 +178,8 @@ void TransformSystem::SolvePTWRecursive(world& ctx, entity e, const transform& p
 
 void TransformSystem::SolveParentToWorld(world& ctx)
 {
-	index_t _rootT[] = { local_to_world_id, child_id };
-	index_t _treeT[] = { parent_id };
+	type_index _rootT[] = { local_to_world_id, child_id };
+	type_index _treeT[] = { parent_id };
 	archetype_filter fTransformRoot{
 		{typeset{_rootT,2}}, {},
 		{typeset{_treeT,1}}
@@ -204,14 +204,14 @@ void TransformSystem::Update(world& ctx)
 	UpdateHierachy(ctx); 
 	//求解出根节点的世界坐标
 	{
-		index_t _treeT[] = { local_to_world_id, parent_id, rotation_id, location_id };
+		type_index _treeT[] = { local_to_world_id, parent_id, rotation_id, location_id };
 		UpdateLocalToX(ctx, local_to_parent_id, {
 			{ typeset{_treeT, 4}} });
 	}
 	//求解出非根节点的局部坐标
 	{
-		index_t _rootT[] = { local_to_world_id , rotation_id, location_id };
-		index_t _treeT[] = { parent_id };
+		type_index _rootT[] = { local_to_world_id , rotation_id, location_id };
+		type_index _treeT[] = { parent_id };
 		UpdateLocalToX(ctx, local_to_world_id, {
 			{ typeset{_rootT,4}},{},
 			{ typeset{_treeT,1}} });

@@ -10,6 +10,61 @@
       </IndexListItems>
     </Expand>
 	</Type>
+  <Type Name="core::database::archetype">
+    <Expand>
+      <Item Name="entities">size</Item>
+      <Item Name="chunks">chunkCount</Item>
+      <Item Name="components">componentCount</Item>
+      <ArrayItems>
+        <Size>componentCount</Size>
+        <ValuePointer>types</ValuePointer>
+      </ArrayItems>
+      <ArrayItems>
+        <Size>metaCount</Size>
+        <ValuePointer>metatypes</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="core::database::chunk">
+    <DisplayString Condition="count == 0">Empty</DisplayString>
+    <DisplayString>{{ count={count}, type={type} }}</DisplayString>
+    <Expand>
+      <Item Name="type">type</Item>
+      <IndexListItems Condition="count != 0">
+        <Size>count</Size>
+        <ValueNode>((core::entity*)(this+1))[$i]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+  <Type Name="core::database::chunk_slice">
+    <DisplayString Condition="count == 0 || c == nullptr">Empty</DisplayString>
+    <DisplayString>{{ start={start}, end={start+count}, type={c->type} }}</DisplayString>
+    <Expand>
+      <Item Name="type">c->type</Item>
+      <IndexListItems Condition="count != 0 &amp;&amp; c != nullptr">
+        <Size>count</Size>
+        <ValueNode>((core::entity*)(c+1))[$i+start]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+  <Type Name="core::database::type_index">
+    <DisplayString>{{ name={::core::database::DotsContext->infos._Mypair._Myval2._Myfirst[id].name,s}, type={type} }}</DisplayString>
+    <Expand>
+      <ExpandedItem>::core::database::DotsContext->infos._Mypair._Myval2._Myfirst[id]</ExpandedItem>
+    </Expand>
+  </Type>
+  <Type Name="core::GUID">
+    <DisplayString>{{{Data1,Xb}-{Data2,Xb}-{Data3,Xb}-{((uint16_t*)Data4)[0],Xb}-{((uint16_t*)Data4)[1],Xb}{((uint32_t*)Data4)[1],Xb}}}</DisplayString>
+  </Type>
+  <Type Name="core::database::set&lt;*&gt;">
+    <Expand>
+      <Item Name="length">length</Item>
+      <ArrayItems Condition="length != 0 &amp;&amp; data != nullptr">
+        <Size>length</Size>
+        <ValuePointer>data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
   <Type Name="core::database::buffer_t&lt;*&gt;">
     <DisplayString Condition="_data-&gt;size == 0">Empty</DisplayString>
     <DisplayString Condition="_data-&gt;size != 0">{{ size={_data-&gt;size/sizeof($T1)} }}</DisplayString>
